@@ -9,10 +9,12 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "node --test server/test/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "busboy": "^1.6.0",
     "connect-sqlite3": "^0.9.15",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

@@ -1,4 +1,4 @@
-const { test, describe, before } = require('node:test');
+const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 // Set test encryption key (64 hex chars = 32 bytes)
@@ -42,8 +42,9 @@ describe('AES-256-GCM Credential Encryption (#3)', () => {
 
   test('fails decryption if auth tag is tampered with', () => {
     const encrypted = encrypt('sensitive-data');
-    // Tamper with auth tag
-    const tamperedTag = encrypted.authTag.replace(/0/g, '1');
+    // Tamper with auth tag by flipping first hex char
+    const firstChar = encrypted.authTag[0] === 'a' ? 'b' : 'a';
+    const tamperedTag = firstChar + encrypted.authTag.slice(1);
     const tamperedObj = { ...encrypted, authTag: tamperedTag };
 
     assert.throws(() => decrypt(tamperedObj));
@@ -51,8 +52,9 @@ describe('AES-256-GCM Credential Encryption (#3)', () => {
 
   test('fails decryption if ciphertext is tampered with', () => {
     const encrypted = encrypt('sensitive-data');
-    // Tamper with data
-    const tamperedData = encrypted.data.replace(/a/g, 'b');
+    // Tamper with data by flipping first hex char
+    const firstChar = encrypted.data[0] === 'a' ? 'b' : 'a';
+    const tamperedData = firstChar + encrypted.data.slice(1);
     const tamperedObj = { ...encrypted, data: tamperedData };
 
     assert.throws(() => decrypt(tamperedObj));
