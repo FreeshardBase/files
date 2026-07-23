@@ -13,6 +13,7 @@
     "test": "node --test server/test/*.test.js"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "busboy": "^1.6.0",
     "connect-sqlite3": "^0.9.15",

@@ -4,6 +4,7 @@ class FileBrowser {
     this.viewMode = 'grid'; // 'grid' or 'list'
     this.items = [];
     this.selectedItem = null;
+    this.selectedPaths = new Set(); // Multi-select state (#12)
 
     this.container = document.getElementById('fileContainer');
     this.breadcrumb = document.getElementById('breadcrumb');
@@ -16,6 +17,10 @@ class FileBrowser {
     this.mediaTitle = document.getElementById('mediaTitle');
     this.mediaViewerBody = document.getElementById('mediaViewerBody');
     this.currentMediaItem = null;
+
+    // Multi-Select Elements (#12)
+    this.selectionActionBar = document.getElementById('selectionActionBar');
+    this.selectedCountText = document.getElementById('selectedCountText');
 
     this.init();
   }
@@ -42,19 +47,25 @@ class FileBrowser {
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.hideModal('modalRename'));
     document.getElementById('btnConfirmRename')?.addEventListener('click', () => this.renameSelectedItem());
 
+    // Multi-Select Actions (#12)
+    document.getElementById('btnBatchZip')?.addEventListener('click', () => this.batchDownloadZip());
+    document.getElementById('btnBatchDelete')?.addEventListener('click', () => this.batchDelete());
+    document.getElementById('btnDeselectAll')?.addEventListener('click', () => this.clearSelection());
+
     // Media Viewer Controls (#11)
     document.getElementById('btnMediaClose')?.addEventListener('click', () => this.closeMediaViewer());
     document.getElementById('btnMediaDownload')?.addEventListener('click', () => {
       if (this.currentMediaItem) this.downloadFile(this.currentMediaItem.path);
     });
 
-    // Keyboard Shortcuts (Esc to close modal)
+    // Keyboard Shortcuts (Esc to close modal & clear selection)
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         this.closeMediaViewer();
         this.hideModal('modalNewFolder');
         this.hideModal('modalRename');
         this.hideContextMenu();
+        this.clearSelection();
       }
     });
 
@@ -89,6 +100,7 @@ class FileBrowser {
 
   async loadDirectory(dirPath) {
     this.currentPath = dirPath;
+    this.clearSelection();
     this.renderBreadcrumb();
 
     try {
@@ -153,9 +165,11 @@ class FileBrowser {
       const isDir = item.isDirectory;
       const icon = isDir ? '📁' : this.getFileIcon(item.name);
       const sizeStr = isDir ? '' : this.formatSize(item.size);
+      const isChecked = this.selectedPaths.has(item.path);
 
       return `
-        <div class="file-card" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
+        <div class="file-card ${isChecked ? 'selected' : ''}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
+          <input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />
           <div class="file-icon">${icon}</div>
           <div class="file-name" title="${item.name}">${item.name}</div>
           <div class="file-meta">${sizeStr}</div>
@@ -163,11 +177,28 @@ class FileBrowser {
       `;
     }).join('');
 
-    // Card Event Listeners
+    // Card & Checkbox Event Listeners (#12)
     this.container.querySelectorAll('.file-card').forEach(card => {
+      const checkbox = card.querySelector('.file-checkbox');
+      const itemPath = card.getAttribute('data-path');
+
+      checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleItemSelection(itemPath, checkbox.checked, card);
+      });
+
+      card.addEventListener('click', (e) => {
+        if (e.target !== checkbox) {
+          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+            const newState = !this.selectedPaths.has(itemPath);
+            checkbox.checked = newState;
+            this.toggleItemSelection(itemPath, newState, card);
+          }
+        }
+      });
+
       card.addEventListener('dblclick', () => {
         const isDir = card.getAttribute('data-is-dir') === 'true';
-        const itemPath = card.getAttribute('data-path');
         const name = card.getAttribute('data-name');
         if (isDir) {
           this.loadDirectory(itemPath);
@@ -186,6 +217,74 @@ class FileBrowser {
         this.showContextMenu(e.clientX, e.clientY);
       });
     });
+  }
+
+  toggleItemSelection(path, isSelected, cardElement) {
+    if (isSelected) {
+      this.selectedPaths.add(path);
+      if (cardElement) cardElement.classList.add('selected');
+    } else {
+      this.selectedPaths.delete(path);
+      if (cardElement) cardElement.classList.remove('selected');
+    }
+    this.updateSelectionActionBar();
+  }
+
+  clearSelection() {
+    this.selectedPaths.clear();
+    if (this.container) {
+      this.container.querySelectorAll('.file-card').forEach(c => {
+        c.classList.remove('selected');
+        const cb = c.querySelector('.file-checkbox');
+        if (cb) cb.checked = false;
+      });
+    }
+    this.updateSelectionActionBar();
+  }
+
+  updateSelectionActionBar() {
+    const count = this.selectedPaths.size;
+    if (this.selectionActionBar) {
+      if (count > 0) {
+        this.selectionActionBar.style.display = 'flex';
+        if (this.selectedCountText) {
+          this.selectedCountText.textContent = `${count} item${count > 1 ? 's' : ''} selected`;
+        }
+      } else {
+        this.selectionActionBar.style.display = 'none';
+      }
+    }
+  }
+
+  async batchDownloadZip() {
+    if (this.selectedPaths.size === 0) return;
+    const pathsArray = Array.from(this.selectedPaths);
+    const query = pathsArray.map(p => encodeURIComponent(p)).join(',');
+    window.location.href = `/api/files/local/batch/zip?paths=${query}`;
+  }
+
+  async batchDelete() {
+    if (this.selectedPaths.size === 0) return;
+    const pathsArray = Array.from(this.selectedPaths);
+    if (!confirm(`Delete ${pathsArray.length} selected item(s)?`)) return;
+
+    try {
+      const res = await fetch('/api/files/local/batch/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: pathsArray })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete items');
+      }
+
+      this.clearSelection();
+      this.loadDirectory(this.currentPath);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
   }
 
   setViewMode(mode) {

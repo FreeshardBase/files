@@ -60,6 +60,16 @@
 
         <div id="fileContainer" class="grid-view"></div>
       </div>
+
+      <!-- Multi-Select Floating Action Bar (#12) -->
+      <div id="selectionActionBar" class="selection-action-bar" style="display: none;">
+        <span id="selectedCountText" class="selected-count">0 items selected</span>
+        <div class="selection-actions">
+          <button class="btn btn-secondary text-sm" id="btnBatchZip">📦 Download Zip</button>
+          <button class="btn btn-secondary text-sm danger" id="btnBatchDelete">🗑️ Delete Selected</button>
+          <button class="btn btn-secondary text-sm" id="btnDeselectAll">✖ Deselect All</button>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -96,7 +106,7 @@
     </div>
   </div>
 
-  <!-- Modal: Media & File Viewer Overlay (#11) -->
+  <!-- Modal: Media & File Viewer Overlay -->
   <div id="modalMediaViewer" class="media-viewer-modal" style="display: none;">
     <div class="media-viewer-header">
       <span id="mediaTitle" class="media-title">File Preview</span>
@@ -105,9 +115,7 @@
         <button class="btn btn-secondary text-sm" id="btnMediaClose">✖ Close</button>
       </div>
     </div>
-    <div class="media-viewer-body" id="mediaViewerBody">
-      <!-- Dynamic Media Content Injected Here -->
-    </div>
+    <div class="media-viewer-body" id="mediaViewerBody"></div>
   </div>
 
   <script src="/js/i18n.js"></script>

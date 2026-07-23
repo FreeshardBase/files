@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
+const fs = require('fs/promises');
 const Busboy = require('busboy');
+const archiver = require('archiver');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
 
@@ -166,6 +168,95 @@ router.delete('/', async (req, res) => {
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
       return res.status(403).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── BATCH OPERATIONS (#12) ───────────────────────────────────────────────────
+
+// POST /api/files/local/batch/delete
+router.post('/batch/delete', async (req, res) => {
+  try {
+    const { provider } = getLocalProvider(req);
+    const { paths } = req.body;
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return res.status(400).json({ error: 'paths array is required' });
+    }
+
+    let deletedCount = 0;
+    for (const p of paths) {
+      await provider.delete(p);
+      deletedCount++;
+    }
+
+    res.json({ success: true, deletedCount });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/files/local/batch/move
+router.post('/batch/move', async (req, res) => {
+  try {
+    const { provider } = getLocalProvider(req);
+    const { items } = req.body; // [{ src, dst }, ...]
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items array is required' });
+    }
+
+    let movedCount = 0;
+    for (const item of items) {
+      if (item.src && item.dst) {
+        await provider.move(item.src, item.dst);
+        movedCount++;
+      }
+    }
+
+    res.json({ success: true, movedCount });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/files/local/batch/zip?paths=/Documents/f1.txt,/Documents/f2.txt
+router.get('/batch/zip', async (req, res) => {
+  try {
+    const { provider } = getLocalProvider(req);
+    const rawPaths = req.query.paths;
+    if (!rawPaths) return res.status(400).json({ error: 'paths parameter is required' });
+
+    const pathsList = Array.isArray(rawPaths) ? rawPaths : rawPaths.split(',').map(p => p.trim()).filter(Boolean);
+    if (pathsList.length === 0) return res.status(400).json({ error: 'At least one valid path is required' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="freeshard-files.zip"');
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.pipe(res);
+
+    for (const itemPath of pathsList) {
+      const fullPath = provider._safe(itemPath);
+      const stat = await fs.stat(fullPath);
+      const name = path.basename(itemPath);
+
+      if (stat.isDirectory()) {
+        archive.directory(fullPath, name);
+      } else {
+        archive.file(fullPath, { name });
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root')) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
     }
     res.status(400).json({ error: err.message });
   }
