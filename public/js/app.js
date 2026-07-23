@@ -2,6 +2,11 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const userMenu = document.getElementById('userMenu');
 
+  // Initialize File Browser UI (#10)
+  if (typeof FileBrowser !== 'undefined') {
+    window.fileBrowser = new FileBrowser();
+  }
+
   // Check current auth status (#2, #48)
   try {
     const res = await fetch('/api/auth/me');
