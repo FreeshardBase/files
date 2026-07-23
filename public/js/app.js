@@ -1,6 +1,6 @@
 // FreeShard Files - Main Application Frontend JavaScript
 document.addEventListener('DOMContentLoaded', async () => {
-  const userMenu = document.getElementById('user-menu');
+  const userMenu = document.getElementById('userMenu');
   const pathBreadcrumb = document.getElementById('path-breadcrumb');
   const fileGrid = document.getElementById('file-grid');
 
@@ -13,17 +13,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       const shownName = data.user.displayName || data.user.username || 'User';
       if (userMenu) {
         userMenu.innerHTML = `
-          <div class="flex items-center gap-2">
-            <span class="user-avatar" style="width: 28px; height: 28px; border-radius: 50%; background: var(--color-accent); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.8rem;">
+          <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <span style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-accent); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.9rem;">
               ${shownName.charAt(0).toUpperCase()}
             </span>
-            <span class="font-medium text-sm">${shownName}</span>
+            <span style="font-weight: 500; font-size: 0.95rem; color: var(--color-text);">${shownName}</span>
           </div>
         `;
       }
     } else {
       if (userMenu) {
-        userMenu.innerHTML = `<a href="/api/auth/login" class="btn btn-primary text-sm">Log in</a>`;
+        userMenu.innerHTML = `<a href="/api/auth/login" class="btn btn-primary" style="padding: 6px 14px; font-size: 0.9rem;">Log in</a>`;
       }
     }
   } catch (err) {
