@@ -140,12 +140,22 @@ router.get('/callback', async (req, res) => {
       { state, nonce, code_verifier }
     );
 
-    const claims = tokenSet.claims();
+    // Query UserInfo endpoint to fetch profile claims (preferred_username, name, email) (#48)
+    let userinfo = {};
+    if (tokenSet.access_token) {
+      try {
+        userinfo = await client.userinfo(tokenSet.access_token);
+      } catch (uiErr) {
+        console.warn('[OIDC UserInfo Warning]', uiErr.message);
+      }
+    }
+
+    const claims = { ...tokenSet.claims(), ...userinfo };
     const userId = claims.sub;
     
     // Human-Centric Naming Fallback Hierarchy (#48)
-    const displayName = claims.name || null;
-    const username = claims.preferred_username || (claims.email ? claims.email.split('@')[0] : null) || claims.sub;
+    const displayName = claims.name || claims.preferred_username || claims.username || null;
+    const username = claims.preferred_username || claims.username || (claims.email ? claims.email.split('@')[0] : null) || claims.sub;
     const email = claims.email || null;
 
     // Just-In-Time User Provisioning in SQLite DB (#2, #13, #48)
