@@ -3,26 +3,16 @@ const router = express.Router();
 const path = require('path');
 const Busboy = require('busboy');
 const LocalProvider = require('../providers/local');
-const { requireAuth } = require('../middleware/auth');
+const { validateUserIsolation } = require('../middleware/isolation');
 
 function getLocalProvider(req) {
-  const userId = req.session.userId || 'test-user';
-  const root = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
-  const userRoot = path.join(root, userId);
+  const userRoot = req.userRoot;
   const provider = new LocalProvider({ userRoot });
-  return { provider, userId };
+  return { provider, userId: req.userId };
 }
 
-// Ensure user home exists on access (Issue #13)
-router.use(async (req, res, next) => {
-  try {
-    const { provider } = getLocalProvider(req);
-    await provider.ensureUserHome();
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+// Apply user isolation middleware to all file operation routes
+router.use(validateUserIsolation);
 
 // GET /api/files/local/list?path=/
 router.get('/list', async (req, res) => {

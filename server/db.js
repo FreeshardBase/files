@@ -61,7 +61,7 @@ async function initDb() {
   await run('PRAGMA busy_timeout = 5000;');
   await run('PRAGMA foreign_keys = ON;');
 
-  // Core Users table (#3, #25)
+  // Core Users table (#3, #13, #25)
   await run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -70,6 +70,7 @@ async function initDb() {
       password_hash TEXT,
       auth_type TEXT DEFAULT 'oidc',
       preferred_locale TEXT DEFAULT NULL,
+      quota_bytes INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -224,15 +225,16 @@ async function initDb() {
 
 // ── CRUD Helpers ─────────────────────────────────────────────────────────────
 
-async function upsertUser(id, username, email = null, authType = 'oidc') {
+async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null) {
   await run(`
-    INSERT INTO users (id, username, email, auth_type, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT INTO users (id, username, email, auth_type, quota_bytes, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       username = excluded.username,
       email = excluded.email,
+      quota_bytes = excluded.quota_bytes,
       updated_at = datetime('now')
-  `, [id, username, email, authType]);
+  `, [id, username, email, authType, quotaBytes]);
   return get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
