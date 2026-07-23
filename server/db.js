@@ -1,20 +1,25 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const { encrypt, decrypt } = require('./utils/crypto');
 
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'files.db');
+let dbInstance = null;
 
-// Ensure parent dir exists
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+function getDb() {
+  if (!dbInstance) {
+    const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'files.db');
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    dbInstance = new sqlite3.Database(dbPath);
+  }
+  return dbInstance;
 }
-
-const db = new sqlite3.Database(dbPath);
 
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
+    getDb().run(sql, params, function (err) {
       if (err) reject(err);
       else resolve(this);
     });
@@ -23,7 +28,7 @@ function run(sql, params = []) {
 
 function get(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
+    getDb().get(sql, params, (err, row) => {
       if (err) reject(err);
       else resolve(row);
     });
@@ -32,9 +37,20 @@ function get(sql, params = []) {
 
 function all(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
+    getDb().all(sql, params, (err, rows) => {
       if (err) reject(err);
       else resolve(rows);
+    });
+  });
+}
+
+function closeDb() {
+  return new Promise((resolve, reject) => {
+    if (!dbInstance) return resolve();
+    dbInstance.close((err) => {
+      dbInstance = null;
+      if (err) reject(err);
+      else resolve();
     });
   });
 }
@@ -206,10 +222,55 @@ async function initDb() {
   `);
 }
 
+// ── CRUD Helpers ─────────────────────────────────────────────────────────────
+
+async function upsertUser(id, username, email = null, authType = 'oidc') {
+  await run(`
+    INSERT INTO users (id, username, email, auth_type, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      username = excluded.username,
+      email = excluded.email,
+      updated_at = datetime('now')
+  `, [id, username, email, authType]);
+  return get('SELECT * FROM users WHERE id = ?', [id]);
+}
+
+async function addProviderConnection(userId, providerType, displayName, credentialsObj, syncMode = 'remote') {
+  const plaintext = JSON.stringify(credentialsObj);
+  const { iv, authTag, data } = encrypt(plaintext);
+
+  const res = await run(`
+    INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, sync_mode)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, providerType, displayName, data, iv, authTag, syncMode]);
+
+  return res.lastID;
+}
+
+async function getProviderConnections(userId) {
+  const rows = await all('SELECT * FROM provider_connections WHERE user_id = ? AND enabled = 1', [userId]);
+  return rows.map(row => {
+    const decryptedJson = decrypt({
+      iv: row.iv,
+      authTag: row.auth_tag,
+      data: row.credentials_encrypted
+    });
+    return {
+      ...row,
+      credentials: JSON.parse(decryptedJson)
+    };
+  });
+}
+
 module.exports = {
-  db,
+  getDb,
   run,
   get,
   all,
-  initDb
+  closeDb,
+  initDb,
+  upsertUser,
+  addProviderConnection,
+  getProviderConnections
 };
