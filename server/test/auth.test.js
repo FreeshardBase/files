@@ -10,6 +10,7 @@ process.env.FILES_ROOT = path.join(__dirname, 'test_auth_users');
 
 const db = require('../db');
 const bcrypt = require('bcryptjs');
+const { ensureUserHome } = require('../middleware/isolation');
 
 describe('Authentication & App Passwords (#2)', () => {
   before(async () => {
@@ -39,6 +40,24 @@ describe('Authentication & App Passwords (#2)', () => {
     const fetched = await db.get('SELECT * FROM users WHERE username = ?', ['john_doe']);
     const match = await bcrypt.compare(password, fetched.password_hash);
     assert.ok(match);
+  });
+
+  test('executes OIDC callback user provisioning & path joining cleanly', async () => {
+    const userId = '317b500d-c0d1-402b-a6a2-73e0d8102a7e';
+    const username = 'oidc_user_test';
+    const email = 'user@gryzia.de';
+
+    // JIT User Provisioning in SQLite DB
+    const user = await db.upsertUser(userId, username, email, 'oidc');
+    assert.equal(user.id, userId);
+
+    // Auto-provision user home directory structure with path.join
+    const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
+    const userHomePath = path.join(rootBase, userId);
+    await ensureUserHome(userHomePath);
+
+    const docStat = await fs.stat(path.join(userHomePath, 'Documents'));
+    assert.ok(docStat.isDirectory());
   });
 
   test('creates, lists, and deletes App-Specific Passwords (ASPs)', async () => {

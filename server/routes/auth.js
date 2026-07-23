@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { Issuer, generators } = require('openid-client');
