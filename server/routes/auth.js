@@ -16,7 +16,7 @@ async function getOidcClient() {
   const clientId = process.env.OIDC_CLIENT_ID || 'freeshard-files';
   const clientSecret = process.env.OIDC_CLIENT_SECRET || 'CHANGE_ME_TO_YOUR_AUTHELIA_SECRET';
   const redirectUri = process.env.OIDC_REDIRECT_URI || `${process.env.APP_URL || 'https://fs-files.gryzia.de'}/api/auth/callback`;
-  const tokenAuthMethod = process.env.OIDC_TOKEN_AUTH_METHOD || 'client_secret_post';
+  const tokenAuthMethod = process.env.OIDC_TOKEN_AUTH_METHOD || 'client_secret_basic';
 
   try {
     const issuer = await Issuer.discover(issuerUrl);
