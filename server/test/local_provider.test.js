@@ -51,6 +51,19 @@ describe('LocalProvider & BaseProvider Contract (#4)', () => {
     assert.equal(meta.mimeType, 'text/plain');
   });
 
+  test('handles UTF-8 filenames with special characters (Spanish ñ, German Umlauts)', async () => {
+    const filename = '/Documents/Español_ñ_ö_ä_ü.txt';
+    const content = 'UTF-8 Content Test';
+    const stream = Readable.from([Buffer.from(content)]);
+
+    const result = await provider.write(filename, stream);
+    assert.equal(path.basename(result.path), 'Español_ñ_ö_ä_ü.txt');
+
+    const list = await provider.list('/Documents');
+    const match = list.find(item => item.name === 'Español_ñ_ö_ä_ü.txt');
+    assert.ok(match);
+  });
+
   test('read returns a readable stream with size and mimeType', async () => {
     const { stream, size, mimeType } = await provider.read('/Documents/hello.txt');
     assert.equal(mimeType, 'text/plain');

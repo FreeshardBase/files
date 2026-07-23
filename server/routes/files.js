@@ -11,6 +11,18 @@ function getLocalProvider(req) {
   return { provider, userId: req.userId };
 }
 
+/**
+ * Safely decodes UTF-8 filenames if busboy/headers parsed them as latin1/binary
+ */
+function decodeUtf8Filename(filename) {
+  try {
+    const decoded = Buffer.from(filename, 'binary').toString('utf8');
+    return decoded.includes('') ? filename : decoded;
+  } catch (e) {
+    return filename;
+  }
+}
+
 // Apply user isolation middleware to all file operation routes
 router.use(validateUserIsolation);
 
@@ -37,8 +49,12 @@ router.get('/read', async (req, res) => {
     if (!requestedPath) return res.status(400).json({ error: 'path parameter is required' });
 
     const { stream, size, mimeType } = await provider.read(requestedPath);
+    const baseName = path.basename(requestedPath);
+    const encodedName = encodeURIComponent(baseName).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Length', size);
+    res.setHeader('Content-Disposition', `inline; filename="${baseName}"; filename*=UTF-8''${encodedName}`);
     stream.pipe(res);
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
@@ -48,7 +64,7 @@ router.get('/read', async (req, res) => {
   }
 });
 
-// POST /api/files/local/upload (Streaming upload via Busboy)
+// POST /api/files/local/upload (Streaming upload via Busboy with UTF-8 filename decoding)
 router.post('/upload', (req, res) => {
   try {
     const { provider } = getLocalProvider(req);
@@ -61,7 +77,8 @@ router.post('/upload', (req, res) => {
     });
 
     busboy.on('file', async (fieldname, fileStream, info) => {
-      const { filename } = info;
+      const rawFilename = info.filename;
+      const filename = decodeUtf8Filename(rawFilename);
       const destinationPath = path.posix.join(targetPath, filename);
       fileUploaded = true;
 
