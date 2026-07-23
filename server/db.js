@@ -76,6 +76,13 @@ async function initDb() {
     )
   `);
 
+  // Migration for existing databases missing quota_bytes column (#13)
+  const columns = await all("PRAGMA table_info(users);");
+  const hasQuota = columns.some(c => c.name === 'quota_bytes');
+  if (!hasQuota) {
+    await run("ALTER TABLE users ADD COLUMN quota_bytes INTEGER DEFAULT NULL;");
+  }
+
   // App Passwords table (#2, #3, #21)
   await run(`
     CREATE TABLE IF NOT EXISTS app_passwords (
