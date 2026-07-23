@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  files-app:
+    build: .
+    container_name: freeshard-files
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3005}:3005"
+    env_file: .env
+    environment:
+      PORT: 3005
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/files.db
+      FILES_ROOT: /app/data/users
+    volumes:
+      - shared-data:/app/data
+
+  files-sync-worker:
+    build:
+      context: .
+      dockerfile: sync-worker/Dockerfile
+    container_name: freeshard-files-sync
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/files.db
+      FILES_ROOT: /app/data/users
+    volumes:
+      - shared-data:/app/data
+
+volumes:
+  shared-data:

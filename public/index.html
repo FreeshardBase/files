@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreeShard Files</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span>📁</span> FreeShard Files
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item active"><a href="#/files"><span>🏠</span> <span data-i18n="nav.home">Home</span></a></li>
+        <li class="nav-item"><a href="#/shared"><span>🔗</span> <span data-i18n="nav.shared">Shared with me</span></a></li>
+        <li class="nav-item"><a href="#/trash"><span>🗑️</span> <span data-i18n="nav.trash">Trash</span></a></li>
+        <li class="nav-item"><a href="#/activity"><span>🕒</span> <span data-i18n="nav.activity">Activity</span></a></li>
+        <li class="nav-item"><a href="#/settings"><span>⚙️</span> <span data-i18n="nav.settings">Settings</span></a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <header class="header">
+        <input type="text" class="search-bar" placeholder="Search files and content..." id="searchInput">
+        <div id="userMenu"></div>
+      </header>
+
+      <div class="content-area" id="contentArea">
+        <div class="placeholder-card">
+          <h2>📁 FreeShard Files</h2>
+          <p>Scaffolding ready. Server running on Port 3005.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/i18n.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

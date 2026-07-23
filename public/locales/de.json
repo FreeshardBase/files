@@ -1,0 +1,36 @@
+{
+  "app": {
+    "name": "FreeShard Dateien"
+  },
+  "nav": {
+    "home": "Startseite",
+    "shared": "Mit mir geteilt",
+    "trash": "Papierkorb",
+    "activity": "Aktivität",
+    "providers": "Cloud-Anbieter",
+    "settings": "Einstellungen"
+  },
+  "files": {
+    "upload": {
+      "button": "Hochladen",
+      "success": "{fileName} erfolgreich hochgeladen",
+      "error": "Fehler beim Hochladen von {fileName}: {error}"
+    },
+    "delete": {
+      "confirm": "\"{fileName}\" in den Papierkorb verschieben?",
+      "success": "In den Papierkorb verschoben",
+      "undo": "Rückgängig"
+    },
+    "newFolder": {
+      "prompt": "Ordnername eingeben",
+      "button": "Neuer Ordner"
+    },
+    "empty": "Dieser Ordner ist leer"
+  },
+  "auth": {
+    "login": "Anmelden",
+    "logout": "Abmelden",
+    "username": "Benutzername",
+    "password": "Passwort"
+  }
+}
