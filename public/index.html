@@ -65,7 +65,7 @@
 
   <!-- Context Menu -->
   <div id="contextMenu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" id="ctxOpen">📂 Open</div>
+    <div class="context-menu-item" id="ctxOpen">📂 Open / Preview</div>
     <div class="context-menu-item" id="ctxDownload">⬇️ Download</div>
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
     <div class="context-menu-divider"></div>
@@ -93,6 +93,20 @@
         <button class="btn btn-secondary" id="btnCancelRename">Cancel</button>
         <button class="btn btn-primary" id="btnConfirmRename">Rename</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Media & File Viewer Overlay (#11) -->
+  <div id="modalMediaViewer" class="media-viewer-modal" style="display: none;">
+    <div class="media-viewer-header">
+      <span id="mediaTitle" class="media-title">File Preview</span>
+      <div class="media-controls">
+        <button class="btn btn-secondary text-sm" id="btnMediaDownload">⬇️ Download</button>
+        <button class="btn btn-secondary text-sm" id="btnMediaClose">✖ Close</button>
+      </div>
+    </div>
+    <div class="media-viewer-body" id="mediaViewerBody">
+      <!-- Dynamic Media Content Injected Here -->
     </div>
   </div>
 

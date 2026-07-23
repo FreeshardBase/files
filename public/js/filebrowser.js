@@ -11,6 +11,12 @@ class FileBrowser {
     this.dropOverlay = document.getElementById('dropOverlay');
     this.contextMenu = document.getElementById('contextMenu');
 
+    // Media Viewer Elements (#11)
+    this.mediaModal = document.getElementById('modalMediaViewer');
+    this.mediaTitle = document.getElementById('mediaTitle');
+    this.mediaViewerBody = document.getElementById('mediaViewerBody');
+    this.currentMediaItem = null;
+
     this.init();
   }
 
@@ -35,6 +41,22 @@ class FileBrowser {
     // Rename Modal
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.hideModal('modalRename'));
     document.getElementById('btnConfirmRename')?.addEventListener('click', () => this.renameSelectedItem());
+
+    // Media Viewer Controls (#11)
+    document.getElementById('btnMediaClose')?.addEventListener('click', () => this.closeMediaViewer());
+    document.getElementById('btnMediaDownload')?.addEventListener('click', () => {
+      if (this.currentMediaItem) this.downloadFile(this.currentMediaItem.path);
+    });
+
+    // Keyboard Shortcuts (Esc to close modal)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.closeMediaViewer();
+        this.hideModal('modalNewFolder');
+        this.hideModal('modalRename');
+        this.hideContextMenu();
+      }
+    });
 
     // Drag & Drop Upload Overlay
     window.addEventListener('dragover', (e) => {
@@ -146,10 +168,11 @@ class FileBrowser {
       card.addEventListener('dblclick', () => {
         const isDir = card.getAttribute('data-is-dir') === 'true';
         const itemPath = card.getAttribute('data-path');
+        const name = card.getAttribute('data-name');
         if (isDir) {
           this.loadDirectory(itemPath);
         } else {
-          this.downloadFile(itemPath);
+          this.openMediaViewer({ name, path: itemPath });
         }
       });
 
@@ -179,7 +202,7 @@ class FileBrowser {
     if (['mp3', 'wav', 'flac'].includes(ext)) return '🎵';
     if (['pdf'].includes(ext)) return '📕';
     if (['zip', 'tar', 'gz', '7z'].includes(ext)) return '📦';
-    if (['js', 'ts', 'py', 'json', 'html', 'css'].includes(ext)) return '📄';
+    if (['js', 'ts', 'py', 'json', 'html', 'css', 'txt', 'md'].includes(ext)) return '📄';
     return '📝';
   }
 
@@ -189,6 +212,56 @@ class FileBrowser {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  // ── Media & File Viewer Overlay (#11) ───────────────────────────────────────
+  async openMediaViewer(item) {
+    if (!this.mediaModal || !this.mediaViewerBody) return;
+
+    this.currentMediaItem = item;
+    if (this.mediaTitle) this.mediaTitle.textContent = item.name;
+
+    const fileUrl = `/api/files/local/read?path=${encodeURIComponent(item.path)}`;
+    const ext = item.name.split('.').pop().toLowerCase();
+
+    this.mediaViewerBody.innerHTML = '<div style="color: var(--color-text-muted);">Loading preview...</div>';
+    this.mediaModal.style.display = 'flex';
+
+    if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext)) {
+      this.mediaViewerBody.innerHTML = `<img src="${fileUrl}" alt="${item.name}" />`;
+    } else if (['mp4', 'webm', 'mov'].includes(ext)) {
+      this.mediaViewerBody.innerHTML = `<video controls autoplay src="${fileUrl}"></video>`;
+    } else if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) {
+      this.mediaViewerBody.innerHTML = `<audio controls autoplay src="${fileUrl}"></audio>`;
+    } else if (['pdf'].includes(ext)) {
+      this.mediaViewerBody.innerHTML = `<iframe src="${fileUrl}"></iframe>`;
+    } else if (['txt', 'json', 'js', 'ts', 'py', 'html', 'css', 'md', 'sh', 'yml', 'yaml'].includes(ext)) {
+      try {
+        const res = await fetch(fileUrl);
+        const text = await res.text();
+        const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        this.mediaViewerBody.innerHTML = `<pre class="media-text-preview">${safeText}</pre>`;
+      } catch (err) {
+        this.mediaViewerBody.innerHTML = `<div style="color: var(--color-error);">Failed to load text content</div>`;
+      }
+    } else {
+      this.mediaViewerBody.innerHTML = `
+        <div class="placeholder-card">
+          <span style="font-size: 3rem;">📝</span>
+          <h3 style="margin-top: 0.5rem; color: var(--color-text-primary);">No preview available</h3>
+          <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem;">Direct in-browser preview is not supported for this file type.</p>
+          <button class="btn btn-primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
+        </div>
+      `;
+    }
+  }
+
+  closeMediaViewer() {
+    if (this.mediaModal) {
+      this.mediaModal.style.display = 'none';
+      if (this.mediaViewerBody) this.mediaViewerBody.innerHTML = '';
+      this.currentMediaItem = null;
+    }
   }
 
   showContextMenu(x, y) {
@@ -304,7 +377,7 @@ class FileBrowser {
     if (this.selectedItem.isDirectory) {
       this.loadDirectory(this.selectedItem.path);
     } else {
-      this.downloadFile(this.selectedItem.path);
+      this.openMediaViewer(this.selectedItem);
     }
   }
 

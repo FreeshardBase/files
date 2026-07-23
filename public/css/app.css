@@ -411,3 +411,87 @@ body {
   justify-content: flex-end;
   gap: 0.75rem;
 }
+
+/* Media & File Viewer Overlay (#11) */
+.media-viewer-modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 10, 15, 0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  z-index: 3000;
+}
+
+.media-viewer-header {
+  height: 60px;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.media-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--color-text-primary);
+}
+
+.media-controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.media-viewer-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  overflow: auto;
+}
+
+.media-viewer-body img {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.media-viewer-body video {
+  max-width: 90vw;
+  max-height: 80vh;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.media-viewer-body audio {
+  width: 500px;
+  max-width: 90vw;
+}
+
+.media-viewer-body iframe {
+  width: 85vw;
+  height: 80vh;
+  border: none;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.media-text-preview {
+  width: 85vw;
+  max-height: 75vh;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  color: var(--color-text-primary);
+  font-family: monospace;
+  font-size: 0.9rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
