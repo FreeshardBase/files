@@ -16,6 +16,7 @@ async function getOidcClient() {
   const clientId = process.env.OIDC_CLIENT_ID || 'freeshard-files';
   const clientSecret = process.env.OIDC_CLIENT_SECRET || 'CHANGE_ME_TO_YOUR_AUTHELIA_SECRET';
   const redirectUri = process.env.OIDC_REDIRECT_URI || `${process.env.APP_URL || 'https://fs-files.gryzia.de'}/api/auth/callback`;
+  const tokenAuthMethod = process.env.OIDC_TOKEN_AUTH_METHOD || 'client_secret_post';
 
   try {
     const issuer = await Issuer.discover(issuerUrl);
@@ -23,7 +24,8 @@ async function getOidcClient() {
       client_id: clientId,
       client_secret: clientSecret,
       redirect_uris: [redirectUri],
-      response_types: ['code']
+      response_types: ['code'],
+      token_endpoint_auth_method: tokenAuthMethod
     });
     return oidcClient;
   } catch (err) {
@@ -142,7 +144,6 @@ router.post('/backchannel-logout', express.urlencoded({ extended: true }), async
     const client = await getOidcClient();
     if (!client) return res.status(500).send('OIDC client uninitialized');
 
-    // Verify token claims & signature against IDP JWKS
     const claims = await client.decryptIdToken(logoutToken);
 
     if (!claims.sub && !claims.sid) {
@@ -155,7 +156,6 @@ router.post('/backchannel-logout', express.urlencoded({ extended: true }), async
       return res.status(400).send('Invalid events claim');
     }
 
-    // Clear matching session
     const { sub } = claims;
     if (sub) {
       await db.run('DELETE FROM users WHERE id = ?', [sub]);
@@ -258,7 +258,6 @@ router.post('/app-passwords', requireAuth, async (req, res) => {
     const { label } = req.body;
     if (!label) return res.status(400).json({ error: 'label is required' });
 
-    // Generate random App-Specific Password (e.g. fs_asp_...)
     const plainPassword = 'fs_asp_' + crypto.randomBytes(16).toString('hex');
     const hash = await bcrypt.hash(plainPassword, 10);
 
@@ -270,7 +269,7 @@ router.post('/app-passwords', requireAuth, async (req, res) => {
     res.status(201).json({
       id: result.lastID,
       label,
-      password: plainPassword // Only shown ONCE on creation
+      password: plainPassword
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
