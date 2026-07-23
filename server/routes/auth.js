@@ -36,18 +36,51 @@ async function getOidcClient() {
 }
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   if (req.session && req.session.userId) {
-    return res.json({
-      authenticated: true,
-      user: {
-        id: req.session.userId,
-        username: req.session.username,
-        email: req.session.email || null
-      }
-    });
+    try {
+      const user = await db.get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
+      const username = user?.username || req.session.username || 'User';
+      const displayName = user?.display_name || username;
+
+      return res.json({
+        authenticated: true,
+        user: {
+          id: req.session.userId,
+          username,
+          displayName,
+          email: user?.email || req.session.email || null,
+          preferredLocale: user?.preferred_locale || null
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   }
   res.json({ authenticated: false });
+});
+
+// ── PATCH /api/users/me (Update User Profile #25, #48) ───────────────────────
+router.patch('/users/me', requireAuth, async (req, res) => {
+  try {
+    const { displayName, preferredLocale } = req.body;
+    const userId = req.session.userId;
+
+    if (displayName !== undefined) {
+      await db.run('UPDATE users SET display_name = ? WHERE id = ?', [displayName, userId]);
+      req.session.displayName = displayName;
+    }
+
+    if (preferredLocale !== undefined) {
+      await db.run('UPDATE users SET preferred_locale = ? WHERE id = ?', [preferredLocale, userId]);
+      req.session.preferredLocale = preferredLocale;
+    }
+
+    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── OIDC LOGIN ────────────────────────────────────────────────────────────────
@@ -109,11 +142,14 @@ router.get('/callback', async (req, res) => {
 
     const claims = tokenSet.claims();
     const userId = claims.sub;
-    const username = claims.preferred_username || claims.name || claims.sub;
+    
+    // Human-Centric Naming Fallback Hierarchy (#48)
+    const displayName = claims.name || null;
+    const username = claims.preferred_username || (claims.email ? claims.email.split('@')[0] : null) || claims.sub;
     const email = claims.email || null;
 
-    // Just-In-Time User Provisioning in SQLite DB (Issue #2, #13)
-    await db.upsertUser(userId, username, email, 'oidc');
+    // Just-In-Time User Provisioning in SQLite DB (#2, #13, #48)
+    await db.upsertUser(userId, username, email, 'oidc', null, displayName);
 
     // Auto-provision user home directory structure
     const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
@@ -127,6 +163,7 @@ router.get('/callback', async (req, res) => {
     // Establish authenticated session
     req.session.userId = userId;
     req.session.username = username;
+    req.session.displayName = displayName || username;
     req.session.email = email;
 
     res.redirect('/#/files');
@@ -191,16 +228,17 @@ router.post('/login', async (req, res) => {
 
     req.session.userId = user.id;
     req.session.username = user.username;
+    req.session.displayName = user.display_name || user.username;
     req.session.email = user.email;
 
-    res.json({ success: true, user: { id: user.id, username: user.username } });
+    res.json({ success: true, user: { id: user.id, username: user.username, displayName: user.display_name || user.username } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 router.post('/register', async (req, res) => {
-  const { username, password, email } = req.body;
+  const { username, password, email, displayName } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
@@ -214,7 +252,7 @@ router.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 12);
     const userId = crypto.randomUUID();
 
-    await db.upsertUser(userId, username, email || null, 'local');
+    await db.upsertUser(userId, username, email || null, 'local', null, displayName || username);
     await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, userId]);
 
     const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
@@ -222,8 +260,9 @@ router.post('/register', async (req, res) => {
 
     req.session.userId = userId;
     req.session.username = username;
+    req.session.displayName = displayName || username;
 
-    res.status(201).json({ success: true, user: { id: userId, username } });
+    res.status(201).json({ success: true, user: { id: userId, username, displayName: displayName || username } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

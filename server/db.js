@@ -61,12 +61,13 @@ async function initDb() {
   await run('PRAGMA busy_timeout = 5000;');
   await run('PRAGMA foreign_keys = ON;');
 
-  // Core Users table (#3, #13, #25)
+  // Core Users table (#3, #13, #25, #48)
   await run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
       email TEXT,
+      display_name TEXT,
       password_hash TEXT,
       auth_type TEXT DEFAULT 'oidc',
       preferred_locale TEXT DEFAULT NULL,
@@ -76,11 +77,15 @@ async function initDb() {
     )
   `);
 
-  // Migration for existing databases missing quota_bytes column (#13)
+  // Migrations for existing databases
   const columns = await all("PRAGMA table_info(users);");
   const hasQuota = columns.some(c => c.name === 'quota_bytes');
   if (!hasQuota) {
     await run("ALTER TABLE users ADD COLUMN quota_bytes INTEGER DEFAULT NULL;");
+  }
+  const hasDisplayName = columns.some(c => c.name === 'display_name');
+  if (!hasDisplayName) {
+    await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL;");
   }
 
   // App Passwords table (#2, #3, #21)
@@ -232,16 +237,17 @@ async function initDb() {
 
 // ── CRUD Helpers ─────────────────────────────────────────────────────────────
 
-async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null) {
+async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null, displayName = null) {
   await run(`
-    INSERT INTO users (id, username, email, auth_type, quota_bytes, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO users (id, username, email, display_name, auth_type, quota_bytes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       username = excluded.username,
       email = excluded.email,
+      display_name = COALESCE(excluded.display_name, users.display_name),
       quota_bytes = excluded.quota_bytes,
       updated_at = datetime('now')
-  `, [id, username, email, authType, quotaBytes]);
+  `, [id, username, email, displayName, authType, quotaBytes]);
   return get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
