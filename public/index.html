@@ -25,7 +25,7 @@
         <li class="nav-item" id="navShared"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label" data-i18n="nav.shared">Shared with me</span></a></li>
         <li class="nav-item"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label" data-i18n="nav.trash">Trash</span></a></li>
         <li class="nav-item"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
-        <li class="nav-item"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label" data-i18n="nav.settings">Settings</span></a></li>
+        <li class="nav-item" id="navSettings"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label" data-i18n="nav.settings">Settings</span></a></li>
       </ul>
       
       <!-- Theme Switcher Footer -->
@@ -49,6 +49,7 @@
       <div class="toolbar-area">
         <div class="breadcrumb" id="breadcrumb"></div>
         <div class="action-buttons">
+          <button class="fs-btn" id="btnAddCloudDrive">☁️ <span>Connect Drive</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
           <label class="fs-btn fs-btn--primary" style="margin: 0; cursor: pointer;">
             📤 <span data-i18n="files.upload">Upload</span>
@@ -94,6 +95,39 @@
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" id="ctxDelete">🗑️ Delete</div>
+  </div>
+
+  <!-- Modal: Connect Cloud Drive (#7) -->
+  <div id="modalAddProvider" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet" style="max-width: 500px;">
+      <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Connect External Cloud Storage</h3>
+      <p style="color: var(--ink-muted); font-size: 13px; margin-bottom: 1rem;">Link a Google Drive account using OAuth 2.0 Credentials.</p>
+      
+      <div class="fs-field">
+        <label class="fs-label">Connection Name</label>
+        <input type="text" id="inputProviderName" class="fs-input" placeholder="e.g. My Google Drive">
+      </div>
+
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">Client ID (Google Cloud Console)</label>
+        <input type="text" id="inputProviderClientId" class="fs-input fs-mono" placeholder="12345...apps.googleusercontent.com">
+      </div>
+
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">Client Secret</label>
+        <input type="password" id="inputProviderClientSecret" class="fs-input fs-mono" placeholder="GOCSPX-...">
+      </div>
+
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">OAuth Refresh Token</label>
+        <input type="password" id="inputProviderRefreshToken" class="fs-input fs-mono" placeholder="1//04...">
+      </div>
+
+      <div class="modal-actions" style="margin-top: 1.25rem;">
+        <button class="fs-btn" id="btnCancelAddProvider">Cancel</button>
+        <button class="fs-btn fs-btn--primary" id="btnConfirmAddProvider">Connect Account</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal: New Folder -->

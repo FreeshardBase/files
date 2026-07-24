@@ -39,6 +39,11 @@ class FileBrowser {
     // Upload Input
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
 
+    // Cloud Provider Connection Modal (#7)
+    document.getElementById('btnAddCloudDrive')?.addEventListener('click', () => this.showModal('modalAddProvider'));
+    document.getElementById('btnCancelAddProvider')?.addEventListener('click', () => this.hideModal('modalAddProvider'));
+    document.getElementById('btnConfirmAddProvider')?.addEventListener('click', () => this.connectCloudProvider());
+
     // Sidebar Navigation (#14)
     document.getElementById('navHome')?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -93,6 +98,7 @@ class FileBrowser {
         this.hideModal('modalRename');
         this.hideModal('modalShareInternal');
         this.hideModal('modalSharePublic');
+        this.hideModal('modalAddProvider');
         this.hideContextMenu();
         this.clearSelection();
       }
@@ -127,6 +133,41 @@ class FileBrowser {
     document.getElementById('ctxDownload')?.addEventListener('click', () => this.downloadSelectedItem());
     document.getElementById('ctxRename')?.addEventListener('click', () => this.showRenameModal());
     document.getElementById('ctxDelete')?.addEventListener('click', () => this.deleteSelectedItem());
+  }
+
+  async connectCloudProvider() {
+    const displayName = document.getElementById('inputProviderName')?.value.trim();
+    const clientId = document.getElementById('inputProviderClientId')?.value.trim();
+    const clientSecret = document.getElementById('inputProviderClientSecret')?.value.trim();
+    const refreshToken = document.getElementById('inputProviderRefreshToken')?.value.trim();
+
+    if (!displayName || !refreshToken) {
+      return alert('Connection Name and Refresh Token are required.');
+    }
+
+    try {
+      const res = await fetch('/api/providers/gdrive/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: displayName,
+          client_id: clientId || undefined,
+          client_secret: clientSecret || undefined,
+          refresh_token: refreshToken
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to connect Google Drive');
+      }
+
+      this.hideModal('modalAddProvider');
+      alert(`Successfully connected "${displayName}"!`);
+      this.loadDirectory(this.currentPath);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
   }
 
   async loadDirectory(dirPath) {
