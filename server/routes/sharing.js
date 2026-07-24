@@ -12,17 +12,21 @@ router.use(requireAuth);
  */
 router.post('/internal', async (req, res) => {
   try {
-    const ownerUserId = req.userId;
+    const ownerUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    if (!ownerUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { sharee_username, file_path, read_write = 0, is_directory = 0 } = req.body;
 
     if (!sharee_username || !file_path) {
       return res.status(400).json({ error: 'sharee_username and file_path are required' });
     }
 
-    // Resolve target sharee user
-    const shareeUser = await get('SELECT id, username, display_name FROM users WHERE username = ? OR id = ?', [sharee_username, sharee_username]);
+    // Resolve target sharee user by username, display_name or id
+    const shareeUser = await get('SELECT id, username, display_name FROM users WHERE username = ? OR display_name = ? OR id = ?', [sharee_username, sharee_username, sharee_username]);
     if (!shareeUser) {
-      return res.status(444).json({ error: 'Target user not found' }).catch ? null : res.status(404).json({ error: 'Target user not found' });
+      return res.status(404).json({ error: `Target user "${sharee_username}" not found` });
     }
 
     if (shareeUser.id === ownerUserId) {
@@ -42,7 +46,8 @@ router.post('/internal', async (req, res) => {
  */
 router.get('/internal/my-shares', async (req, res) => {
   try {
-    const shares = await getFileSharesByOwner(req.userId);
+    const ownerUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const shares = await getFileSharesByOwner(ownerUserId);
     res.json({ shares });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -55,7 +60,8 @@ router.get('/internal/my-shares', async (req, res) => {
  */
 router.get('/internal/shared-with-me', async (req, res) => {
   try {
-    const shares = await getFileSharesForSharee(req.userId);
+    const shareeUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const shares = await getFileSharesForSharee(shareeUserId);
     res.json({ shares });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -68,8 +74,9 @@ router.get('/internal/shared-with-me', async (req, res) => {
  */
 router.delete('/internal/:id', async (req, res) => {
   try {
+    const ownerUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const shareId = req.params.id;
-    const deleted = await deleteFileShare(shareId, req.userId);
+    const deleted = await deleteFileShare(shareId, ownerUserId);
     if (!deleted) {
       return res.status(404).json({ error: 'Share not found or permission denied' });
     }
