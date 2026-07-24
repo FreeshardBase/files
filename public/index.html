@@ -21,8 +21,8 @@
         </div>
       </div>
       <ul class="nav-list">
-        <li class="nav-item active"><a href="#/files"><span class="nav-icon">🏠</span> <span class="fs-label" data-i18n="nav.home">Home</span></a></li>
-        <li class="nav-item"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label" data-i18n="nav.shared">Shared with me</span></a></li>
+        <li class="nav-item active" id="navHome"><a href="#/files"><span class="nav-icon">🏠</span> <span class="fs-label" data-i18n="nav.home">Home</span></a></li>
+        <li class="nav-item" id="navShared"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label" data-i18n="nav.shared">Shared with me</span></a></li>
         <li class="nav-item"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label" data-i18n="nav.trash">Trash</span></a></li>
         <li class="nav-item"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
         <li class="nav-item"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label" data-i18n="nav.settings">Settings</span></a></li>
@@ -88,6 +88,7 @@
   <!-- Context Menu -->
   <div id="contextMenu" class="context-menu" style="display: none;">
     <div class="context-menu-item" id="ctxOpen">📂 Open / Preview</div>
+    <div class="context-menu-item" id="ctxShareInternal">👥 Share with User</div>
     <div class="context-menu-item" id="ctxDownload">⬇️ Download</div>
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
     <div class="context-menu-divider"></div>
@@ -118,8 +119,31 @@
     </div>
   </div>
 
+  <!-- Modal: Share Internal (#14) -->
+  <div id="modalShareInternal" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet">
+      <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Share Item with User</h3>
+      <p class="fs-mono" id="shareItemNameText" style="color: var(--ink-muted); margin-bottom: 1rem; font-size: 12px;"></p>
+      <div class="fs-field">
+        <label class="fs-label">Username / Display Name</label>
+        <input type="text" id="inputShareeUsername" class="fs-input" placeholder="e.g. aaron">
+      </div>
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">Permission</label>
+        <select id="selectSharePermission" class="fs-input">
+          <option value="0">Read Only</option>
+          <option value="1">Read & Write</option>
+        </select>
+      </div>
+      <div class="modal-actions" style="margin-top: 1rem;">
+        <button class="fs-btn" id="btnCancelShare">Cancel</button>
+        <button class="fs-btn fs-btn--primary" id="btnConfirmShare">Share</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Media & File Viewer Overlay -->
-  <div id="modalMediaViewer" class="media-viewer-modal" style="display: none;">
+  <div id="modalMediaViewer" class="modalMediaViewer media-viewer-modal" style="display: none;">
     <div class="media-viewer-header">
       <span id="mediaTitle" class="media-title fs-mono">File Preview</span>
       <div class="media-controls">

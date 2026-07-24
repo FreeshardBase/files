@@ -6,6 +6,7 @@ const Busboy = require('busboy');
 const archiver = require('archiver');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
+const { updateSharePathsOnMove } = require('../db');
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -72,7 +73,6 @@ router.post('/upload', (req, res) => {
     const { provider } = getLocalProvider(req);
     const busboy = Busboy({ headers: req.headers });
     let targetPath = '/';
-    let fileUploaded = false;
 
     busboy.on('field', (fieldname, val) => {
       if (fieldname === 'path') targetPath = val;
@@ -82,7 +82,6 @@ router.post('/upload', (req, res) => {
       const rawFilename = info.filename;
       const filename = decodeUtf8Filename(rawFilename);
       const destinationPath = path.posix.join(targetPath, filename);
-      fileUploaded = true;
 
       try {
         const result = await provider.write(destinationPath, fileStream);
@@ -125,11 +124,15 @@ router.post('/mkdir', async (req, res) => {
 // POST /api/files/local/move
 router.post('/move', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const { src, dst } = req.body;
     if (!src || !dst) return res.status(400).json({ error: 'src and dst are required' });
 
     await provider.move(src, dst);
+
+    // Invariant: Update internal & public share link target paths on move (#14, #15, #45)
+    await updateSharePathsOnMove(userId, src, dst);
+
     res.json({ success: true });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
@@ -202,7 +205,7 @@ router.post('/batch/delete', async (req, res) => {
 // POST /api/files/local/batch/move
 router.post('/batch/move', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const { items } = req.body; // [{ src, dst }, ...]
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'items array is required' });
@@ -212,6 +215,7 @@ router.post('/batch/move', async (req, res) => {
     for (const item of items) {
       if (item.src && item.dst) {
         await provider.move(item.src, item.dst);
+        await updateSharePathsOnMove(userId, item.src, item.dst);
         movedCount++;
       }
     }

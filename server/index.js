@@ -6,6 +6,7 @@ const db = require('./db');
 const authRouter = require('./routes/auth');
 const filesRouter = require('./routes/files');
 const i18nRouter = require('./routes/i18n');
+const sharingRouter = require('./routes/sharing');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -40,6 +41,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/api/auth', authRouter);
 app.use('/api/files/local', filesRouter);
 app.use('/api/i18n', i18nRouter);
+app.use('/api/shares', sharingRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

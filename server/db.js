@@ -278,6 +278,66 @@ async function getProviderConnections(userId) {
   });
 }
 
+// ── Internal Sharing Helpers (#14) ───────────────────────────────────────────
+
+async function createFileShare(ownerUserId, shareeUserId, filePath, providerType = 'local', isDirectory = 0, readWrite = 0) {
+  const res = await run(`
+    INSERT INTO file_shares (owner_user_id, sharee_user_id, provider_type, file_path, is_directory, read_write)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [ownerUserId, shareeUserId, providerType, filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0]);
+  return get('SELECT * FROM file_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getFileSharesByOwner(ownerUserId) {
+  return all(`
+    SELECT fs.*, u.username as sharee_username, u.display_name as sharee_display_name
+    FROM file_shares fs
+    JOIN users u ON fs.sharee_user_id = u.id
+    WHERE fs.owner_user_id = ?
+    ORDER BY fs.created_at DESC
+  `, [ownerUserId]);
+}
+
+async function getFileSharesForSharee(shareeUserId) {
+  return all(`
+    SELECT fs.*, u.username as owner_username, u.display_name as owner_display_name
+    FROM file_shares fs
+    JOIN users u ON fs.owner_user_id = u.id
+    WHERE fs.sharee_user_id = ?
+    ORDER BY fs.created_at DESC
+  `, [shareeUserId]);
+}
+
+async function deleteFileShare(shareId, ownerUserId) {
+  const res = await run('DELETE FROM file_shares WHERE id = ? AND owner_user_id = ?', [shareId, ownerUserId]);
+  return res.changes > 0;
+}
+
+/**
+ * Invariant: Atomic path update for file_shares & public_shares on rename/move (#14, #15, #45)
+ */
+async function updateSharePathsOnMove(userId, srcPath, dstPath) {
+  // Single file move update
+  await run(`UPDATE file_shares SET file_path = ? WHERE file_path = ? AND owner_user_id = ?`, [dstPath, srcPath, userId]);
+  await run(`UPDATE public_shares SET file_path = ? WHERE file_path = ? AND user_id = ?`, [dstPath, srcPath, userId]);
+
+  // Subfolder prefix cascading update
+  const srcPrefix = srcPath.endsWith('/') ? srcPath : `${srcPath}/`;
+  const dstPrefix = dstPath.endsWith('/') ? dstPath : `${dstPath}/`;
+
+  await run(`
+    UPDATE file_shares
+    SET file_path = ? || SUBSTR(file_path, ?)
+    WHERE file_path LIKE ? || '%' AND owner_user_id = ?
+  `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
+
+  await run(`
+    UPDATE public_shares
+    SET file_path = ? || SUBSTR(file_path, ?)
+    WHERE file_path LIKE ? || '%' AND user_id = ?
+  `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
+}
+
 module.exports = {
   getDb,
   run,
@@ -287,5 +347,10 @@ module.exports = {
   initDb,
   upsertUser,
   addProviderConnection,
-  getProviderConnections
+  getProviderConnections,
+  createFileShare,
+  getFileSharesByOwner,
+  getFileSharesForSharee,
+  deleteFileShare,
+  updateSharePathsOnMove
 };

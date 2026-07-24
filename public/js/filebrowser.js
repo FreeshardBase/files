@@ -1,6 +1,7 @@
 class FileBrowser {
   constructor() {
     this.currentPath = '/';
+    this.currentViewType = 'local'; // 'local' or 'shared'
     this.viewMode = 'grid'; // 'grid' or 'list'
     this.items = [];
     this.selectedItem = null;
@@ -38,6 +39,23 @@ class FileBrowser {
     // Upload Input
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
 
+    // Sidebar Navigation (#14)
+    document.getElementById('navHome')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.currentViewType = 'local';
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('navHome')?.classList.add('active');
+      this.loadDirectory('/');
+    });
+
+    document.getElementById('navShared')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.currentViewType = 'shared';
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('navShared')?.classList.add('active');
+      this.loadSharedWithMe();
+    });
+
     // New Folder Modal
     document.getElementById('btnNewFolder')?.addEventListener('click', () => this.showModal('modalNewFolder'));
     document.getElementById('btnCancelNewFolder')?.addEventListener('click', () => this.hideModal('modalNewFolder'));
@@ -46,6 +64,10 @@ class FileBrowser {
     // Rename Modal
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.hideModal('modalRename'));
     document.getElementById('btnConfirmRename')?.addEventListener('click', () => this.renameSelectedItem());
+
+    // Internal Share Modal (#14)
+    document.getElementById('btnCancelShare')?.addEventListener('click', () => this.hideModal('modalShareInternal'));
+    document.getElementById('btnConfirmShare')?.addEventListener('click', () => this.createInternalShare());
 
     // Multi-Select Actions (#12)
     document.getElementById('btnBatchZip')?.addEventListener('click', () => this.batchDownloadZip());
@@ -64,6 +86,7 @@ class FileBrowser {
         this.closeMediaViewer();
         this.hideModal('modalNewFolder');
         this.hideModal('modalRename');
+        this.hideModal('modalShareInternal');
         this.hideContextMenu();
         this.clearSelection();
       }
@@ -93,12 +116,14 @@ class FileBrowser {
 
     // Context Menu Actions
     document.getElementById('ctxOpen')?.addEventListener('click', () => this.openSelectedItem());
+    document.getElementById('ctxShareInternal')?.addEventListener('click', () => this.showShareInternalModal());
     document.getElementById('ctxDownload')?.addEventListener('click', () => this.downloadSelectedItem());
     document.getElementById('ctxRename')?.addEventListener('click', () => this.showRenameModal());
     document.getElementById('ctxDelete')?.addEventListener('click', () => this.deleteSelectedItem());
   }
 
   async loadDirectory(dirPath) {
+    this.currentViewType = 'local';
     this.currentPath = dirPath;
     this.clearSelection();
     this.renderBreadcrumb();
@@ -115,12 +140,45 @@ class FileBrowser {
       this.render();
     } catch (err) {
       console.error('Error loading directory:', err);
-      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--color-error);">${err.message}</p></div>`;
+      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
+    }
+  }
+
+  async loadSharedWithMe() {
+    this.currentViewType = 'shared';
+    this.clearSelection();
+    if (this.breadcrumb) {
+      this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Shared with me</span>`;
+    }
+
+    try {
+      const res = await fetch('/api/shares/internal/shared-with-me');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to load shared files');
+      }
+
+      const data = await res.json();
+      const shares = data.shares || [];
+
+      this.items = shares.map(s => ({
+        name: s.file_path.split('/').pop() || s.file_path,
+        path: s.file_path,
+        isDirectory: !!s.is_directory,
+        owner: s.owner_display_name || s.owner_username,
+        permission: s.read_write ? 'Read/Write' : 'Read Only',
+        isSharedItem: true
+      }));
+
+      this.render();
+    } catch (err) {
+      console.error('Error loading shared files:', err);
+      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
     }
   }
 
   renderBreadcrumb() {
-    if (!this.breadcrumb) return;
+    if (!this.breadcrumb || this.currentViewType === 'shared') return;
 
     const parts = this.currentPath.split('/').filter(Boolean);
     let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-path="/">Home</span>`;
@@ -129,7 +187,7 @@ class FileBrowser {
     parts.forEach((part, index) => {
       accumulatedPath += '/' + part;
       const isActive = index === parts.length - 1;
-      html += ` <span style="color: var(--color-text-muted);">/</span> `;
+      html += ` <span style="color: var(--ink-muted);">/</span> `;
       html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
     });
 
@@ -152,8 +210,8 @@ class FileBrowser {
       this.container.innerHTML = `
         <div class="placeholder-card" style="grid-column: 1 / -1;">
           <span style="font-size: 3rem;">📂</span>
-          <h3 style="margin-top: 0.5rem; color: var(--color-text-secondary);">This folder is empty</h3>
-          <p style="font-size: 0.85rem; color: var(--color-text-muted);">Upload files or create a subfolder to get started.</p>
+          <h3 style="margin-top: 0.5rem; color: var(--ink-muted);">No items to display</h3>
+          <p style="font-size: 0.85rem; color: var(--ink-muted);">${this.currentViewType === 'shared' ? 'No files or folders have been shared with you yet.' : 'Upload files or create a subfolder to get started.'}</p>
         </div>
       `;
       return;
@@ -164,7 +222,7 @@ class FileBrowser {
     this.container.innerHTML = this.items.map(item => {
       const isDir = item.isDirectory;
       const icon = isDir ? '📁' : this.getFileIcon(item.name);
-      const sizeStr = isDir ? '' : this.formatSize(item.size);
+      const sizeStr = isDir ? (item.owner ? `Shared by ${item.owner}` : '') : (item.owner ? `Shared by ${item.owner}` : this.formatSize(item.size));
       const isChecked = this.selectedPaths.has(item.path);
 
       return `
@@ -177,7 +235,7 @@ class FileBrowser {
       `;
     }).join('');
 
-    // Card & Checkbox Event Listeners (#12)
+    // Card & Checkbox Event Listeners (#12, #14)
     this.container.querySelectorAll('.file-card').forEach(card => {
       const checkbox = card.querySelector('.file-checkbox');
       const itemPath = card.getAttribute('data-path');
@@ -256,6 +314,50 @@ class FileBrowser {
     }
   }
 
+  showShareInternalModal() {
+    this.hideContextMenu();
+    if (!this.selectedItem) return;
+    const nameEl = document.getElementById('shareItemNameText');
+    if (nameEl) nameEl.textContent = `Target item: ${this.selectedItem.path}`;
+    this.showModal('modalShareInternal');
+  }
+
+  async createInternalShare() {
+    if (!this.selectedItem) return;
+    const usernameInput = document.getElementById('inputShareeUsername');
+    const permSelect = document.getElementById('selectSharePermission');
+    const shareeUsername = usernameInput?.value.trim();
+    const readWrite = parseInt(permSelect?.value || '0', 10);
+
+    if (!shareeUsername) {
+      return alert('Please enter a username to share with.');
+    }
+
+    try {
+      const res = await fetch('/api/shares/internal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sharee_username: shareeUsername,
+          file_path: this.selectedItem.path,
+          is_directory: this.selectedItem.isDirectory ? 1 : 0,
+          read_write: readWrite
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to share item');
+      }
+
+      usernameInput.value = '';
+      this.hideModal('modalShareInternal');
+      alert(`Successfully shared "${this.selectedItem.name}" with ${shareeUsername}!`);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   async batchDownloadZip() {
     if (this.selectedPaths.size === 0) return;
     const pathsArray = Array.from(this.selectedPaths);
@@ -323,7 +425,7 @@ class FileBrowser {
     const fileUrl = `/api/files/local/read?path=${encodeURIComponent(item.path)}`;
     const ext = item.name.split('.').pop().toLowerCase();
 
-    this.mediaViewerBody.innerHTML = '<div style="color: var(--color-text-muted);">Loading preview...</div>';
+    this.mediaViewerBody.innerHTML = '<div style="color: var(--ink-muted);">Loading preview...</div>';
     this.mediaModal.style.display = 'flex';
 
     if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext)) {
@@ -341,15 +443,15 @@ class FileBrowser {
         const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         this.mediaViewerBody.innerHTML = `<pre class="media-text-preview">${safeText}</pre>`;
       } catch (err) {
-        this.mediaViewerBody.innerHTML = `<div style="color: var(--color-error);">Failed to load text content</div>`;
+        this.mediaViewerBody.innerHTML = `<div style="color: var(--danger);">Failed to load text content</div>`;
       }
     } else {
       this.mediaViewerBody.innerHTML = `
         <div class="placeholder-card">
           <span style="font-size: 3rem;">📝</span>
-          <h3 style="margin-top: 0.5rem; color: var(--color-text-primary);">No preview available</h3>
-          <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem;">Direct in-browser preview is not supported for this file type.</p>
-          <button class="btn btn-primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
+          <h3 style="margin-top: 0.5rem; color: var(--ink);">No preview available</h3>
+          <p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 1rem;">Direct in-browser preview is not supported for this file type.</p>
+          <button class="fs-btn fs-btn--primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
         </div>
       `;
     }
