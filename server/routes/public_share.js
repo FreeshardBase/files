@@ -37,7 +37,11 @@ function isShareUnlocked(req, token) {
 function renderPublicSharePage(token, share, validation, isProtected, unlocked) {
   const baseName = share ? path.basename(share.file_path) : 'Shared Item';
   const owner = share ? (share.owner_display_name || share.owner_username) : 'FreeShard User';
-  const icon = share && share.is_directory ? '📁' : '📄';
+  const ext = share ? baseName.split('.').pop().toLowerCase() : '';
+  const isImage = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext);
+  const isVideo = ['mp4', 'webm', 'mov'].includes(ext);
+  const isAudio = ['mp3', 'wav', 'ogg', 'flac'].includes(ext);
+  const isPdf = ext === 'pdf';
 
   let bodyContent = '';
 
@@ -68,13 +72,27 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
       </div>
     `;
   } else {
+    let previewElement = '';
+    if (isImage) {
+      previewElement = `<div style="margin-bottom: 1.5rem;"><img src="/s/${token}/download?inline=1" alt="${baseName}" style="max-width: 100%; max-height: 420px; border-radius: var(--radius-sheet); border: var(--border-w) solid var(--border-cool); object-fit: contain;" /></div>`;
+    } else if (isVideo) {
+      previewElement = `<div style="margin-bottom: 1.5rem;"><video controls src="/s/${token}/download?inline=1" style="max-width: 100%; max-height: 400px; border-radius: var(--radius-sheet);"></video></div>`;
+    } else if (isAudio) {
+      previewElement = `<div style="margin-bottom: 1.5rem;"><audio controls src="/s/${token}/download?inline=1" style="width: 100%;"></audio></div>`;
+    } else if (isPdf) {
+      previewElement = `<div style="margin-bottom: 1.5rem;"><iframe src="/s/${token}/download?inline=1" style="width: 100%; height: 400px; border: var(--border-w) solid var(--border-cool); border-radius: var(--radius-sheet);"></iframe></div>`;
+    } else {
+      const icon = share.is_directory ? '📁' : '📄';
+      previewElement = `<div style="margin-bottom: 1rem; font-size: 3.5rem;">${icon}</div>`;
+    }
+
     bodyContent = `
-      <div class="fs-sheet" style="text-align: center; max-width: 440px; margin: 40px auto;">
-        <span style="font-size: 3.5rem;">${icon}</span>
-        <h2 class="fs-mono" style="margin-top: 1rem; font-size: 18px; word-break: break-all;">${baseName}</h2>
+      <div class="fs-sheet" style="text-align: center; max-width: 520px; margin: 40px auto;">
+        ${previewElement}
+        <h2 class="fs-mono" style="margin-top: 0.5rem; font-size: 18px; word-break: break-all;">${baseName}</h2>
         <p class="fs-mono" style="color: var(--ink-muted); font-size: 12px; margin-top: 4px; margin-bottom: 1.5rem;">Shared by ${owner}</p>
         
-        <a href="/s/${token}/download" class="fs-btn fs-btn--primary" style="padding: 12px 24px; font-size: 14px; text-decoration: none;">
+        <a href="/s/${token}/download" class="fs-btn fs-btn--primary" style="padding: 12px 24px; font-size: 14px; text-decoration: none; display: inline-flex;">
           ⬇️ Download ${share.is_directory ? 'Directory (.zip)' : 'File'}
         </a>
       </div>
@@ -92,12 +110,12 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css">
   <style>
-    body { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); }
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); padding: 1.5rem; }
   </style>
 </head>
 <body>
-  <div style="width: 100%; max-width: 500px; padding: 1rem;">
-    <div style="text-align: center; margin-bottom: 2rem;">
+  <div style="width: 100%; max-width: 560px;">
+    <div style="text-align: center; margin-bottom: 1.5rem;">
       <div class="shard-badge" style="display: inline-flex;">
         <span class="shard-diamond">◆</span>
         <span class="shard-id fs-mono">FreeShard Public Share</span>
@@ -204,10 +222,11 @@ router.post('/:token/verify', async (req, res) => {
   }
 });
 
-// GET /s/:token/download — Direct Download Stream
+// GET /s/:token/download — Direct Download Stream or Inline Media Preview
 router.get('/:token/download', async (req, res) => {
   try {
     const { token } = req.params;
+    const isInline = req.query.inline === '1';
     const share = await getPublicShareByToken(token);
 
     const validation = validatePublicShareAccess(share);
@@ -222,15 +241,19 @@ router.get('/:token/download', async (req, res) => {
     const userRoot = getOwnerUserRoot(share.user_id);
     const provider = new LocalProvider({ userRoot });
 
-    await incrementPublicShareDownloads(share.id);
+    // Only increment download counter for actual file downloads, not inline previews
+    if (!isInline) {
+      await incrementPublicShareDownloads(share.id);
+    }
 
     const baseName = path.basename(share.file_path);
     const encodedName = encodeURIComponent(baseName).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    const dispositionType = isInline ? 'inline' : 'attachment';
 
     if (share.is_directory) {
       const fullDirPath = provider._safe(share.file_path);
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.zip"; filename*=UTF-8''${encodedName}.zip`);
+      res.setHeader('Content-Disposition', `${dispositionType}; filename="${baseName}.zip"; filename*=UTF-8''${encodedName}.zip`);
 
       const archive = archiver('zip', { zlib: { level: 6 } });
       archive.pipe(res);
@@ -240,7 +263,7 @@ router.get('/:token/download', async (req, res) => {
       const { stream, size, mimeType } = await provider.read(share.file_path);
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Length', size);
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}"; filename*=UTF-8''${encodedName}`);
+      res.setHeader('Content-Disposition', `${dispositionType}; filename="${baseName}"; filename*=UTF-8''${encodedName}`);
       stream.pipe(res);
     }
   } catch (err) {
