@@ -69,6 +69,11 @@ class FileBrowser {
     document.getElementById('btnCancelShare')?.addEventListener('click', () => this.hideModal('modalShareInternal'));
     document.getElementById('btnConfirmShare')?.addEventListener('click', () => this.createInternalShare());
 
+    // Public Share Modal (#15)
+    document.getElementById('btnCancelPublicShare')?.addEventListener('click', () => this.hideModal('modalSharePublic'));
+    document.getElementById('btnConfirmPublicShare')?.addEventListener('click', () => this.createPublicShareLink());
+    document.getElementById('btnCopyGeneratedLink')?.addEventListener('click', () => this.copyGeneratedLink());
+
     // Multi-Select Actions (#12)
     document.getElementById('btnBatchZip')?.addEventListener('click', () => this.batchDownloadZip());
     document.getElementById('btnBatchDelete')?.addEventListener('click', () => this.batchDelete());
@@ -87,6 +92,7 @@ class FileBrowser {
         this.hideModal('modalNewFolder');
         this.hideModal('modalRename');
         this.hideModal('modalShareInternal');
+        this.hideModal('modalSharePublic');
         this.hideContextMenu();
         this.clearSelection();
       }
@@ -117,6 +123,7 @@ class FileBrowser {
     // Context Menu Actions
     document.getElementById('ctxOpen')?.addEventListener('click', () => this.openSelectedItem());
     document.getElementById('ctxShareInternal')?.addEventListener('click', () => this.showShareInternalModal());
+    document.getElementById('ctxSharePublic')?.addEventListener('click', () => this.showSharePublicModal());
     document.getElementById('ctxDownload')?.addEventListener('click', () => this.downloadSelectedItem());
     document.getElementById('ctxRename')?.addEventListener('click', () => this.showRenameModal());
     document.getElementById('ctxDelete')?.addEventListener('click', () => this.deleteSelectedItem());
@@ -235,7 +242,7 @@ class FileBrowser {
       `;
     }).join('');
 
-    // Card & Checkbox Event Listeners (#12, #14)
+    // Card & Checkbox Event Listeners (#12, #14, #15)
     this.container.querySelectorAll('.file-card').forEach(card => {
       const checkbox = card.querySelector('.file-checkbox');
       const itemPath = card.getAttribute('data-path');
@@ -322,6 +329,18 @@ class FileBrowser {
     this.showModal('modalShareInternal');
   }
 
+  showSharePublicModal() {
+    this.hideContextMenu();
+    if (!this.selectedItem) return;
+    const nameEl = document.getElementById('publicShareItemNameText');
+    if (nameEl) nameEl.textContent = `Target item: ${this.selectedItem.path}`;
+
+    const resultBox = document.getElementById('publicLinkResultBox');
+    if (resultBox) resultBox.style.display = 'none';
+
+    this.showModal('modalSharePublic');
+  }
+
   async createInternalShare() {
     if (!this.selectedItem) return;
     const usernameInput = document.getElementById('inputShareeUsername');
@@ -355,6 +374,50 @@ class FileBrowser {
       alert(`Successfully shared "${this.selectedItem.name}" with ${shareeUsername}!`);
     } catch (err) {
       alert('Error: ' + err.message);
+    }
+  }
+
+  async createPublicShareLink() {
+    if (!this.selectedItem) return;
+
+    const password = document.getElementById('inputPublicPassword')?.value;
+    const expiresAt = document.getElementById('inputPublicExpiresAt')?.value;
+    const maxDownloads = document.getElementById('inputPublicMaxDownloads')?.value;
+
+    try {
+      const res = await fetch('/api/shares/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_path: this.selectedItem.path,
+          is_directory: this.selectedItem.isDirectory ? 1 : 0,
+          password: password ? password.trim() : null,
+          expires_at: expiresAt || null,
+          max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create public share link');
+      }
+
+      const data = await res.json();
+      const generatedInput = document.getElementById('inputGeneratedLink');
+      const resultBox = document.getElementById('publicLinkResultBox');
+
+      if (generatedInput) generatedInput.value = data.share_url;
+      if (resultBox) resultBox.style.display = 'block';
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  copyGeneratedLink() {
+    const generatedInput = document.getElementById('inputGeneratedLink');
+    if (generatedInput && generatedInput.value) {
+      navigator.clipboard.writeText(generatedInput.value);
+      alert('Public share link copied to clipboard!');
     }
   }
 

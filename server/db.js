@@ -313,6 +313,38 @@ async function deleteFileShare(shareId, ownerUserId) {
   return res.changes > 0;
 }
 
+// ── Public Link Sharing Helpers (#15) ────────────────────────────────────────
+
+async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null) {
+  const res = await run(`
+    INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads]);
+  return get('SELECT * FROM public_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getPublicShareByToken(token) {
+  return get(`
+    SELECT ps.*, u.username as owner_username, u.display_name as owner_display_name
+    FROM public_shares ps
+    JOIN users u ON ps.user_id = u.id
+    WHERE ps.token = ?
+  `, [token]);
+}
+
+async function getPublicSharesByUser(userId) {
+  return all('SELECT * FROM public_shares WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function deletePublicShare(shareId, userId) {
+  const res = await run('DELETE FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
+  return res.changes > 0;
+}
+
+async function incrementPublicShareDownloads(shareId) {
+  await run('UPDATE public_shares SET download_count = download_count + 1 WHERE id = ?', [shareId]);
+}
+
 /**
  * Invariant: Atomic path update for file_shares & public_shares on rename/move (#14, #15, #45)
  */
@@ -352,5 +384,10 @@ module.exports = {
   getFileSharesByOwner,
   getFileSharesForSharee,
   deleteFileShare,
+  createPublicShare,
+  getPublicShareByToken,
+  getPublicSharesByUser,
+  deletePublicShare,
+  incrementPublicShareDownloads,
   updateSharePathsOnMove
 };

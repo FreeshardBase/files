@@ -7,6 +7,7 @@ const authRouter = require('./routes/auth');
 const filesRouter = require('./routes/files');
 const i18nRouter = require('./routes/i18n');
 const sharingRouter = require('./routes/sharing');
+const publicShareRouter = require('./routes/public_share');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -42,6 +43,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/files/local', filesRouter);
 app.use('/api/i18n', i18nRouter);
 app.use('/api/shares', sharingRouter);
+app.use('/s', publicShareRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
