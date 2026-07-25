@@ -18,8 +18,10 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
   let baseUrl;
 
   before(async () => {
+    process.env.FILES_ROOT = TEST_ROOT;
     try { await fs.rm(TEST_ROOT, { recursive: true, force: true }); } catch {}
-    const lp = new LocalProvider({ userRoot: TEST_ROOT });
+    const userHome = path.join(TEST_ROOT, 'test_route_user');
+    const lp = new LocalProvider({ userRoot: userHome });
     await lp.ensureUserHome();
     await db.initDb();
     await db.upsertUser('test_route_user', 'Route User', 'route@test.com');
@@ -99,5 +101,49 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
   test('GET /api/files/local/read returns 404 for non-existent file without reference errors', async () => {
     const res = await makeRequest('GET', '/api/files/local/read?path=/nonexistent.txt');
     assert.equal(res.status, 404);
+  });
+
+  test('POST /api/files/local/move moves file hierarchically up to parent folder (Breadcrumb & Free space drop)', async () => {
+    await makeRequest('POST', '/api/files/local/mkdir', { path: '/SubFolder' });
+    const userHome = path.join(TEST_ROOT, 'test_route_user');
+    const lp = new LocalProvider({ userRoot: userHome });
+    await lp.write('/SubFolder/nested_item.txt', require('stream').Readable.from([Buffer.from('nested content')]));
+
+    const res = await makeRequest('POST', '/api/files/local/move', {
+      src: '/SubFolder/nested_item.txt',
+      dst: '/nested_item.txt'
+    });
+
+    if (res.status !== 200) console.error('hierarchical move error:', res.body);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+
+    const rootList = await makeRequest('GET', '/api/files/local/list?path=/');
+    const rootItemNames = rootList.body.items.map(i => i.name);
+    assert.ok(rootItemNames.includes('nested_item.txt'));
+  });
+
+  test('POST /api/files/local/batch/move moves multiple selected items up to target parent folder', async () => {
+    const userHome = path.join(TEST_ROOT, 'test_route_user');
+    const lp = new LocalProvider({ userRoot: userHome });
+    await lp.mkdir('/BatchSubFolder');
+    await lp.write('/BatchSubFolder/doc1.txt', require('stream').Readable.from([Buffer.from('doc1')]));
+    await lp.write('/BatchSubFolder/doc2.txt', require('stream').Readable.from([Buffer.from('doc2')]));
+
+    const res = await makeRequest('POST', '/api/files/local/batch/move', {
+      items: [
+        { src: '/BatchSubFolder/doc1.txt', dst: '/doc1.txt' },
+        { src: '/BatchSubFolder/doc2.txt', dst: '/doc2.txt' }
+      ]
+    });
+
+    if (res.status !== 200) console.error('batch move error:', res.body);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+
+    const rootList = await makeRequest('GET', '/api/files/local/list?path=/');
+    const rootItemNames = rootList.body.items.map(i => i.name);
+    assert.ok(rootItemNames.includes('doc1.txt'));
+    assert.ok(rootItemNames.includes('doc2.txt'));
   });
 });

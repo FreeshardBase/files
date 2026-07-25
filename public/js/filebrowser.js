@@ -183,17 +183,34 @@ class FileBrowser {
     // Close Context Menu on Global Click
     document.addEventListener('click', () => this.hideContextMenu());
 
-    // Container-level Drop Zone (#50, #59)
-    if (this.container) {
-      this.container.addEventListener('dragover', (e) => {
-        if (!this.isInternalDragging) return;
+    // Global dragend cleanup (preserves payload across DOM re-renders during spring-loading) (#50, #59)
+    window.addEventListener('dragend', () => {
+      this.clearSpringLoadTimer();
+      this.dropOverlay?.classList.remove('active');
+      document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+      document.querySelectorAll('.drag-spring-loading').forEach(el => el.classList.remove('drag-spring-loading'));
+
+      setTimeout(() => {
+        this.isInternalDragging = false;
+        this.activeDragPayload = null;
+      }, 150);
+    });
+
+    // Container-level & Free Space Drop Zone (#50, #59)
+    const mainDropZone = document.querySelector('.file-browser-main') || this.container;
+    if (mainDropZone) {
+      mainDropZone.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
         e.preventDefault();
-        e.stopPropagation();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       });
 
-      this.container.addEventListener('drop', async (e) => {
-        if (!this.isInternalDragging) return;
+      mainDropZone.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud="true"]') || e.target.closest('.breadcrumb-item')) {
+          return;
+        }
+
         e.preventDefault();
         e.stopPropagation();
         this.clearSpringLoadTimer();
@@ -210,9 +227,14 @@ class FileBrowser {
         try {
           const targetDir = this.currentPath;
           const targetProvId = this.currentViewType === 'provider' ? this.currentProviderId : null;
-          await this.handleDragDropMove(data, targetDir, targetProvId);
+
+          const payloadToMove = data;
+          this.activeDragPayload = null;
+          this.isInternalDragging = false;
+
+          await this.handleDragDropMove(payloadToMove, targetDir, targetProvId);
         } catch (err) {
-          console.error('Container Drop Error:', err);
+          console.error('Container Free Space Drop Error:', err);
           alert(`Move failed: ${err.message}`);
         }
       });
@@ -768,8 +790,6 @@ class FileBrowser {
           });
 
           card.addEventListener('dragend', () => {
-            this.isInternalDragging = false;
-            this.activeDragPayload = null;
             this.clearSpringLoadTimer();
             card.classList.remove('dragging');
             this.dropOverlay?.classList.remove('active');
