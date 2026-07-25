@@ -8,20 +8,9 @@ const { requireAuth } = require('../middleware/auth');
 const { addProviderConnection, getProviderConnections, run } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
 const DropboxProvider = require('../providers/dropbox');
+const { decodeUtf8Filename } = require('../utils/utf8');
 
 router.use(requireAuth);
-
-/**
- * Safely decodes UTF-8 filenames if busboy/headers parsed them as latin1/binary
- */
-function decodeUtf8Filename(filename) {
-  try {
-    const decoded = Buffer.from(filename, 'binary').toString('utf8');
-    return decoded.includes('\uFFFD') ? filename : decoded;
-  } catch (e) {
-    return filename;
-  }
-}
 
 /**
  * Helper to construct redirect URI for Google Drive

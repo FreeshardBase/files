@@ -8,44 +8,7 @@ const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
 const { updateSharePathsOnMove, createTrashItem, logActivity } = require('../db');
-
-function getLocalProvider(req) {
-  const userRoot = req.userRoot;
-  const provider = new LocalProvider({ userRoot });
-  return { provider, userId: req.userId };
-}
-
-/**
- * Calculates total recursive directory size on disk
- */
-async function getDirectorySize(dirOnDisk) {
-  let total = 0;
-  try {
-    const entries = await fs.readdir(dirOnDisk, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dirOnDisk, entry.name);
-      if (entry.isDirectory()) {
-        total += await getDirectorySize(fullPath);
-      } else if (entry.isFile()) {
-        const stat = await fs.stat(fullPath);
-        total += stat.size;
-      }
-    }
-  } catch (e) {}
-  return total;
-}
-
-/**
- * Safely decodes UTF-8 filenames if busboy/headers parsed them as latin1/binary
- */
-function decodeUtf8Filename(filename) {
-  try {
-    const decoded = Buffer.from(filename, 'binary').toString('utf8');
-    return decoded.includes('') ? filename : decoded;
-  } catch (e) {
-    return filename;
-  }
-}
+const { decodeUtf8Filename } = require('../utils/utf8');
 
 // Apply user isolation middleware to all file operation routes
 router.use(validateUserIsolation);
