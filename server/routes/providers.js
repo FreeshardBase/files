@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const https = require('https');
+const path = require('path');
+const Busboy = require('busboy');
 const { requireAuth } = require('../middleware/auth');
 const { addProviderConnection, getProviderConnections, run } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
@@ -16,6 +18,23 @@ function getRedirectUri(req) {
   const protocol = req.protocol || 'https';
   const host = req.get('host') || 'fs-files.gryzia.de';
   return `${protocol}://${host}/api/providers/gdrive/callback`;
+}
+
+/**
+ * Helper to get initialized GoogleDriveProvider instance from connection ID
+ */
+async function getProviderInstanceForUser(connectionId, userId) {
+  const connections = await getProviderConnections(userId);
+  const conn = connections.find(c => c.id === parseInt(connectionId, 10));
+  if (!conn) {
+    throw new Error(`Provider connection #${connectionId} not found or permission denied`);
+  }
+
+  if (conn.provider_type === 'gdrive') {
+    return { provider: new GoogleDriveProvider(conn.credentials), connection: conn };
+  }
+
+  throw new Error(`Provider type "${conn.provider_type}" not supported`);
 }
 
 /**
@@ -113,7 +132,7 @@ router.get('/gdrive/callback', async (req, res) => {
       accessToken: tokens.access_token
     };
 
-    const connId = await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
+    await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
 
     // Redirect user back to dashboard with success message
     res.redirect('/?gdrive_connected=true');
@@ -185,6 +204,109 @@ router.delete('/connections/:id', async (req, res) => {
     const connId = req.params.id;
 
     await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PROVIDER FILE PROXY ENDPOINTS (#7) ───────────────────────────────────────
+
+/**
+ * GET /api/providers/:id/list?path=/
+ */
+router.get('/:id/list', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const requestedPath = req.query.path || '/';
+
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+    const items = await provider.list(requestedPath);
+    res.json({ path: requestedPath, items });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/providers/:id/read?path=...
+ */
+router.get('/:id/read', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const requestedPath = req.query.path;
+    if (!requestedPath) return res.status(400).json({ error: 'path parameter is required' });
+
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+    const { stream, size, mimeType } = await provider.read(requestedPath);
+
+    const baseName = path.basename(requestedPath);
+    const encodedName = encodeURIComponent(baseName).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    if (size) res.setHeader('Content-Length', size);
+    res.setHeader('Content-Disposition', `inline; filename="${baseName}"; filename*=UTF-8''${encodedName}`);
+
+    stream.pipe(res);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/providers/:id/upload
+ */
+router.post('/:id/upload', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+
+    const busboy = Busboy({ headers: req.headers });
+    let targetPath = '/';
+    let uploadedFile = null;
+
+    busboy.on('field', (fieldname, val) => {
+      if (fieldname === 'path') targetPath = val;
+    });
+
+    busboy.on('file', async (fieldname, fileStream, filenameObj, encoding, mimetype) => {
+      const filename = typeof filenameObj === 'object' ? filenameObj.filename : filenameObj;
+      const fullPath = targetPath === '/' ? `/${filename}` : `${targetPath.replace(/\/+$/, '')}/${filename}`;
+      try {
+        uploadedFile = await provider.write(fullPath, fileStream, { mimeType: mimetype });
+      } catch (err) {
+        busboy.emit('error', err);
+      }
+    });
+
+    busboy.on('finish', () => {
+      res.status(201).json({ success: true, file: uploadedFile });
+    });
+
+    busboy.on('error', (err) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    req.pipe(busboy);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/providers/:id/delete?path=...
+ */
+router.delete('/:id/delete', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const targetPath = req.query.path;
+
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+    await provider.delete(targetPath);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

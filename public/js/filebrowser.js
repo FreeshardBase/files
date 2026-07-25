@@ -201,9 +201,77 @@ class FileBrowser {
 
       const data = await res.json();
       this.items = data.items || [];
+
+      // If viewing root directory, also fetch connected Cloud Drives (#7)
+      if (dirPath === '/') {
+        try {
+          const connRes = await fetch('/api/providers/connections');
+          if (connRes.ok) {
+            const connData = await connRes.json();
+            const connections = connData.connections || [];
+            connections.forEach(conn => {
+              this.items.unshift({
+                name: conn.display_name || 'Google Drive',
+                path: '/',
+                isDirectory: true,
+                isCloudDrive: true,
+                providerId: conn.id,
+                providerType: conn.provider_type,
+                mimeType: 'cloud/drive'
+              });
+            });
+          }
+        } catch (e) {
+          console.error('Error fetching provider connections:', e);
+        }
+      }
+
       this.render();
     } catch (err) {
       console.error('Error loading directory:', err);
+      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
+    }
+  }
+
+  async loadProviderDirectory(providerId, providerName, dirPath) {
+    this.currentViewType = 'provider';
+    this.currentProviderId = providerId;
+    this.currentProviderName = providerName;
+    this.currentPath = dirPath;
+    this.clearSelection();
+
+    if (this.breadcrumb) {
+      const pathParts = dirPath.split('/').filter(Boolean);
+      let crumbHtml = `<span class="breadcrumb-item"><a href="#/files" onclick="window.fileBrowser.loadDirectory('/')">🏠 Home</a></span>`;
+      crumbHtml += ` <span class="breadcrumb-separator">/</span> `;
+      crumbHtml += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '/')">☁️ ${providerName}</a></span>`;
+
+      let accumPath = '';
+      pathParts.forEach((part, index) => {
+        accumPath += '/' + part;
+        const isLast = index === pathParts.length - 1;
+        crumbHtml += ` <span class="breadcrumb-separator">/</span> `;
+        if (isLast) {
+          crumbHtml += `<span class="breadcrumb-item active">${part}</span>`;
+        } else {
+          crumbHtml += `<span class="breadcrumb-item"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '${accumPath}')">${part}</a></span>`;
+        }
+      });
+      this.breadcrumb.innerHTML = crumbHtml;
+    }
+
+    try {
+      const res = await fetch(`/api/providers/${providerId}/list?path=${encodeURIComponent(dirPath)}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to load cloud drive items');
+      }
+
+      const data = await res.json();
+      this.items = data.items || [];
+      this.render();
+    } catch (err) {
+      console.error('Error loading provider directory:', err);
       this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
     }
   }
@@ -429,11 +497,14 @@ class FileBrowser {
     this.container.className = this.viewMode === 'grid' ? 'grid-view' : 'list-view';
 
     this.container.innerHTML = this.items.map(item => {
+      const isCloudDrive = item.isCloudDrive;
       const isDir = item.isDirectory;
-      const icon = isDir ? '📁' : this.getFileIcon(item.name);
-      
+      const icon = isCloudDrive ? '☁️' : (isDir ? '📁' : this.getFileIcon(item.name));
+
       let metaText = '';
-      if (item.isTrashItem) {
+      if (isCloudDrive) {
+        metaText = 'Cloud Storage Connection';
+      } else if (item.isTrashItem) {
         metaText = `${this.formatSize(item.size)} • Original: ${item.path}`;
       } else if (item.isSharedItem) {
         metaText = `Shared by ${item.owner}`;
@@ -444,8 +515,8 @@ class FileBrowser {
       const isChecked = this.selectedPaths.has(item.path || item.id);
 
       return `
-        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-is-top-level="${item.isTopLevelTrash ? 'true' : 'false'}" data-subpath="${item.subpath || '/'}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
-          ${item.isTrashItem ? '' : `<input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />`}
+        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-is-top-level="${item.isTopLevelTrash ? 'true' : 'false'}" data-subpath="${item.subpath || '/'}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}" data-is-cloud-drive="${isCloudDrive ? 'true' : 'false'}" data-provider-id="${item.providerId || ''}">
+          ${item.isTrashItem || isCloudDrive ? '' : `<input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />`}
           <div class="file-icon">${icon}</div>
           <div class="file-name" title="${item.name}">${item.name}</div>
           <div class="file-meta" style="font-size: 11px;">${metaText}</div>
@@ -481,6 +552,8 @@ class FileBrowser {
       const checkbox = card.querySelector('.file-checkbox');
       const itemPath = card.getAttribute('data-path');
       const isDir = card.getAttribute('data-is-dir') === 'true';
+      const isCloudDrive = card.getAttribute('data-is-cloud-drive') === 'true';
+      const providerId = card.getAttribute('data-provider-id');
       const trashId = card.getAttribute('data-id');
       const isTopLevel = card.getAttribute('data-is-top-level') === 'true';
       const subpath = card.getAttribute('data-subpath');
@@ -517,9 +590,16 @@ class FileBrowser {
 
         const name = card.getAttribute('data-name');
         if (isDir) {
-          this.loadDirectory(itemPath);
+          if (isCloudDrive) {
+            this.loadProviderDirectory(providerId, name, '/');
+          } else if (this.currentViewType === 'provider') {
+            this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, itemPath);
+          } else {
+            this.loadDirectory(itemPath);
+          }
         } else {
-          this.openMediaViewer({ name, path: itemPath });
+          const item = this.items.find(i => i.path === itemPath || i.name === name);
+          this.openMediaViewer(item || { name, path: itemPath });
         }
       });
 
@@ -777,14 +857,16 @@ class FileBrowser {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
-  // ── Media & File Viewer Overlay (#11) ───────────────────────────────────────
   async openMediaViewer(item) {
     if (!this.mediaModal || !this.mediaViewerBody) return;
 
     this.currentMediaItem = item;
     if (this.mediaTitle) this.mediaTitle.textContent = item.name;
 
-    const fileUrl = `/api/files/local/read?path=${encodeURIComponent(item.path)}`;
+    const fileUrl = this.currentViewType === 'provider'
+      ? `/api/providers/${this.currentProviderId}/read?path=${encodeURIComponent(item.path)}`
+      : `/api/files/local/read?path=${encodeURIComponent(item.path)}`;
+
     const ext = item.name.split('.').pop().toLowerCase();
 
     this.mediaViewerBody.innerHTML = '<div style="color: var(--ink-muted);">Loading preview...</div>';
@@ -816,6 +898,55 @@ class FileBrowser {
           <button class="fs-btn fs-btn--primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
         </div>
       `;
+    }
+  }
+
+  downloadSelectedItem() {
+    this.hideContextMenu();
+    if (this.selectedItem && !this.selectedItem.isDirectory) {
+      this.downloadFile(this.selectedItem.path);
+    }
+  }
+
+  downloadFile(filePath) {
+    if (this.currentViewType === 'provider') {
+      window.location.href = `/api/providers/${this.currentProviderId}/read?path=${encodeURIComponent(filePath)}`;
+    } else {
+      window.location.href = `/api/files/local/read?path=${encodeURIComponent(filePath)}`;
+    }
+  }
+
+  async handleFileUpload(files) {
+    if (!files || !files.length) return;
+
+    const uploadUrl = this.currentViewType === 'provider'
+      ? `/api/providers/${this.currentProviderId}/upload`
+      : '/api/files/local/upload';
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('path', this.currentPath);
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `Upload failed for ${file.name}`);
+        }
+      } catch (err) {
+        alert('Upload Error: ' + err.message);
+      }
+    }
+
+    if (this.currentViewType === 'provider') {
+      this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
+    } else {
+      this.loadDirectory(this.currentPath);
     }
   }
 
