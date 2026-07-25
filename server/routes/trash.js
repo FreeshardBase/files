@@ -50,6 +50,16 @@ router.get('/', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const items = await getTrashItemsByUser(userId);
+
+    // Dynamically resolve size if 0 B for directories (#18)
+    const trashDir = getUserTrashDir(userId);
+    for (const item of items) {
+      if (item.is_directory && item.size_bytes === 0) {
+        const diskPath = path.join(trashDir, item.id);
+        item.size_bytes = await getDirectorySize(diskPath);
+      }
+    }
+
     res.json({ items });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -140,7 +150,7 @@ router.post('/move', async (req, res) => {
     const sourcePathOnDisk = provider._safe(target_path);
 
     // Move file/folder on disk into .trash/<uuid>
-    await fs.rename(sourcePathOnDisk, trashPathPathOnDisk || trashPathOnDisk);
+    await fs.rename(sourcePathOnDisk, trashPathOnDisk);
 
     // Calculate recursive directory size if it is a directory
     const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);

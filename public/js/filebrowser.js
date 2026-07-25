@@ -339,7 +339,7 @@ class FileBrowser {
       const isChecked = this.selectedPaths.has(item.path || item.id);
 
       return `
-        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-subpath="${item.subpath || '/'}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
+        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-is-top-level="${item.isTopLevelTrash ? 'true' : 'false'}" data-subpath="${item.subpath || '/'}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
           ${item.isTrashItem ? '' : `<input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />`}
           <div class="file-icon">${icon}</div>
           <div class="file-name" title="${item.name}">${item.name}</div>
@@ -377,6 +377,7 @@ class FileBrowser {
       const itemPath = card.getAttribute('data-path');
       const isDir = card.getAttribute('data-is-dir') === 'true';
       const trashId = card.getAttribute('data-id');
+      const isTopLevel = card.getAttribute('data-is-top-level') === 'true';
       const subpath = card.getAttribute('data-subpath');
 
       if (checkbox) {
@@ -399,7 +400,12 @@ class FileBrowser {
       card.addEventListener('dblclick', () => {
         if (this.currentViewType === 'trash') {
           if (isDir && trashId) {
-            this.loadTrash(trashId, subpath === '/' ? `/${card.getAttribute('data-name')}` : `${subpath}/${card.getAttribute('data-name')}`);
+            if (isTopLevel) {
+              this.loadTrash(trashId, '/');
+            } else {
+              const nextSubpath = subpath === '/' ? `/${card.getAttribute('data-name')}` : `${subpath}/${card.getAttribute('data-name')}`;
+              this.loadTrash(trashId, nextSubpath);
+            }
           }
           return;
         }
