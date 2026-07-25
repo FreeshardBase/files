@@ -646,3 +646,18 @@ body {
   position: relative;
   z-index: 3;
 }
+
+/* Drag & Drop File Move Target Styles (#50) */
+.file-card.dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+  border-style: dashed !important;
+}
+
+.file-card.drag-target-hover,
+.breadcrumb-item.drag-target-hover {
+  background-color: color-mix(in srgb, var(--accent) 15%, var(--surface)) !important;
+  border: 2px solid var(--accent) !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent) !important;
+  transition: all 150ms ease;
+}

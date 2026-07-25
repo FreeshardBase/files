@@ -477,12 +477,47 @@ class FileBrowser {
     this.breadcrumb.innerHTML = html;
 
     this.breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+      const targetPath = item.getAttribute('data-path');
+
       item.addEventListener('click', (e) => {
-        const targetPath = e.target.getAttribute('data-path');
         if (targetPath && targetPath !== this.currentPath) {
           this.loadDirectory(targetPath);
         }
       });
+
+      if (this.currentViewType === 'local') {
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          item.classList.add('drag-target-hover');
+        });
+
+        item.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          item.classList.remove('drag-target-hover');
+        });
+
+        item.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          item.classList.remove('drag-target-hover');
+
+          const rawData = e.dataTransfer.getData('application/json');
+          if (!rawData) return;
+          try {
+            const data = JSON.parse(rawData);
+            if (data.srcPath === targetPath || targetPath.startsWith(data.srcPath + '/')) {
+              return;
+            }
+            await this.handleDragDropMove(data, targetPath);
+          } catch (err) {
+            console.error('Breadcrumb Drag & Drop Error:', err);
+            alert(`Move failed: ${err.message}`);
+          }
+        });
+      }
     });
   }
 
@@ -621,7 +656,90 @@ class FileBrowser {
         this.selectedItem = { name, isDirectory: isDir, path };
         this.showContextMenu(e.clientX, e.clientY);
       });
+
+      // HTML5 Drag & Drop File Move (#50)
+      if (this.currentViewType !== 'trash' && !isCloudDrive) {
+        card.setAttribute('draggable', 'true');
+
+        card.addEventListener('dragstart', (e) => {
+          e.stopPropagation();
+          const payload = {
+            srcPath: itemPath,
+            name: card.getAttribute('data-name'),
+            isDirectory: isDir,
+            viewType: this.currentViewType,
+            currentProviderId: this.currentProviderId
+          };
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('application/json', JSON.stringify(payload));
+          card.classList.add('dragging');
+        });
+
+        card.addEventListener('dragend', () => {
+          card.classList.remove('dragging');
+          document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+        });
+
+        // Folder card drop target
+        if (isDir) {
+          card.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            card.classList.add('drag-target-hover');
+          });
+
+          card.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            card.classList.remove('drag-target-hover');
+          });
+
+          card.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            card.classList.remove('drag-target-hover');
+
+            const rawData = e.dataTransfer.getData('application/json');
+            if (!rawData) return;
+            try {
+              const data = JSON.parse(rawData);
+              const targetFolderPath = itemPath;
+
+              if (data.srcPath === targetFolderPath || targetFolderPath.startsWith(data.srcPath + '/')) {
+                return;
+              }
+
+              await this.handleDragDropMove(data, targetFolderPath);
+            } catch (err) {
+              console.error('Drag & Drop Move Error:', err);
+              alert(`Move failed: ${err.message}`);
+            }
+          });
+        }
+      }
     });
+  }
+
+  async handleDragDropMove(dragData, targetDirectory) {
+    const srcPath = dragData.srcPath;
+    const itemName = dragData.name;
+    const destPath = targetDirectory === '/' ? `/${itemName}` : `${targetDirectory.replace(/\/+$/, '')}/${itemName}`;
+
+    if (dragData.viewType === 'local' || !dragData.viewType) {
+      const res = await fetch('/api/files/local/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src: srcPath, dst: destPath })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to move file');
+      }
+
+      this.loadDirectory(this.currentPath);
+    }
   }
 
   async restoreTrashItem(id) {
