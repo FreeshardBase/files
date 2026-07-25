@@ -32,6 +32,13 @@ class LocalProvider extends BaseProvider {
     return safePath(this.userRoot, relativePath || '/');
   }
 
+  /**
+   * Alias for _resolve to ensure backward compatibility (#4, #18)
+   */
+  _safe(relativePath) {
+    return this._resolve(relativePath);
+  }
+
   async list(dirPath = '/') {
     const fullPath = this._resolve(dirPath);
     const stat = await fs.lstat(fullPath);
