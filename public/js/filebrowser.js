@@ -39,6 +39,9 @@ class FileBrowser {
     if (urlParams.get('gdrive_connected') === 'true') {
       alert('🎉 Successfully connected Google Drive account via OAuth 2.0!');
       window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlParams.get('dropbox_connected') === 'true') {
+      alert('🎉 Successfully connected Dropbox account via OAuth 2.0!');
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }
 
@@ -50,9 +53,12 @@ class FileBrowser {
     // Upload Input
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
 
-    // 1-Click Google OAuth Provider Connection (#7)
+    // Connect Cloud Storage Modal (#7, #56)
     document.getElementById('btnAddCloudDrive')?.addEventListener('click', () => {
-      window.location.href = '/api/providers/gdrive/auth';
+      this.showModal('modalAddProvider');
+    });
+    document.getElementById('btnCancelAddProvider')?.addEventListener('click', () => {
+      this.hideModal('modalAddProvider');
     });
 
     // Sidebar Navigation (#14, #18, #22)
