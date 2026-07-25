@@ -159,7 +159,10 @@ class FileBrowser {
     // Drag & Drop Upload Overlay (Only for OS file uploads, ignore internal file moves)
     window.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (this.isInternalDragging) return;
+      if (this.isInternalDragging || this.activeDragPayload) {
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        return;
+      }
       const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
       if (types.includes('Files')) {
         this.dropOverlay?.classList.add('active');
@@ -174,7 +177,7 @@ class FileBrowser {
     this.dropOverlay?.addEventListener('drop', (e) => {
       e.preventDefault();
       this.dropOverlay.classList.remove('active');
-      if (this.isInternalDragging) return;
+      if (this.isInternalDragging || this.activeDragPayload) return;
       if (e.dataTransfer.files && e.dataTransfer.files.length) {
         this.handleFileUpload(e.dataTransfer.files);
       }
@@ -193,52 +196,49 @@ class FileBrowser {
       setTimeout(() => {
         this.isInternalDragging = false;
         this.activeDragPayload = null;
-      }, 150);
+      }, 200);
     });
 
-    // Container-level & Free Space Drop Zone (#50, #59)
-    const mainDropZone = document.querySelector('.file-browser-main') || this.container;
-    if (mainDropZone) {
-      mainDropZone.addEventListener('dragover', (e) => {
-        if (!this.isInternalDragging && !this.activeDragPayload) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      });
+    // Global Window Drop Zone for Internal Drag & Drop (#50, #59)
+    window.addEventListener('drop', async (e) => {
+      if (!this.isInternalDragging && !this.activeDragPayload) return;
 
-      mainDropZone.addEventListener('drop', async (e) => {
-        if (!this.isInternalDragging && !this.activeDragPayload) return;
-        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud="true"]') || e.target.closest('.breadcrumb-item')) {
+      // Ignore if drop target was a subfolder card or a breadcrumb link (which have their own specific target handlers)
+      if (e.target && e.target.closest) {
+        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item')) {
           return;
         }
+      }
 
-        e.preventDefault();
-        e.stopPropagation();
-        this.clearSpringLoadTimer();
-        document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+      e.preventDefault();
+      e.stopPropagation();
+      this.clearSpringLoadTimer();
+      this.dropOverlay?.classList.remove('active');
+      document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+      document.querySelectorAll('.drag-spring-loading').forEach(el => el.classList.remove('drag-spring-loading'));
 
-        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
-        let data = null;
-        if (rawData) {
-          try { data = JSON.parse(rawData); } catch(err){}
-        }
-        if (!data) data = this.activeDragPayload;
-        if (!data) return;
+      let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+      let data = null;
+      if (rawData) {
+        try { data = JSON.parse(rawData); } catch(err){}
+      }
+      if (!data) data = this.activeDragPayload;
+      if (!data) return;
 
-        try {
-          const targetDir = this.currentPath;
-          const targetProvId = this.currentViewType === 'provider' ? this.currentProviderId : null;
+      try {
+        const targetDir = this.currentPath;
+        const targetProvId = this.currentViewType === 'provider' ? this.currentProviderId : null;
 
-          const payloadToMove = data;
-          this.activeDragPayload = null;
-          this.isInternalDragging = false;
+        const payloadToMove = data;
+        this.activeDragPayload = null;
+        this.isInternalDragging = false;
 
-          await this.handleDragDropMove(payloadToMove, targetDir, targetProvId);
-        } catch (err) {
-          console.error('Container Free Space Drop Error:', err);
-          alert(`Move failed: ${err.message}`);
-        }
-      });
-    }
+        await this.handleDragDropMove(payloadToMove, targetDir, targetProvId);
+      } catch (err) {
+        console.error('Global Drop Error:', err);
+        alert(`Move failed: ${err.message}`);
+      }
+    });
 
     // Context Menu Actions
     document.getElementById('ctxOpen')?.addEventListener('click', () => this.openSelectedItem());

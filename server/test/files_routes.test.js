@@ -12,6 +12,8 @@ const LocalProvider = require('../providers/local');
 
 const TEST_ROOT = path.resolve(__dirname, 'test_files_routes_user_home');
 
+const originalFilesRoot = process.env.FILES_ROOT;
+
 describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regression Protection)', () => {
   let app;
   let server;
@@ -30,7 +32,7 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
     app.use(express.json());
     app.use((req, res, next) => {
       req.userId = 'test_route_user';
-      req.userRoot = TEST_ROOT;
+      req.userRoot = userHome;
       req.session = { user: { id: 'test_route_user' } };
       next();
     });
@@ -45,6 +47,11 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
   });
 
   after(async () => {
+    if (originalFilesRoot !== undefined) {
+      process.env.FILES_ROOT = originalFilesRoot;
+    } else {
+      delete process.env.FILES_ROOT;
+    }
     if (server) await new Promise((resolve) => server.close(resolve));
     try { await fs.rm(TEST_ROOT, { recursive: true, force: true }); } catch {}
   });
