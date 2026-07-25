@@ -499,7 +499,10 @@ class FileBrowser {
     this.container.innerHTML = this.items.map(item => {
       const isCloudDrive = item.isCloudDrive;
       const isDir = item.isDirectory;
-      const icon = isCloudDrive ? '☁️' : (isDir ? '📁' : this.getFileIcon(item.name));
+      let icon = isDir ? '📁' : this.getFileIcon(item.name);
+      if (isCloudDrive) {
+        icon = item.providerType === 'dropbox' ? '📦' : '☁️';
+      }
 
       let metaText = '';
       if (isCloudDrive) {

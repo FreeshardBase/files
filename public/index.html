@@ -185,35 +185,23 @@
     </div>
   </div>
 
-  <!-- Modal: Connect Cloud Drive (#7) -->
+  <!-- Modal: Connect Cloud Drive (#7, #56) -->
   <div id="modalAddProvider" class="modal" style="display: none;">
     <div class="modal-content fs-sheet" style="max-width: 500px;">
       <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Connect External Cloud Storage</h3>
-      <p style="color: var(--ink-muted); font-size: 13px; margin-bottom: 1rem;">Link a Google Drive account using OAuth 2.0 Credentials.</p>
-      
-      <div class="fs-field">
-        <label class="fs-label">Connection Name</label>
-        <input type="text" id="inputProviderName" class="fs-input" placeholder="e.g. My Google Drive">
+      <p style="color: var(--ink-muted); font-size: 13px; margin-bottom: 1.25rem;">Select your cloud provider for 1-click OAuth 2.0 connection.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <a href="/api/providers/gdrive/auth" class="fs-btn fs-btn--primary" style="justify-content: center; padding: 10px; font-weight: 600;">
+          ☁️ Connect Google Drive (OAuth 2.0)
+        </a>
+        <a href="/api/providers/dropbox/auth" class="fs-btn" style="justify-content: center; padding: 10px; font-weight: 600; background: rgba(0, 97, 255, 0.1); border-color: #0061ff; color: #0061ff;">
+          📦 Connect Dropbox (OAuth 2.0)
+        </a>
       </div>
 
-      <div class="fs-field" style="margin-top: 0.5rem;">
-        <label class="fs-label">Client ID (Google Cloud Console)</label>
-        <input type="text" id="inputProviderClientId" class="fs-input fs-mono" placeholder="12345...apps.googleusercontent.com">
-      </div>
-
-      <div class="fs-field" style="margin-top: 0.5rem;">
-        <label class="fs-label">Client Secret</label>
-        <input type="password" id="inputProviderClientSecret" class="fs-input fs-mono" placeholder="GOCSPX-...">
-      </div>
-
-      <div class="fs-field" style="margin-top: 0.5rem;">
-        <label class="fs-label">OAuth Refresh Token</label>
-        <input type="password" id="inputProviderRefreshToken" class="fs-input fs-mono" placeholder="1//04...">
-      </div>
-
-      <div class="modal-actions" style="margin-top: 1.25rem;">
-        <button class="fs-btn" id="btnCancelAddProvider">Cancel</button>
-        <button class="fs-btn fs-btn--primary" id="btnConfirmAddProvider">Connect Account</button>
+      <div class="modal-actions" style="margin-top: 1.5rem;">
+        <button class="fs-btn" id="btnCancelAddProvider">Close</button>
       </div>
     </div>
   </div>

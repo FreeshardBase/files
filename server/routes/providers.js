@@ -7,11 +7,12 @@ const Busboy = require('busboy');
 const { requireAuth } = require('../middleware/auth');
 const { addProviderConnection, getProviderConnections, run } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
+const DropboxProvider = require('../providers/dropbox');
 
 router.use(requireAuth);
 
 /**
- * Helper to construct redirect URI
+ * Helper to construct redirect URI for Google Drive
  */
 function getRedirectUri(req) {
   if (process.env.GDRIVE_REDIRECT_URI) return process.env.GDRIVE_REDIRECT_URI;
@@ -21,7 +22,7 @@ function getRedirectUri(req) {
 }
 
 /**
- * Helper to get initialized GoogleDriveProvider instance from connection ID
+ * Helper to get initialized Provider instance from connection ID (#7, #56)
  */
 async function getProviderInstanceForUser(connectionId, userId) {
   const connections = await getProviderConnections(userId);
@@ -32,6 +33,8 @@ async function getProviderInstanceForUser(connectionId, userId) {
 
   if (conn.provider_type === 'gdrive') {
     return { provider: new GoogleDriveProvider(conn.credentials), connection: conn };
+  } else if (conn.provider_type === 'dropbox') {
+    return { provider: new DropboxProvider(conn.credentials), connection: conn };
   }
 
   throw new Error(`Provider type "${conn.provider_type}" not supported`);
@@ -92,7 +95,6 @@ router.get('/gdrive/callback', async (req, res) => {
     const clientSecret = process.env.GDRIVE_CLIENT_SECRET;
     const redirectUri = getRedirectUri(req);
 
-    // Exchange authorization code for tokens
     const postData = new URLSearchParams({
       code,
       client_id: clientId,
@@ -134,10 +136,112 @@ router.get('/gdrive/callback', async (req, res) => {
 
     await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
 
-    // Redirect user back to dashboard with success message
     res.redirect('/?gdrive_connected=true');
   } catch (err) {
     res.status(500).send(`OAuth Callback Error: ${err.message}`);
+  }
+});
+
+/**
+ * GET /api/providers/dropbox/auth
+ * Initiates standard 1-click Dropbox OAuth 2.0 Authorization Flow (#56)
+ */
+router.get('/dropbox/auth', (req, res) => {
+  const clientId = process.env.DROPBOX_CLIENT_ID;
+  if (!clientId) {
+    return res.status(400).send('Dropbox OAuth App Key not configured on server. Please set DROPBOX_CLIENT_ID in environment.');
+  }
+
+  const state = crypto.randomBytes(16).toString('hex');
+  if (!req.session.oauthStates) req.session.oauthStates = {};
+  req.session.oauthStates[state] = true;
+
+  const protocol = req.protocol || 'https';
+  const host = req.get('host') || 'fs-files.gryzia.de';
+  const redirectUri = `${protocol}://${host}/api/providers/dropbox/callback`;
+
+  const authUrl = `https://www.dropbox.com/oauth2/authorize?` +
+    `client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&response_type=code` +
+    `&token_access_type=offline` +
+    `&state=${state}`;
+
+  res.redirect(authUrl);
+});
+
+/**
+ * GET /api/providers/dropbox/callback
+ * Handles OAuth 2.0 authorization code callback from Dropbox (#56)
+ */
+router.get('/dropbox/callback', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { code, state, error } = req.query;
+
+    if (error) {
+      return res.status(400).send(`Dropbox OAuth Authorization Denied: ${error}`);
+    }
+
+    if (!code) {
+      return res.status(400).send('Missing authorization code from Dropbox OAuth.');
+    }
+
+    if (!req.session.oauthStates || !req.session.oauthStates[state]) {
+      return res.status(403).send('Invalid OAuth state parameter.');
+    }
+    delete req.session.oauthStates[state];
+
+    const clientId = process.env.DROPBOX_CLIENT_ID;
+    const clientSecret = process.env.DROPBOX_CLIENT_SECRET;
+    const protocol = req.protocol || 'https';
+    const host = req.get('host') || 'fs-files.gryzia.de';
+    const redirectUri = `${protocol}://${host}/api/providers/dropbox/callback`;
+
+    const postData = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code'
+    }).toString();
+
+    const tokenRes = await new Promise((resolve, reject) => {
+      const request = https.request({
+        hostname: 'api.dropboxapi.com',
+        path: '/oauth2/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, (resStream) => {
+        let body = '';
+        resStream.on('data', chunk => body += chunk);
+        resStream.on('end', () => resolve({ statusCode: resStream.statusCode, body }));
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    const tokens = JSON.parse(tokenRes.body);
+    if (!tokens.refresh_token && !tokens.access_token) {
+      return res.status(400).send(`Failed to exchange Dropbox OAuth code: ${tokens.error_description || tokenRes.body}`);
+    }
+
+    const credentials = {
+      clientId,
+      clientSecret,
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token
+    };
+
+    await addProviderConnection(userId, 'dropbox', 'Dropbox', credentials);
+
+    res.redirect('/?dropbox_connected=true');
+  } catch (err) {
+    res.status(500).send(`Dropbox OAuth Callback Error: ${err.message}`);
   }
 });
 
@@ -172,7 +276,7 @@ router.post('/gdrive/connect', async (req, res) => {
 
 /**
  * GET /api/providers/connections
- * List all active provider connections for the user (#3, #7)
+ * List all active provider connections for the user (#3, #7, #56)
  */
 router.get('/connections', async (req, res) => {
   try {
@@ -210,7 +314,7 @@ router.delete('/connections/:id', async (req, res) => {
   }
 });
 
-// ── PROVIDER FILE PROXY ENDPOINTS (#7) ───────────────────────────────────────
+// ── PROVIDER FILE PROXY ENDPOINTS (#7, #56) ──────────────────────────────────
 
 /**
  * GET /api/providers/:id/list?path=/
