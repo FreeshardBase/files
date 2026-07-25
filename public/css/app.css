@@ -661,3 +661,22 @@ body {
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent) !important;
   transition: all 150ms ease;
 }
+
+/* Spring-Loaded Folders & Hierarchical Drag-Navigation (#59) */
+.file-card.drag-spring-loading,
+.breadcrumb-item.drag-spring-loading {
+  animation: springPulse 750ms ease-in-out infinite alternate !important;
+  border: 2px dashed var(--accent) !important;
+  background-color: color-mix(in srgb, var(--accent) 25%, var(--surface)) !important;
+}
+
+@keyframes springPulse {
+  from {
+    transform: scale(1);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  to {
+    transform: scale(1.04);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+}

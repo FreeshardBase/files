@@ -26,8 +26,21 @@ class FileBrowser {
     this.selectedCountText = document.getElementById('selectedCountText');
 
     this.isInternalDragging = false; // Drag & Drop file move state (#50)
+    this.springLoadTimer = null; // Spring-loaded folder hover timer (#59)
+    this.springLoadTarget = null;
 
     this.init();
+  }
+
+  clearSpringLoadTimer() {
+    if (this.springLoadTimer) {
+      clearTimeout(this.springLoadTimer);
+      this.springLoadTimer = null;
+    }
+    if (this.springLoadTarget) {
+      this.springLoadTarget.classList.remove('drag-spring-loading');
+      this.springLoadTarget = null;
+    }
   }
 
   init() {
@@ -498,18 +511,32 @@ class FileBrowser {
           e.stopPropagation();
           e.dataTransfer.dropEffect = 'move';
           item.classList.add('drag-target-hover');
+
+          if (targetPath && targetPath !== this.currentPath && this.springLoadTarget !== item) {
+            this.clearSpringLoadTimer();
+            this.springLoadTarget = item;
+            item.classList.add('drag-spring-loading');
+            this.springLoadTimer = setTimeout(() => {
+              this.clearSpringLoadTimer();
+              if (this.isInternalDragging) {
+                this.loadDirectory(targetPath);
+              }
+            }, 750);
+          }
         });
 
         item.addEventListener('dragleave', (e) => {
           e.preventDefault();
           e.stopPropagation();
           item.classList.remove('drag-target-hover');
+          this.clearSpringLoadTimer();
         });
 
         item.addEventListener('drop', async (e) => {
           e.preventDefault();
           e.stopPropagation();
           item.classList.remove('drag-target-hover');
+          this.clearSpringLoadTimer();
 
           const rawData = e.dataTransfer.getData('application/json');
           if (!rawData) return;
@@ -698,6 +725,7 @@ class FileBrowser {
 
         card.addEventListener('dragend', () => {
           this.isInternalDragging = false;
+          this.clearSpringLoadTimer();
           card.classList.remove('dragging');
           this.dropOverlay?.classList.remove('active');
           document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
@@ -710,18 +738,38 @@ class FileBrowser {
             e.stopPropagation();
             e.dataTransfer.dropEffect = 'move';
             card.classList.add('drag-target-hover');
+
+            if (this.springLoadTarget !== card) {
+              this.clearSpringLoadTimer();
+              this.springLoadTarget = card;
+              card.classList.add('drag-spring-loading');
+              this.springLoadTimer = setTimeout(() => {
+                this.clearSpringLoadTimer();
+                if (this.isInternalDragging) {
+                  if (isCloudDrive) {
+                    this.loadProviderDirectory(providerId, card.getAttribute('data-name'), '/');
+                  } else if (this.currentViewType === 'provider') {
+                    this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, itemPath);
+                  } else {
+                    this.loadDirectory(itemPath);
+                  }
+                }
+              }, 750);
+            }
           });
 
           card.addEventListener('dragleave', (e) => {
             e.preventDefault();
             e.stopPropagation();
             card.classList.remove('drag-target-hover');
+            this.clearSpringLoadTimer();
           });
 
           card.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             card.classList.remove('drag-target-hover');
+            this.clearSpringLoadTimer();
 
             const rawData = e.dataTransfer.getData('application/json');
             if (!rawData) return;
