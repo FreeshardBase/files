@@ -19,13 +19,13 @@
         <p style="color: var(--ink-muted); font-size: 13px; margin-top: 4px;">Daylight Instrument Workspace</p>
       </div>
 
-      <div class="login-actions" style="display: flex; flex-direction: column; gap: 10px;">
+      <div id="ssoLoginContainer" class="login-actions" style="display: flex; flex-direction: column; gap: 10px;">
         <a href="/api/auth/login" class="fs-btn fs-btn--primary" style="width: 100%; justify-content: center; padding: 10px; font-weight: 600; font-size: 14px;">
-          🔑 <span>Login mit SSO / Authelia (OIDC)</span>
+          🔑 <span id="btnSsoLoginText">Login mit SSO (Authelia)</span>
         </a>
       </div>
 
-      <div class="login-divider" style="margin: 1.25rem 0; text-align: center; border-bottom: 1px solid var(--border); line-height: 0.1em;">
+      <div id="loginDivider" class="login-divider" style="margin: 1.25rem 0; text-align: center; border-bottom: 1px solid var(--border); line-height: 0.1em;">
         <span style="background: var(--surface); padding: 0 10px; color: var(--ink-muted); font-size: 11px; font-family: var(--font-mono);">oder lokaler Account</span>
       </div>
 

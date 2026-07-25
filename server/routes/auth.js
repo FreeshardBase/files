@@ -35,6 +35,19 @@ async function getOidcClient() {
   }
 }
 
+// ── GET /api/auth/config (Public auth UI config #2, #54) ──────────────────────
+router.get('/config', (req, res) => {
+  const enableLocalAuth = process.env.ENABLE_LOCAL_AUTH !== 'false';
+  const enableOidcAuth = process.env.ENABLE_OIDC_AUTH !== 'false';
+  const oidcButtonLabel = process.env.OIDC_BUTTON_LABEL || 'Login mit SSO (Authelia)';
+
+  res.json({
+    enableLocalAuth,
+    enableOidcAuth,
+    oidcButtonLabel
+  });
+});
+
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get('/me', async (req, res) => {
   if (req.session && req.session.userId) {
@@ -220,6 +233,10 @@ router.post('/backchannel-logout', express.urlencoded({ extended: true }), async
 
 // ── LOCAL AUTH (Fallback) ─────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
+  if (process.env.ENABLE_LOCAL_AUTH === 'false') {
+    return res.status(403).json({ error: 'Local authentication is disabled' });
+  }
+
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
@@ -248,6 +265,10 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/register', async (req, res) => {
+  if (process.env.ENABLE_LOCAL_AUTH === 'false') {
+    return res.status(403).json({ error: 'Local authentication is disabled' });
+  }
+
   const { username, password, email, displayName } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });

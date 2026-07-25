@@ -15,6 +15,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('fs-theme', theme);
   });
 
+  // Fetch Public Auth Config (#2, #54)
+  async function loadAuthConfig() {
+    try {
+      const res = await fetch('/api/auth/config');
+      if (!res.ok) return;
+
+      const config = await res.json();
+      const ssoContainer = document.getElementById('ssoLoginContainer');
+      const ssoText = document.getElementById('btnSsoLoginText');
+      const divider = document.getElementById('loginDivider');
+      const localForm = document.getElementById('localLoginForm');
+
+      // 1. Customize SSO Button Label
+      if (ssoText && config.oidcButtonLabel) {
+        ssoText.textContent = config.oidcButtonLabel;
+      }
+
+      // 2. Hide SSO Button if OIDC is disabled
+      if (ssoContainer && config.enableOidcAuth === false) {
+        ssoContainer.style.display = 'none';
+      }
+
+      // 3. Hide Local Auth Form if ENABLE_LOCAL_AUTH is false
+      if (localForm && config.enableLocalAuth === false) {
+        localForm.style.display = 'none';
+      }
+
+      // 4. Hide Divider if either auth method is disabled
+      if (divider && (config.enableLocalAuth === false || config.enableOidcAuth === false)) {
+        divider.style.display = 'none';
+      }
+    } catch (err) {
+      console.warn('Could not load auth config:', err.message);
+    }
+  }
+
   // Local Auth Login Form Handler
   const localLoginForm = document.getElementById('localLoginForm');
   const loginErrorMsg = document.getElementById('loginErrorMsg');
@@ -88,11 +124,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Unauthenticated State: Show Login Screen, Hide App Dashboard
         if (mainApp) mainApp.style.display = 'none';
         if (loginScreen) loginScreen.style.display = 'flex';
+        await loadAuthConfig();
       }
     } catch (err) {
       console.error('Auth check error:', err);
       if (mainApp) mainApp.style.display = 'none';
       if (loginScreen) loginScreen.style.display = 'flex';
+      await loadAuthConfig();
     }
   }
 
