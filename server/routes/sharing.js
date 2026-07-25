@@ -5,12 +5,45 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const { requireAuth } = require('../middleware/auth');
 const {
-  createFileShare, getFileSharesByOwner, getFileSharesForSharee, deleteFileShare,
-  createPublicShare, getPublicSharesByUser, deletePublicShare, logActivity
+  createFileShare, getFileSharesByOwner, getFileSharesByPath, getFileSharesForSharee, deleteFileShare,
+  createPublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity
 } = require('../db');
 
 // Require session authentication for all link creation operations
 router.use(requireAuth);
+
+// ── OVERVIEW & ITEM DETAILS (#52) ─────────────────────────────────────────────
+
+router.get('/overview', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const filePath = req.query.path;
+
+    if (!filePath) {
+      return res.status(400).json({ error: 'path parameter is required' });
+    }
+
+    const internalShares = await getFileSharesByPath(userId, filePath);
+    const publicShares = await getPublicSharesByPath(userId, filePath);
+
+    const protocol = req.protocol || 'https';
+    const host = req.get('host') || 'fs-files.gryzia.de';
+
+    const formattedPublicShares = publicShares.map(share => ({
+      ...share,
+      password_protected: !!share.password_hash,
+      share_url: `${protocol}://${host}/s/${share.token}`
+    }));
+
+    res.json({
+      file_path: filePath,
+      internal_shares: internalShares,
+      public_shares: formattedPublicShares
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── INTERNAL SHARING (#14, #22) ──────────────────────────────────────────────
 

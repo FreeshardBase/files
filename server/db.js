@@ -298,6 +298,16 @@ async function getFileSharesByOwner(ownerUserId) {
   `, [ownerUserId]);
 }
 
+async function getFileSharesByPath(ownerUserId, filePath) {
+  return all(`
+    SELECT fs.*, u.username as sharee_username, u.display_name as sharee_display_name
+    FROM file_shares fs
+    JOIN users u ON fs.sharee_user_id = u.id
+    WHERE fs.owner_user_id = ? AND fs.file_path = ?
+    ORDER BY fs.created_at DESC
+  `, [ownerUserId, filePath]);
+}
+
 async function getFileSharesForSharee(shareeUserId) {
   return all(`
     SELECT fs.*, u.username as owner_username, u.display_name as owner_display_name
@@ -334,6 +344,14 @@ async function getPublicShareByToken(token) {
 
 async function getPublicSharesByUser(userId) {
   return all('SELECT * FROM public_shares WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getPublicSharesByPath(userId, filePath) {
+  return all(`
+    SELECT * FROM public_shares
+    WHERE user_id = ? AND file_path = ?
+    ORDER BY created_at DESC
+  `, [userId, filePath]);
 }
 
 async function deletePublicShare(shareId, userId) {
@@ -438,11 +456,13 @@ module.exports = {
   getProviderConnections,
   createFileShare,
   getFileSharesByOwner,
+  getFileSharesByPath,
   getFileSharesForSharee,
   deleteFileShare,
   createPublicShare,
   getPublicShareByToken,
   getPublicSharesByUser,
+  getPublicSharesByPath,
   deletePublicShare,
   incrementPublicShareDownloads,
   updateSharePathsOnMove,

@@ -158,11 +158,25 @@ class FileBrowser {
 
     // Context Menu Actions
     document.getElementById('ctxOpen')?.addEventListener('click', () => this.openSelectedItem());
+    document.getElementById('ctxDetails')?.addEventListener('click', () => this.showFileDetailsModalFromContextMenu());
     document.getElementById('ctxShareInternal')?.addEventListener('click', () => this.showShareInternalModal());
     document.getElementById('ctxSharePublic')?.addEventListener('click', () => this.showSharePublicModal());
     document.getElementById('ctxDownload')?.addEventListener('click', () => this.downloadSelectedItem());
     document.getElementById('ctxRename')?.addEventListener('click', () => this.showRenameModal());
     document.getElementById('ctxDelete')?.addEventListener('click', () => this.deleteSelectedItem());
+
+    // File Details Modal Controls (#52)
+    document.getElementById('btnFileDetails')?.addEventListener('click', () => this.showFileDetailsModalFromToolbar());
+    document.getElementById('btnCloseFileDetails')?.addEventListener('click', () => this.hideModal('modalFileDetails'));
+    document.getElementById('btnDetailsClose')?.addEventListener('click', () => this.hideModal('modalFileDetails'));
+    document.getElementById('btnDetailsAddInternalShare')?.addEventListener('click', () => {
+      this.hideModal('modalFileDetails');
+      this.showShareInternalModal();
+    });
+    document.getElementById('btnDetailsAddPublicShare')?.addEventListener('click', () => {
+      this.hideModal('modalFileDetails');
+      this.showSharePublicModal();
+    });
   }
 
   async loadDirectory(dirPath) {
@@ -583,6 +597,11 @@ class FileBrowser {
 
   updateSelectionActionBar() {
     const count = this.selectedPaths.size;
+    const btnFileDetails = document.getElementById('btnFileDetails');
+    if (btnFileDetails) {
+      btnFileDetails.style.display = count === 1 ? 'inline-flex' : 'none';
+    }
+
     if (this.selectionActionBar) {
       if (count > 0) {
         this.selectionActionBar.style.display = 'flex';
@@ -954,6 +973,119 @@ class FileBrowser {
     }
 
     this.loadDirectory(this.currentPath);
+  }
+
+  showFileDetailsModalFromContextMenu() {
+    this.hideContextMenu();
+    if (this.selectedItem) {
+      this.showFileDetailsModal(this.selectedItem);
+    }
+  }
+
+  showFileDetailsModalFromToolbar() {
+    if (this.selectedPaths.size === 1) {
+      const selectedPath = Array.from(this.selectedPaths)[0];
+      const item = this.items.find(i => i.path === selectedPath);
+      if (item) {
+        this.showFileDetailsModal(item);
+      }
+    } else if (this.selectedItem) {
+      this.showFileDetailsModal(this.selectedItem);
+    }
+  }
+
+  async showFileDetailsModal(item) {
+    if (!item) return;
+
+    this.selectedItem = item;
+    const modal = document.getElementById('modalFileDetails');
+    if (!modal) return;
+
+    document.getElementById('detailsFileName').textContent = item.name;
+    document.getElementById('detailsFilePath').textContent = item.path;
+    document.getElementById('detailsFileIcon').textContent = item.isDirectory ? '📁' : '📄';
+    document.getElementById('detailsFileSize').textContent = item.size ? this.formatSize(item.size) : (item.isDirectory ? 'Directory' : '-');
+    document.getElementById('detailsFileType').textContent = item.isDirectory ? 'Directory' : (item.mimeType || 'File');
+    document.getElementById('detailsFileMtime').textContent = item.mtime ? new Date(item.mtime).toLocaleString() : '-';
+    document.getElementById('detailsFileOwner').textContent = item.owner || 'You';
+
+    const internalList = document.getElementById('detailsInternalSharesList');
+    const publicList = document.getElementById('detailsPublicSharesList');
+    if (internalList) internalList.innerHTML = '<span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">Loading shares...</span>';
+    if (publicList) publicList.innerHTML = '<span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">Loading links...</span>';
+
+    this.showModal('modalFileDetails');
+
+    try {
+      const res = await fetch(`/api/shares/overview?path=${encodeURIComponent(item.path)}`);
+      if (!res.ok) throw new Error('Failed to load sharing overview');
+      const data = await res.json();
+
+      if (internalList) {
+        if (data.internal_shares && data.internal_shares.length > 0) {
+          internalList.innerHTML = data.internal_shares.map(s => `
+            <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg); padding: 6px 10px; border-radius: var(--radius-control); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="fs-mono" style="font-weight: 600;">${s.sharee_display_name || s.sharee_username}</span>
+                <span style="font-size: 10px; color: var(--ink-muted); font-family: var(--font-mono);">(${s.read_write ? 'Read/Write' : 'Read Only'})</span>
+              </div>
+              <button class="fs-btn fs-btn--danger text-sm btn-revoke-internal-share" data-id="${s.id}" style="padding: 2px 6px; font-size: 10px;">Revoke</button>
+            </div>
+          `).join('');
+
+          internalList.querySelectorAll('.btn-revoke-internal-share').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const shareId = e.target.getAttribute('data-id');
+              await fetch(`/api/shares/internal/${shareId}`, { method: 'DELETE' });
+              this.showFileDetailsModal(item);
+            });
+          });
+        } else {
+          internalList.innerHTML = '<span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">Not shared with any users</span>';
+        }
+      }
+
+      if (publicList) {
+        if (data.public_shares && data.public_shares.length > 0) {
+          publicList.innerHTML = data.public_shares.map(p => `
+            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--bg); padding: 8px 10px; border-radius: var(--radius-control); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="fs-mono" style="font-size: 11px; font-weight: 500;">${p.share_url}</span>
+                <div style="display: flex; gap: 4px;">
+                  <button class="fs-btn fs-btn--primary text-sm btn-copy-public-link" data-url="${p.share_url}" style="padding: 2px 6px; font-size: 10px;">📋 Copy</button>
+                  <button class="fs-btn fs-btn--danger text-sm btn-revoke-public-link" data-id="${p.id}" style="padding: 2px 6px; font-size: 10px;">Revoke</button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; font-size: 10px; color: var(--ink-muted); font-family: var(--font-mono);">
+                <span>🔒 Password: ${p.password_protected ? 'Yes' : 'No'}</span>
+                <span>📅 Expires: ${p.expires_at ? new Date(p.expires_at).toLocaleDateString() : 'Never'}</span>
+                <span>📥 Downloads: ${p.download_count}${p.max_downloads ? `/${p.max_downloads}` : ''}</span>
+              </div>
+            </div>
+          `).join('');
+
+          publicList.querySelectorAll('.btn-copy-public-link').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              const url = e.target.getAttribute('data-url');
+              navigator.clipboard.writeText(url);
+              alert('📋 Link copied to clipboard!');
+            });
+          });
+
+          publicList.querySelectorAll('.btn-revoke-public-link').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const shareId = e.target.getAttribute('data-id');
+              await fetch(`/api/shares/public/${shareId}`, { method: 'DELETE' });
+              this.showFileDetailsModal(item);
+            });
+          });
+        } else {
+          publicList.innerHTML = '<span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">No active public share links</span>';
+        }
+      }
+    } catch (err) {
+      console.error('Error loading overview:', err);
+    }
   }
 }
 

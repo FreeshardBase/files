@@ -85,6 +85,7 @@
         <div class="breadcrumb" id="breadcrumb"></div>
         <div class="action-buttons">
           <button class="fs-btn fs-btn--danger" id="btnEmptyTrash" style="display: none;">🗑️ <span>Empty Trash</span></button>
+          <button class="fs-btn" id="btnFileDetails" style="display: none;">ℹ️ <span>Details</span></button>
           <button class="fs-btn" id="btnAddCloudDrive">☁️ <span>Connect Drive</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
           <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer;">
@@ -125,12 +126,63 @@
   <!-- Context Menu -->
   <div id="contextMenu" class="context-menu" style="display: none;">
     <div class="context-menu-item" id="ctxOpen">📂 Open / Preview</div>
+    <div class="context-menu-item" id="ctxDetails">ℹ️ Details & Shares</div>
     <div class="context-menu-item" id="ctxShareInternal">👥 Share with User</div>
     <div class="context-menu-item" id="ctxSharePublic">🔗 Create Public Link</div>
     <div class="context-menu-item" id="ctxDownload">⬇️ Download</div>
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" id="ctxDelete">🗑️ Move to Trash</div>
+  </div>
+
+  <!-- Modal: File Details & Sharing Overview Panel (#52) -->
+  <div id="modalFileDetails" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet" style="max-width: 520px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
+        <h3 id="detailsHeaderTitle" style="font-size: var(--fs-h3); margin: 0;">ℹ️ File Details & Shares</h3>
+        <button id="btnCloseFileDetails" class="fs-btn text-sm" style="padding: 2px 8px;">✖</button>
+      </div>
+
+      <!-- File Metadata Section -->
+      <div class="details-section" style="margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <span id="detailsFileIcon" style="font-size: 2.2rem;">📄</span>
+          <div>
+            <h4 id="detailsFileName" style="font-size: 15px; font-weight: 600; color: var(--ink); word-break: break-all;">file.txt</h4>
+            <span id="detailsFilePath" class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">/file.txt</span>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--bg); padding: 12px; border-radius: var(--radius-tile); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
+          <div><span class="fs-label">Size:</span> <span id="detailsFileSize" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Type:</span> <span id="detailsFileType" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Modified:</span> <span id="detailsFileMtime" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Owner:</span> <span id="detailsFileOwner" class="fs-mono">You</span></div>
+        </div>
+      </div>
+
+      <!-- Internal Sharing Overview -->
+      <div class="details-section" style="margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span class="fs-label" style="font-size: 11px; font-weight: 700;">👥 Internal User Shares</span>
+          <button id="btnDetailsAddInternalShare" class="fs-btn text-sm" style="padding: 2px 8px; font-size: 11px;">+ Share</button>
+        </div>
+        <div id="detailsInternalSharesList" style="display: flex; flex-direction: column; gap: 6px; max-height: 120px; overflow-y: auto;"></div>
+      </div>
+
+      <!-- Public Links Overview -->
+      <div class="details-section" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span class="fs-label" style="font-size: 11px; font-weight: 700;">🔗 Public Share Links</span>
+          <button id="btnDetailsAddPublicShare" class="fs-btn text-sm" style="padding: 2px 8px; font-size: 11px;">+ Create Link</button>
+        </div>
+        <div id="detailsPublicSharesList" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;"></div>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 1.25rem;">
+        <button class="fs-btn" id="btnDetailsClose">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal: Connect Cloud Drive (#7) -->
