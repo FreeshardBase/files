@@ -618,7 +618,7 @@ class FileBrowser {
 
       card.addEventListener('click', (e) => {
         if (checkbox && e.target !== checkbox) {
-          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          if (this.selectedPaths.size > 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
             const newState = !this.selectedPaths.has(itemPath);
             checkbox.checked = newState;
             this.toggleItemSelection(itemPath, newState, card);
@@ -671,7 +671,20 @@ class FileBrowser {
         card.addEventListener('dragstart', (e) => {
           e.stopPropagation();
           this.isInternalDragging = true;
+
+          let itemsToMove = [];
+          if (this.selectedPaths.size > 0 && this.selectedPaths.has(itemPath)) {
+            itemsToMove = Array.from(this.selectedPaths).map(p => {
+              const itemObj = this.items.find(i => i.path === p);
+              const name = itemObj ? itemObj.name : p.split('/').filter(Boolean).pop() || p;
+              return { srcPath: p, name };
+            });
+          } else {
+            itemsToMove = [{ srcPath: itemPath, name: card.getAttribute('data-name') }];
+          }
+
           const payload = {
+            items: itemsToMove,
             srcPath: itemPath,
             name: card.getAttribute('data-name'),
             isDirectory: isDir,
@@ -716,10 +729,6 @@ class FileBrowser {
               const data = JSON.parse(rawData);
               const targetFolderPath = itemPath;
 
-              if (data.srcPath === targetFolderPath || targetFolderPath.startsWith(data.srcPath + '/')) {
-                return;
-              }
-
               await this.handleDragDropMove(data, targetFolderPath);
             } catch (err) {
               console.error('Drag & Drop Move Error:', err);
@@ -732,22 +741,50 @@ class FileBrowser {
   }
 
   async handleDragDropMove(dragData, targetDirectory) {
-    const srcPath = dragData.srcPath;
-    const itemName = dragData.name;
-    const destPath = targetDirectory === '/' ? `/${itemName}` : `${targetDirectory.replace(/\/+$/, '')}/${itemName}`;
+    const items = dragData.items && dragData.items.length > 0
+      ? dragData.items
+      : [{ srcPath: dragData.srcPath, name: dragData.name }];
 
     if (dragData.viewType === 'local' || !dragData.viewType) {
-      const res = await fetch('/api/files/local/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ src: srcPath, dst: destPath })
-      });
+      if (items.length > 1) {
+        const batchItems = items
+          .filter(i => i.srcPath !== targetDirectory && !targetDirectory.startsWith(i.srcPath + '/'))
+          .map(i => {
+            const destPath = targetDirectory === '/' ? `/${i.name}` : `${targetDirectory.replace(/\/+$/, '')}/${i.name}`;
+            return { src: i.srcPath, dst: destPath };
+          });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to move file');
+        if (batchItems.length === 0) return;
+
+        const res = await fetch('/api/files/local/batch/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: batchItems })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed batch move');
+        }
+      } else {
+        const item = items[0];
+        if (item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
+          return;
+        }
+        const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
+        const res = await fetch('/api/files/local/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: item.srcPath, dst: destPath })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to move file');
+        }
       }
 
+      this.clearSelection();
       this.loadDirectory(this.currentPath);
     }
   }
