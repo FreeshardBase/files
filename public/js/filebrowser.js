@@ -177,6 +177,10 @@ class FileBrowser {
       this.hideModal('modalFileDetails');
       this.showSharePublicModal();
     });
+
+    // Edit Public Share Modal Controls (#53)
+    document.getElementById('btnCancelEditPublicShare')?.addEventListener('click', () => this.hideModal('modalEditPublicShare'));
+    document.getElementById('btnConfirmEditPublicShare')?.addEventListener('click', () => this.updatePublicShareLink());
   }
 
   async loadDirectory(dirPath) {
@@ -673,6 +677,7 @@ class FileBrowser {
   async createPublicShareLink() {
     if (!this.selectedItem) return;
 
+    const label = document.getElementById('inputPublicLabel')?.value.trim();
     const password = document.getElementById('inputPublicPassword')?.value;
     const expiresAt = document.getElementById('inputPublicExpiresAt')?.value;
     const maxDownloads = document.getElementById('inputPublicMaxDownloads')?.value;
@@ -684,6 +689,7 @@ class FileBrowser {
         body: JSON.stringify({
           file_path: this.selectedItem.path,
           is_directory: this.selectedItem.isDirectory ? 1 : 0,
+          label: label || null,
           password: password ? password.trim() : null,
           expires_at: expiresAt || null,
           max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null
@@ -1047,22 +1053,39 @@ class FileBrowser {
 
       if (publicList) {
         if (data.public_shares && data.public_shares.length > 0) {
-          publicList.innerHTML = data.public_shares.map(p => `
-            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--bg); padding: 8px 10px; border-radius: var(--radius-control); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span class="fs-mono" style="font-size: 11px; font-weight: 500;">${p.share_url}</span>
-                <div style="display: flex; gap: 4px;">
-                  <button class="fs-btn fs-btn--primary text-sm btn-copy-public-link" data-url="${p.share_url}" style="padding: 2px 6px; font-size: 10px;">📋 Copy</button>
-                  <button class="fs-btn fs-btn--danger text-sm btn-revoke-public-link" data-id="${p.id}" style="padding: 2px 6px; font-size: 10px;">Revoke</button>
+          publicList.innerHTML = data.public_shares.map(p => {
+            const labelText = p.label ? `<span class="fs-mono" style="font-weight: 600; color: var(--ink); margin-right: 6px;">🏷️ ${p.label}</span>` : '';
+            const expiresFormatted = p.expires_at ? new Date(p.expires_at).toLocaleString() : 'Never';
+            const safeShareJson = JSON.stringify(p).replace(/'/g, "&#39;");
+
+            return `
+              <div style="display: flex; flex-direction: column; gap: 4px; background: var(--bg); padding: 8px 10px; border-radius: var(--radius-control); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <div>
+                    ${labelText}
+                    <span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">${p.share_url}</span>
+                  </div>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="fs-btn text-sm btn-edit-public-link" data-share='${safeShareJson}' style="padding: 2px 6px; font-size: 10px;">✏️ Edit</button>
+                    <button class="fs-btn fs-btn--primary text-sm btn-copy-public-link" data-url="${p.share_url}" style="padding: 2px 6px; font-size: 10px;">📋 Copy</button>
+                    <button class="fs-btn fs-btn--danger text-sm btn-revoke-public-link" data-id="${p.id}" style="padding: 2px 6px; font-size: 10px;">Revoke</button>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px; font-size: 10px; color: var(--ink-muted); font-family: var(--font-mono);">
+                  <span>🔒 Password: ${p.password_protected ? 'Yes' : 'No'}</span>
+                  <span>📅 Expires: ${expiresFormatted}</span>
+                  <span>📥 Downloads: ${p.download_count}${p.max_downloads ? `/${p.max_downloads}` : ''}</span>
                 </div>
               </div>
-              <div style="display: flex; gap: 12px; font-size: 10px; color: var(--ink-muted); font-family: var(--font-mono);">
-                <span>🔒 Password: ${p.password_protected ? 'Yes' : 'No'}</span>
-                <span>📅 Expires: ${p.expires_at ? new Date(p.expires_at).toLocaleDateString() : 'Never'}</span>
-                <span>📥 Downloads: ${p.download_count}${p.max_downloads ? `/${p.max_downloads}` : ''}</span>
-              </div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
+
+          publicList.querySelectorAll('.btn-edit-public-link').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              const shareData = JSON.parse(btn.getAttribute('data-share'));
+              this.showEditPublicShareModal(shareData, item);
+            });
+          });
 
           publicList.querySelectorAll('.btn-copy-public-link').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1085,6 +1108,57 @@ class FileBrowser {
       }
     } catch (err) {
       console.error('Error loading overview:', err);
+    }
+  }
+
+  showEditPublicShareModal(shareData, item) {
+    this.currentEditShare = shareData;
+    this.currentEditItem = item;
+
+    document.getElementById('editPublicShareId').value = shareData.id;
+    document.getElementById('inputEditPublicLabel').value = shareData.label || '';
+    document.getElementById('inputEditPublicPassword').value = '';
+    document.getElementById('checkRemovePassword').checked = false;
+    document.getElementById('inputEditPublicExpiresAt').value = shareData.expires_at ? shareData.expires_at.substring(0, 16) : '';
+    document.getElementById('inputEditPublicMaxDownloads').value = shareData.max_downloads || '';
+
+    this.showModal('modalEditPublicShare');
+  }
+
+  async updatePublicShareLink() {
+    const shareId = document.getElementById('editPublicShareId')?.value;
+    if (!shareId) return;
+
+    const label = document.getElementById('inputEditPublicLabel')?.value.trim();
+    const password = document.getElementById('inputEditPublicPassword')?.value;
+    const removePassword = document.getElementById('checkRemovePassword')?.checked;
+    const expiresAt = document.getElementById('inputEditPublicExpiresAt')?.value;
+    const maxDownloads = document.getElementById('inputEditPublicMaxDownloads')?.value;
+
+    try {
+      const res = await fetch(`/api/shares/public/${shareId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: label || null,
+          password: password ? password.trim() : undefined,
+          remove_password: removePassword,
+          expires_at: expiresAt || null,
+          max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update public share link');
+      }
+
+      this.hideModal('modalEditPublicShare');
+      if (this.currentEditItem) {
+        this.showFileDetailsModal(this.currentEditItem);
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
     }
   }
 }

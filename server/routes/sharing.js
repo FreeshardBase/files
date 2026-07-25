@@ -6,7 +6,7 @@ const path = require('path');
 const { requireAuth } = require('../middleware/auth');
 const {
   createFileShare, getFileSharesByOwner, getFileSharesByPath, getFileSharesForSharee, deleteFileShare,
-  createPublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity
+  createPublicShare, updatePublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity
 } = require('../db');
 
 // Require session authentication for all link creation operations
@@ -115,14 +115,14 @@ router.delete('/internal/:id', async (req, res) => {
   }
 });
 
-// ── PUBLIC LINK SHARING (#15, #22) ───────────────────────────────────────────
+// ── PUBLIC LINK SHARING (#15, #22, #53) ──────────────────────────────────────
 
 router.post('/public', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
-    const { file_path, is_directory = 0, password, expires_at, max_downloads } = req.body;
+    const { file_path, is_directory = 0, password, expires_at, max_downloads, label } = req.body;
     if (!file_path) return res.status(400).json({ error: 'file_path is required' });
 
     const token = crypto.randomBytes(12).toString('hex');
@@ -131,19 +131,58 @@ router.post('/public', async (req, res) => {
       passwordHash = await bcrypt.hash(password.trim(), 10);
     }
 
-    const share = await createPublicShare(userId, token, file_path, is_directory, passwordHash, expires_at || null, max_downloads || null);
+    const share = await createPublicShare(userId, token, file_path, is_directory, passwordHash, expires_at || null, max_downloads || null, label || null);
 
     const protocol = req.protocol || 'https';
     const host = req.get('host') || 'fs-files.gryzia.de';
     const shareUrl = `${protocol}://${host}/s/${token}`;
 
-    await logActivity(userId, 'share_public', file_path, path.basename(file_path), is_directory, JSON.stringify({ token }));
+    await logActivity(userId, 'share_public', file_path, path.basename(file_path), is_directory, JSON.stringify({ token, label }));
 
     res.status(201).json({
       success: true,
       token,
       share_url: shareUrl,
       share
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/public/:id', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const shareId = req.params.id;
+    const { label, password, expires_at, max_downloads, remove_password } = req.body;
+
+    let passwordHash = undefined;
+    if (password && password.trim().length > 0) {
+      passwordHash = await bcrypt.hash(password.trim(), 10);
+    }
+
+    const updatedShare = await updatePublicShare(shareId, userId, {
+      label,
+      passwordHash,
+      expiresAt: expires_at,
+      maxDownloads: max_downloads,
+      clearPassword: !!remove_password
+    });
+
+    if (!updatedShare) {
+      return res.status(404).json({ error: 'Public link not found or permission denied' });
+    }
+
+    const protocol = req.protocol || 'https';
+    const host = req.get('host') || 'fs-files.gryzia.de';
+
+    res.json({
+      success: true,
+      share: {
+        ...updatedShare,
+        password_protected: !!updatedShare.password_hash,
+        share_url: `${protocol}://${host}/s/${updatedShare.token}`
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

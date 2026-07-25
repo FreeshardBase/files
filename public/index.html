@@ -265,18 +265,22 @@
     </div>
   </div>
 
-  <!-- Modal: Share Public Link (#15) -->
+  <!-- Modal: Share Public Link (#15, #53) -->
   <div id="modalSharePublic" class="modal" style="display: none;">
     <div class="modal-content fs-sheet">
       <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Create Public Share Link</h3>
       <p class="fs-mono" id="publicShareItemNameText" style="color: var(--ink-muted); margin-bottom: 1rem; font-size: 12px;"></p>
       <div class="fs-field">
+        <label class="fs-label">Label / Name (Optional)</label>
+        <input type="text" id="inputPublicLabel" class="fs-input" placeholder="e.g. Client Feedback Link">
+      </div>
+      <div class="fs-field" style="margin-top: 0.5rem;">
         <label class="fs-label">Optional Password</label>
         <input type="password" id="inputPublicPassword" class="fs-input" placeholder="Leave empty for open link">
       </div>
       <div class="fs-field" style="margin-top: 0.5rem;">
-        <label class="fs-label">Expiration Date (Optional)</label>
-        <input type="date" id="inputPublicExpiresAt" class="fs-input">
+        <label class="fs-label">Expiration Date & Time (Optional)</label>
+        <input type="datetime-local" id="inputPublicExpiresAt" class="fs-input">
       </div>
       <div class="fs-field" style="margin-top: 0.5rem;">
         <label class="fs-label">Max Downloads (Optional)</label>
@@ -292,6 +296,39 @@
       <div class="modal-actions" style="margin-top: 1.25rem;">
         <button class="fs-btn" id="btnCancelPublicShare">Close</button>
         <button class="fs-btn fs-btn--primary" id="btnConfirmPublicShare">Generate Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Edit Public Share Link (#53) -->
+  <div id="modalEditPublicShare" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet">
+      <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Edit Public Share Link</h3>
+      <input type="hidden" id="editPublicShareId">
+      <div class="fs-field">
+        <label class="fs-label">Label / Name</label>
+        <input type="text" id="inputEditPublicLabel" class="fs-input" placeholder="e.g. Client Feedback Link">
+      </div>
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">New Password (leave empty to keep current)</label>
+        <input type="password" id="inputEditPublicPassword" class="fs-input" placeholder="••••••••">
+      </div>
+      <div style="margin-top: 6px;">
+        <label style="font-size: 11px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="checkRemovePassword"> Remove Password Protection
+        </label>
+      </div>
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">Expiration Date & Time (Optional)</label>
+        <input type="datetime-local" id="inputEditPublicExpiresAt" class="fs-input">
+      </div>
+      <div class="fs-field" style="margin-top: 0.5rem;">
+        <label class="fs-label">Max Downloads (Optional)</label>
+        <input type="number" id="inputEditPublicMaxDownloads" class="fs-input" placeholder="e.g. 10">
+      </div>
+      <div class="modal-actions" style="margin-top: 1.25rem;">
+        <button class="fs-btn" id="btnCancelEditPublicShare">Cancel</button>
+        <button class="fs-btn fs-btn--primary" id="btnConfirmEditPublicShare">Save Changes</button>
       </div>
     </div>
   </div>

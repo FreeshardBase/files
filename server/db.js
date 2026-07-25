@@ -81,11 +81,11 @@ async function initDb() {
   const columns = await all("PRAGMA table_info(users);");
   const hasQuota = columns.some(c => c.name === 'quota_bytes');
   if (!hasQuota) {
-    await run("ALTER TABLE users ADD COLUMN quota_bytes INTEGER DEFAULT NULL;");
+    try { await run("ALTER TABLE users ADD COLUMN quota_bytes INTEGER DEFAULT NULL;"); } catch (e) {}
   }
   const hasDisplayName = columns.some(c => c.name === 'display_name');
   if (!hasDisplayName) {
-    await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL;");
+    try { await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL;"); } catch (e) {}
   }
 
   // App Passwords table (#2, #3, #21)
@@ -133,12 +133,13 @@ async function initDb() {
     )
   `);
 
-  // Public Share Links (#3, #15)
+  // Public Share Links (#3, #15, #53)
   await run(`
     CREATE TABLE IF NOT EXISTS public_shares (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       token TEXT NOT NULL UNIQUE,
+      label TEXT DEFAULT NULL,
       provider_type TEXT NOT NULL DEFAULT 'local',
       provider_connection_id INTEGER REFERENCES provider_connections(id),
       file_path TEXT NOT NULL,
@@ -151,6 +152,16 @@ async function initDb() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  const publicColumns = await all("PRAGMA table_info(public_shares);");
+  const hasLabel = publicColumns.some(c => c.name === 'label');
+  if (!hasLabel) {
+    try {
+      await run("ALTER TABLE public_shares ADD COLUMN label TEXT DEFAULT NULL;");
+    } catch (e) {
+      if (!e.message.includes('duplicate column')) throw e;
+    }
+  }
 
   // Trash Items (#18)
   await run(`
@@ -323,14 +334,47 @@ async function deleteFileShare(shareId, ownerUserId) {
   return res.changes > 0;
 }
 
-// ── Public Link Sharing Helpers (#15) ────────────────────────────────────────
+// ── Public Link Sharing Helpers (#15, #53) ───────────────────────────────────
 
-async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null) {
+async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null, label = null) {
   const res = await run(`
-    INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads]);
+    INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads, label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads, label]);
   return get('SELECT * FROM public_shares WHERE id = ?', [res.lastID]);
+}
+
+async function updatePublicShare(shareId, userId, { label, passwordHash, expiresAt, maxDownloads, clearPassword }) {
+  let sql = 'UPDATE public_shares SET ';
+  const params = [];
+  const updates = [];
+
+  if (label !== undefined) {
+    updates.push('label = ?');
+    params.push(label);
+  }
+  if (clearPassword) {
+    updates.push('password_hash = NULL');
+  } else if (passwordHash !== undefined && passwordHash !== null) {
+    updates.push('password_hash = ?');
+    params.push(passwordHash);
+  }
+  if (expiresAt !== undefined) {
+    updates.push('expires_at = ?');
+    params.push(expiresAt);
+  }
+  if (maxDownloads !== undefined) {
+    updates.push('max_downloads = ?');
+    params.push(maxDownloads);
+  }
+
+  if (updates.length === 0) return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
+
+  sql += updates.join(', ') + ' WHERE id = ? AND user_id = ?';
+  params.push(shareId, userId);
+
+  await run(sql, params);
+  return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
 }
 
 async function getPublicShareByToken(token) {
@@ -460,6 +504,7 @@ module.exports = {
   getFileSharesForSharee,
   deleteFileShare,
   createPublicShare,
+  updatePublicShare,
   getPublicShareByToken,
   getPublicSharesByUser,
   getPublicSharesByPath,
