@@ -23,8 +23,8 @@
       <ul class="nav-list">
         <li class="nav-item active" id="navHome"><a href="#/files"><span class="nav-icon">🏠</span> <span class="fs-label" data-i18n="nav.home">Home</span></a></li>
         <li class="nav-item" id="navShared"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label" data-i18n="nav.shared">Shared with me</span></a></li>
-        <li class="nav-item"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label" data-i18n="nav.trash">Trash</span></a></li>
-        <li class="nav-item"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
+        <li class="nav-item" id="navTrash"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label" data-i18n="nav.trash">Trash</span></a></li>
+        <li class="nav-item" id="navActivity"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
         <li class="nav-item" id="navSettings"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label" data-i18n="nav.settings">Settings</span></a></li>
       </ul>
       
@@ -49,9 +49,10 @@
       <div class="toolbar-area">
         <div class="breadcrumb" id="breadcrumb"></div>
         <div class="action-buttons">
+          <button class="fs-btn fs-btn--danger" id="btnEmptyTrash" style="display: none;">🗑️ <span>Empty Trash</span></button>
           <button class="fs-btn" id="btnAddCloudDrive">☁️ <span>Connect Drive</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
-          <label class="fs-btn fs-btn--primary" style="margin: 0; cursor: pointer;">
+          <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer;">
             📤 <span data-i18n="files.upload">Upload</span>
             <input type="file" id="fileInput" multiple style="display: none;">
           </label>
@@ -94,7 +95,7 @@
     <div class="context-menu-item" id="ctxDownload">⬇️ Download</div>
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
     <div class="context-menu-divider"></div>
-    <div class="context-menu-item danger" id="ctxDelete">🗑️ Delete</div>
+    <div class="context-menu-item danger" id="ctxDelete">🗑️ Move to Trash</div>
   </div>
 
   <!-- Modal: Connect Cloud Drive (#7) -->

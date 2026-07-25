@@ -370,6 +370,43 @@ async function updateSharePathsOnMove(userId, srcPath, dstPath) {
   `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
 }
 
+// ── Trash & Soft-Delete Helpers (#18) ────────────────────────────────────────
+
+async function createTrashItem(id, userId, originalPath, originalName, isDirectory = 0, sizeBytes = 0, retentionDays = 30) {
+  await run(`
+    INSERT INTO trash_items (id, user_id, original_path, original_name, is_directory, size_bytes, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+' || ? || ' days'))
+  `, [id, userId, originalPath, originalName, isDirectory ? 1 : 0, sizeBytes, retentionDays]);
+  return get('SELECT * FROM trash_items WHERE id = ?', [id]);
+}
+
+async function getTrashItemsByUser(userId) {
+  return all('SELECT * FROM trash_items WHERE user_id = ? ORDER BY deleted_at DESC', [userId]);
+}
+
+async function getTrashItemById(id, userId) {
+  return get('SELECT * FROM trash_items WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+async function deleteTrashItem(id, userId) {
+  const res = await run('DELETE FROM trash_items WHERE id = ? AND user_id = ?', [id, userId]);
+  return res.changes > 0;
+}
+
+async function emptyTrash(userId) {
+  const items = await all('SELECT * FROM trash_items WHERE user_id = ?', [userId]);
+  await run('DELETE FROM trash_items WHERE user_id = ?', [userId]);
+  return items;
+}
+
+async function cleanupExpiredTrashItems() {
+  const expiredItems = await all("SELECT * FROM trash_items WHERE expires_at <= datetime('now')");
+  if (expiredItems.length > 0) {
+    await run("DELETE FROM trash_items WHERE expires_at <= datetime('now')");
+  }
+  return expiredItems;
+}
+
 module.exports = {
   getDb,
   run,
@@ -389,5 +426,11 @@ module.exports = {
   getPublicSharesByUser,
   deletePublicShare,
   incrementPublicShareDownloads,
-  updateSharePathsOnMove
+  updateSharePathsOnMove,
+  createTrashItem,
+  getTrashItemsByUser,
+  getTrashItemById,
+  deleteTrashItem,
+  emptyTrash,
+  cleanupExpiredTrashItems
 };

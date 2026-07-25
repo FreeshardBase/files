@@ -1,7 +1,7 @@
 class FileBrowser {
   constructor() {
     this.currentPath = '/';
-    this.currentViewType = 'local'; // 'local' or 'shared'
+    this.currentViewType = 'local'; // 'local', 'shared', or 'trash'
     this.viewMode = 'grid'; // 'grid' or 'list'
     this.items = [];
     this.selectedItem = null;
@@ -53,7 +53,7 @@ class FileBrowser {
       window.location.href = '/api/providers/gdrive/auth';
     });
 
-    // Sidebar Navigation (#14)
+    // Sidebar Navigation (#14, #18)
     document.getElementById('navHome')?.addEventListener('click', (e) => {
       e.preventDefault();
       this.currentViewType = 'local';
@@ -69,6 +69,16 @@ class FileBrowser {
       document.getElementById('navShared')?.classList.add('active');
       this.loadSharedWithMe();
     });
+
+    document.getElementById('navTrash')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.currentViewType = 'trash';
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('navTrash')?.classList.add('active');
+      this.loadTrash();
+    });
+
+    document.getElementById('btnEmptyTrash')?.addEventListener('click', () => this.emptyTrash());
 
     // New Folder Modal
     document.getElementById('btnNewFolder')?.addEventListener('click', () => this.showModal('modalNewFolder'));
@@ -149,6 +159,9 @@ class FileBrowser {
     this.clearSelection();
     this.renderBreadcrumb();
 
+    const emptyTrashBtn = document.getElementById('btnEmptyTrash');
+    if (emptyTrashBtn) emptyTrashBtn.style.display = 'none';
+
     try {
       const res = await fetch(`/api/files/local/list?path=${encodeURIComponent(dirPath)}`);
       if (!res.ok) {
@@ -171,6 +184,9 @@ class FileBrowser {
     if (this.breadcrumb) {
       this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Shared with me</span>`;
     }
+
+    const emptyTrashBtn = document.getElementById('btnEmptyTrash');
+    if (emptyTrashBtn) emptyTrashBtn.style.display = 'none';
 
     try {
       const res = await fetch('/api/shares/internal/shared-with-me');
@@ -198,8 +214,46 @@ class FileBrowser {
     }
   }
 
+  async loadTrash() {
+    this.currentViewType = 'trash';
+    this.clearSelection();
+    if (this.breadcrumb) {
+      this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Trash (Auto-deletes after 30 days)</span>`;
+    }
+
+    const emptyTrashBtn = document.getElementById('btnEmptyTrash');
+    if (emptyTrashBtn) emptyTrashBtn.style.display = 'inline-flex';
+
+    try {
+      const res = await fetch('/api/trash');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to load trash');
+      }
+
+      const data = await res.json();
+      const trashItems = data.items || [];
+
+      this.items = trashItems.map(t => ({
+        id: t.id,
+        name: t.original_name,
+        path: t.original_path,
+        isDirectory: !!t.is_directory,
+        size: t.size_bytes,
+        deletedAt: t.deleted_at,
+        expiresAt: t.expires_at,
+        isTrashItem: true
+      }));
+
+      this.render();
+    } catch (err) {
+      console.error('Error loading trash:', err);
+      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
+    }
+  }
+
   renderBreadcrumb() {
-    if (!this.breadcrumb || this.currentViewType === 'shared') return;
+    if (!this.breadcrumb || this.currentViewType !== 'local') return;
 
     const parts = this.currentPath.split('/').filter(Boolean);
     let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-path="/">Home</span>`;
@@ -228,11 +282,11 @@ class FileBrowser {
     if (!this.container) return;
 
     if (this.items.length === 0) {
+      const msg = this.currentViewType === 'trash' ? 'Trash is empty.' : (this.currentViewType === 'shared' ? 'No files shared with you yet.' : 'Upload files or create a folder to get started.');
       this.container.innerHTML = `
         <div class="placeholder-card" style="grid-column: 1 / -1;">
-          <span style="font-size: 3rem;">📂</span>
-          <h3 style="margin-top: 0.5rem; color: var(--ink-muted);">No items to display</h3>
-          <p style="font-size: 0.85rem; color: var(--ink-muted);">${this.currentViewType === 'shared' ? 'No files or folders have been shared with you yet.' : 'Upload files or create a subfolder to get started.'}</p>
+          <span style="font-size: 3rem;">${this.currentViewType === 'trash' ? '🗑️' : '📂'}</span>
+          <h3 style="margin-top: 0.5rem; color: var(--ink-muted);">${msg}</h3>
         </div>
       `;
       return;
@@ -243,31 +297,65 @@ class FileBrowser {
     this.container.innerHTML = this.items.map(item => {
       const isDir = item.isDirectory;
       const icon = isDir ? '📁' : this.getFileIcon(item.name);
-      const sizeStr = isDir ? (item.owner ? `Shared by ${item.owner}` : '') : (item.owner ? `Shared by ${item.owner}` : this.formatSize(item.size));
-      const isChecked = this.selectedPaths.has(item.path);
+      
+      let metaText = '';
+      if (item.isTrashItem) {
+        metaText = `Original: ${item.path}`;
+      } else if (item.isSharedItem) {
+        metaText = `Shared by ${item.owner}`;
+      } else {
+        metaText = isDir ? '' : this.formatSize(item.size);
+      }
+
+      const isChecked = this.selectedPaths.has(item.path || item.id);
 
       return `
-        <div class="file-card ${isChecked ? 'selected' : ''}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
-          <input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />
+        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
+          ${item.isTrashItem ? '' : `<input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />`}
           <div class="file-icon">${icon}</div>
           <div class="file-name" title="${item.name}">${item.name}</div>
-          <div class="file-meta">${sizeStr}</div>
+          <div class="file-meta" style="font-size: 11px;">${metaText}</div>
+          ${item.isTrashItem ? `
+            <div style="display: flex; gap: 4px; margin-top: 6px;">
+              <button class="fs-btn text-sm btn-restore-trash" data-id="${item.id}" style="padding: 2px 6px; font-size: 11px;">↺ Restore</button>
+              <button class="fs-btn fs-btn--danger text-sm btn-delete-trash" data-id="${item.id}" style="padding: 2px 6px; font-size: 11px;">🗑️ Delete</button>
+            </div>
+          ` : ''}
         </div>
       `;
     }).join('');
+
+    // Trash Item Action Listeners (#18)
+    this.container.querySelectorAll('.btn-restore-trash').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        this.restoreTrashItem(id);
+      });
+    });
+
+    this.container.querySelectorAll('.btn-delete-trash').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        this.deleteTrashItemPermanently(id);
+      });
+    });
 
     // Card & Checkbox Event Listeners (#12, #14, #15)
     this.container.querySelectorAll('.file-card').forEach(card => {
       const checkbox = card.querySelector('.file-checkbox');
       const itemPath = card.getAttribute('data-path');
 
-      checkbox.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.toggleItemSelection(itemPath, checkbox.checked, card);
-      });
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.toggleItemSelection(itemPath, checkbox.checked, card);
+        });
+      }
 
       card.addEventListener('click', (e) => {
-        if (e.target !== checkbox) {
+        if (checkbox && e.target !== checkbox) {
           if (e.ctrlKey || e.metaKey || e.shiftKey) {
             const newState = !this.selectedPaths.has(itemPath);
             checkbox.checked = newState;
@@ -277,6 +365,7 @@ class FileBrowser {
       });
 
       card.addEventListener('dblclick', () => {
+        if (this.currentViewType === 'trash') return;
         const isDir = card.getAttribute('data-is-dir') === 'true';
         const name = card.getAttribute('data-name');
         if (isDir) {
@@ -287,6 +376,7 @@ class FileBrowser {
       });
 
       card.addEventListener('contextmenu', (e) => {
+        if (this.currentViewType === 'trash') return;
         e.preventDefault();
         const name = card.getAttribute('data-name');
         const isDir = card.getAttribute('data-is-dir') === 'true';
@@ -296,6 +386,47 @@ class FileBrowser {
         this.showContextMenu(e.clientX, e.clientY);
       });
     });
+  }
+
+  async restoreTrashItem(id) {
+    try {
+      const res = await fetch(`/api/trash/${id}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to restore item');
+      }
+      this.loadTrash();
+    } catch (err) {
+      alert('Error restoring item: ' + err.message);
+    }
+  }
+
+  async deleteTrashItemPermanently(id) {
+    if (!confirm('Permanently delete this item? This action cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/trash/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete item');
+      }
+      this.loadTrash();
+    } catch (err) {
+      alert('Error deleting item: ' + err.message);
+    }
+  }
+
+  async emptyTrash() {
+    if (!confirm('Empty entire Trash? All items will be permanently deleted.')) return;
+    try {
+      const res = await fetch('/api/trash', { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to empty trash');
+      }
+      this.loadTrash();
+    } catch (err) {
+      alert('Error emptying trash: ' + err.message);
+    }
   }
 
   toggleItemSelection(path, isSelected, cardElement) {
@@ -445,7 +576,7 @@ class FileBrowser {
   async batchDelete() {
     if (this.selectedPaths.size === 0) return;
     const pathsArray = Array.from(this.selectedPaths);
-    if (!confirm(`Delete ${pathsArray.length} selected item(s)?`)) return;
+    if (!confirm(`Move ${pathsArray.length} selected item(s) to Trash?`)) return;
 
     try {
       const res = await fetch('/api/files/local/batch/delete', {
@@ -456,7 +587,7 @@ class FileBrowser {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to delete items');
+        throw new Error(err.error || 'Failed to move items to trash');
       }
 
       this.clearSelection();
@@ -631,7 +762,7 @@ class FileBrowser {
   async deleteSelectedItem() {
     this.hideContextMenu();
     if (!this.selectedItem) return;
-    if (!confirm(`Delete "${this.selectedItem.name}"?`)) return;
+    if (!confirm(`Move "${this.selectedItem.name}" to Trash?`)) return;
 
     try {
       const res = await fetch(`/api/files/local?path=${encodeURIComponent(this.selectedItem.path)}`, {

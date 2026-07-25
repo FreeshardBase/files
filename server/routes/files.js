@@ -4,9 +4,10 @@ const path = require('path');
 const fs = require('fs/promises');
 const Busboy = require('busboy');
 const archiver = require('archiver');
+const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove } = require('../db');
+const { updateSharePathsOnMove, createTrashItem } = require('../db');
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -159,15 +160,33 @@ router.post('/copy', async (req, res) => {
   }
 });
 
-// DELETE /api/files/local
+// DELETE /api/files/local (Soft-delete to Trash by default, permanent=true for instant deletion) (#18)
 router.delete('/', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const requestedPath = req.query.path || req.body.path;
+    const isPermanent = req.query.permanent === 'true' || req.body.permanent === true;
+
     if (!requestedPath) return res.status(400).json({ error: 'path is required' });
 
-    await provider.delete(requestedPath);
-    res.json({ success: true });
+    if (isPermanent) {
+      await provider.delete(requestedPath);
+      return res.json({ success: true, permanent: true });
+    }
+
+    // Soft-delete: Move to user's isolated .trash/ directory
+    const meta = await provider.metadata(requestedPath);
+    const trashDir = path.join(req.userRoot, '.trash');
+    await fs.mkdir(trashDir, { recursive: true });
+
+    const trashId = crypto.randomUUID();
+    const sourcePathOnDisk = provider._safe(requestedPath);
+    const trashPathOnDisk = path.join(trashDir, trashId);
+
+    await fs.rename(sourcePathOnDisk, trashPathOnDisk);
+    await createTrashItem(trashId, userId, requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0, meta.size || 0, 30);
+
+    res.json({ success: true, trashed: true, trashId });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
       return res.status(403).json({ error: err.message });
@@ -176,24 +195,37 @@ router.delete('/', async (req, res) => {
   }
 });
 
-// ── BATCH OPERATIONS (#12) ───────────────────────────────────────────────────
+// ── BATCH OPERATIONS (#12, #18) ──────────────────────────────────────────────
 
-// POST /api/files/local/batch/delete
+// POST /api/files/local/batch/delete (Soft-delete to Trash by default)
 router.post('/batch/delete', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
-    const { paths } = req.body;
+    const { provider, userId } = getLocalProvider(req);
+    const { paths, permanent = false } = req.body;
     if (!Array.isArray(paths) || paths.length === 0) {
       return res.status(400).json({ error: 'paths array is required' });
     }
 
     let deletedCount = 0;
+    const trashDir = path.join(req.userRoot, '.trash');
+    if (!permanent) await fs.mkdir(trashDir, { recursive: true });
+
     for (const p of paths) {
-      await provider.delete(p);
+      if (permanent) {
+        await provider.delete(p);
+      } else {
+        const meta = await provider.metadata(p);
+        const trashId = crypto.randomUUID();
+        const sourcePathOnDisk = provider._safe(p);
+        const trashPathOnDisk = path.join(trashDir, trashId);
+
+        await fs.rename(sourcePathOnDisk, trashPathOnDisk);
+        await createTrashItem(trashId, userId, p, path.basename(p), meta.isDirectory ? 1 : 0, meta.size || 0, 30);
+      }
       deletedCount++;
     }
 
-    res.json({ success: true, deletedCount });
+    res.json({ success: true, deletedCount, permanent });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
       return res.status(403).json({ error: err.message });
