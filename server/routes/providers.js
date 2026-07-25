@@ -12,6 +12,18 @@ const DropboxProvider = require('../providers/dropbox');
 router.use(requireAuth);
 
 /**
+ * Safely decodes UTF-8 filenames if busboy/headers parsed them as latin1/binary
+ */
+function decodeUtf8Filename(filename) {
+  try {
+    const decoded = Buffer.from(filename, 'binary').toString('utf8');
+    return decoded.includes('\uFFFD') ? filename : decoded;
+  } catch (e) {
+    return filename;
+  }
+}
+
+/**
  * Helper to construct redirect URI for Google Drive
  */
 function getRedirectUri(req) {
@@ -462,7 +474,8 @@ router.post('/:id/upload', async (req, res) => {
     });
 
     busboy.on('file', async (fieldname, fileStream, filenameObj, encoding, mimetype) => {
-      const filename = typeof filenameObj === 'object' ? filenameObj.filename : filenameObj;
+      const rawFilename = typeof filenameObj === 'object' ? filenameObj.filename : filenameObj;
+      const filename = decodeUtf8Filename(rawFilename);
       const fullPath = targetPath === '/' ? `/${filename}` : `${targetPath.replace(/\/+$/, '')}/${filename}`;
       try {
         uploadedFile = await provider.write(fullPath, fileStream, { mimeType: mimetype });

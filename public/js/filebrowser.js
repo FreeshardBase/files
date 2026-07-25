@@ -840,113 +840,130 @@ class FileBrowser {
   }
 
   async handleDragDropMove(dragData, targetDirectory, targetProviderId = null) {
-    const items = dragData.items && dragData.items.length > 0
-      ? dragData.items
-      : [{ srcPath: dragData.srcPath, name: dragData.name }];
+    if (this.isTransferring) return;
+    this.isTransferring = true;
 
-    const srcViewType = dragData.viewType || 'local';
-    const srcProviderId = dragData.currentProviderId;
-    const destProviderId = targetProviderId || (this.currentViewType === 'provider' ? this.currentProviderId : null);
+    try {
+      const items = dragData.items && dragData.items.length > 0
+        ? dragData.items
+        : [{ srcPath: dragData.srcPath, name: dragData.name }];
 
-    // Scenario 1: Local to Local Move
-    if (srcViewType === 'local' && !destProviderId) {
-      if (items.length > 1) {
-        const batchItems = items
-          .filter(i => i.srcPath !== targetDirectory && !targetDirectory.startsWith(i.srcPath + '/'))
-          .map(i => {
-            const destPath = targetDirectory === '/' ? `/${i.name}` : `${targetDirectory.replace(/\/+$/, '')}/${i.name}`;
-            return { src: i.srcPath, dst: destPath };
+      const srcViewType = dragData.viewType || 'local';
+      const srcProviderId = dragData.currentProviderId;
+      const destProviderId = targetProviderId || (this.currentViewType === 'provider' ? this.currentProviderId : null);
+
+      // Scenario 1: Local to Local Move
+      if (srcViewType === 'local' && !destProviderId) {
+        if (items.length > 1) {
+          const batchItems = items
+            .filter(i => i.srcPath !== targetDirectory && !targetDirectory.startsWith(i.srcPath + '/'))
+            .map(i => {
+              const destPath = targetDirectory === '/' ? `/${i.name}` : `${targetDirectory.replace(/\/+$/, '')}/${i.name}`;
+              return { src: i.srcPath, dst: destPath };
+            });
+
+          if (batchItems.length === 0) return;
+
+          const res = await fetch('/api/files/local/batch/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: batchItems })
           });
 
-        if (batchItems.length === 0) return;
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed batch move');
+          }
+        } else {
+          const item = items[0];
+          const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
+          if (item.srcPath === destPath || item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
+            return;
+          }
+          const res = await fetch('/api/files/local/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ src: item.srcPath, dst: destPath })
+          });
 
-        const res = await fetch('/api/files/local/batch/move', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: batchItems })
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed batch move');
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to move file');
+          }
         }
-      } else {
-        const item = items[0];
-        if (item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
-          return;
-        }
-        const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
-        const res = await fetch('/api/files/local/move', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ src: item.srcPath, dst: destPath })
-        });
 
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed to move file');
-        }
-      }
-
-      this.clearSelection();
-      this.loadDirectory(this.currentPath);
-      return;
-    }
-
-    // Scenario 2: Local to Cloud Upload
-    if (srcViewType === 'local' && destProviderId) {
-      for (const item of items) {
-        const readRes = await fetch(`/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`);
-        if (!readRes.ok) throw new Error(`Failed to read local file ${item.name}`);
-        const blob = await readRes.blob();
-
-        const formData = new FormData();
-        formData.append('path', targetDirectory);
-        formData.append('file', blob, item.name);
-
-        const uploadRes = await fetch(`/api/providers/${destProviderId}/upload?path=${encodeURIComponent(targetDirectory)}`, {
-          method: 'POST',
-          body: formData
-        });
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json();
-          throw new Error(`Upload to Cloud failed: ${err.error || uploadRes.statusText}`);
-        }
-      }
-
-      this.clearSelection();
-      if (this.currentViewType === 'provider') {
-        this.loadProviderDirectory(destProviderId, this.currentProviderName, targetDirectory);
-      } else {
+        this.clearSelection();
         this.loadDirectory(this.currentPath);
+        return;
       }
-      return;
-    }
 
-    // Scenario 3: Cloud to Local Download/Move
-    if (srcViewType === 'provider' && !destProviderId && srcProviderId) {
-      for (const item of items) {
-        const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
-        if (!readRes.ok) throw new Error(`Failed to read cloud file ${item.name}`);
-        const blob = await readRes.blob();
+      // Scenario 2: Local to Cloud Upload & Delete Local (Cross-Storage Move)
+      if (srcViewType === 'local' && destProviderId) {
+        for (const item of items) {
+          const readRes = await fetch(`/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`);
+          if (!readRes.ok) throw new Error(`Failed to read local file ${item.name}`);
+          const blob = await readRes.blob();
 
-        const formData = new FormData();
-        formData.append('path', targetDirectory);
-        formData.append('file', blob, item.name);
+          const formData = new FormData();
+          formData.append('path', targetDirectory);
+          formData.append('file', blob, item.name);
 
-        const uploadRes = await fetch('/api/files/local/upload', {
-          method: 'POST',
-          body: formData
-        });
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json();
-          throw new Error(`Cloud to Local Transfer failed: ${err.error || uploadRes.statusText}`);
+          const uploadRes = await fetch(`/api/providers/${destProviderId}/upload?path=${encodeURIComponent(targetDirectory)}`, {
+            method: 'POST',
+            body: formData
+          });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            throw new Error(`Upload to Cloud failed: ${err.error || uploadRes.statusText}`);
+          }
+
+          // Delete source local file after successful upload to cloud
+          await fetch(`/api/files/local?path=${encodeURIComponent(item.srcPath)}&permanent=true`, {
+            method: 'DELETE'
+          });
         }
+
+        this.clearSelection();
+        if (this.currentViewType === 'provider') {
+          this.loadProviderDirectory(destProviderId, this.currentProviderName, targetDirectory);
+        } else {
+          this.loadDirectory(this.currentPath);
+        }
+        return;
       }
 
-      this.clearSelection();
-      this.loadDirectory(this.currentPath);
-      return;
+      // Scenario 3: Cloud to Local Download & Delete Cloud (Cross-Storage Move)
+      if (srcViewType === 'provider' && !destProviderId && srcProviderId) {
+        for (const item of items) {
+          const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
+          if (!readRes.ok) throw new Error(`Failed to read cloud file ${item.name}`);
+          const blob = await readRes.blob();
+
+          const formData = new FormData();
+          formData.append('path', targetDirectory);
+          formData.append('file', blob, item.name);
+
+          const uploadRes = await fetch('/api/files/local/upload', {
+            method: 'POST',
+            body: formData
+          });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            throw new Error(`Cloud to Local Transfer failed: ${err.error || uploadRes.statusText}`);
+          }
+
+          // Delete source cloud file after successful download to local
+          await fetch(`/api/providers/${srcProviderId}/delete?path=${encodeURIComponent(item.srcPath)}`, {
+            method: 'DELETE'
+          });
+        }
+
+        this.clearSelection();
+        this.loadDirectory(this.currentPath);
+        return;
+      }
+    } finally {
+      this.isTransferring = false;
     }
   }
 
