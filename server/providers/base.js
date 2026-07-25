@@ -1,6 +1,12 @@
 /**
- * Abstract Base Storage Provider Interface (Issue #4, #24 Risk 3, #26)
+ * Abstract Base Storage Provider Interface (Issue #4, #7, #24 Risk 3, #26, #56)
  * Every cloud and local storage provider MUST extend this class and fulfill its contract.
+ *
+ * Multi-Account Invariant:
+ * Every storage provider MUST support arbitrary N active connection instances per user
+ * in the SQLite `provider_connections` table, referenced by unique connection ID (`id`)
+ * and labeled with unique account identifiers (e.g. `Google Drive (user@gmail.com)`,
+ * `Dropbox (work@domain.com)`, `WebDAV (https://nc.example.com)`).
  */
 class BaseProvider {
   constructor(config = {}) {

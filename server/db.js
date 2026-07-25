@@ -345,6 +345,7 @@ async function createPublicShare(userId, token, filePath, isDirectory = 0, passw
 }
 
 async function updatePublicShare(shareId, userId, { label, passwordHash, expiresAt, maxDownloads, clearPassword }) {
+  const numericId = parseInt(shareId, 10);
   let sql = 'UPDATE public_shares SET ';
   const params = [];
   const updates = [];
@@ -368,13 +369,13 @@ async function updatePublicShare(shareId, userId, { label, passwordHash, expires
     params.push(maxDownloads);
   }
 
-  if (updates.length === 0) return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
+  if (updates.length === 0) return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [numericId, userId]);
 
   sql += updates.join(', ') + ' WHERE id = ? AND user_id = ?';
-  params.push(shareId, userId);
+  params.push(numericId, userId);
 
   await run(sql, params);
-  return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
+  return get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [numericId, userId]);
 }
 
 async function getPublicShareByToken(token) {
