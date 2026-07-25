@@ -3,18 +3,24 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs/promises');
 const db = require('../db');
+const LocalProvider = require('../providers/local');
 
 describe('Trash & Soft-Delete System (#18)', () => {
   const user = { id: 'user_trash_1', username: 'trash_user', displayName: 'Trash User' };
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+  const userRoot = path.join(dataDir, 'users', user.id);
+  const trashDir = path.join(userRoot, '.trash');
 
   before(async () => {
     await db.initDb();
     await db.upsertUser(user.id, user.username, 'trash@example.com', 'local', null, user.displayName);
+    await fs.mkdir(userRoot, { recursive: true });
   });
 
   after(async () => {
     await db.run('DELETE FROM trash_items WHERE user_id = ?', [user.id]);
     await db.run('DELETE FROM users WHERE id = ?', [user.id]);
+    await fs.rm(userRoot, { recursive: true, force: true }).catch(() => {});
   });
 
   test('creates a trash item with 30-day default expiration', async () => {
@@ -39,6 +45,46 @@ describe('Trash & Soft-Delete System (#18)', () => {
     const item = await db.getTrashItemById(trashId, user.id);
     assert.ok(item);
     assert.equal(item.original_name, 'Photo.png');
+  });
+
+  test('inspects contents of a trashed folder and calculates recursive directory size (#18 regression fix)', async () => {
+    const trashId = 'trash_folder_uuid_200';
+    const folderDiskPath = path.join(trashDir, trashId);
+
+    // Create a trashed folder structure on disk with 2 files inside
+    await fs.mkdir(folderDiskPath, { recursive: true });
+    await fs.writeFile(path.join(folderDiskPath, 'photo.jpg'), Buffer.alloc(5000));
+    await fs.writeFile(path.join(folderDiskPath, 'notes.txt'), Buffer.alloc(2000));
+
+    // Create DB entry with size_bytes = 0 to test dynamic size resolution
+    await db.createTrashItem(trashId, user.id, '/MyPhotos', 'MyPhotos', 1, 0, 30);
+
+    // 1. Verify dynamic size calculation
+    const items = await db.getTrashItemsByUser(user.id);
+    const match = items.find(i => i.id === trashId);
+    assert.ok(match);
+    assert.equal(match.is_directory, 1);
+
+    // Calculate directory size directly
+    async function getDirectorySize(dirOnDisk) {
+      let total = 0;
+      const entries = await fs.readdir(dirOnDisk, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dirOnDisk, entry.name);
+        if (entry.isDirectory()) total += await getDirectorySize(fullPath);
+        else if (entry.isFile()) total += (await fs.stat(fullPath)).size;
+      }
+      return total;
+    }
+
+    const calculatedSize = await getDirectorySize(folderDiskPath);
+    assert.equal(calculatedSize, 7000);
+
+    // 2. Verify inspection of trashed folder contents
+    const entries = await fs.readdir(folderDiskPath, { withFileTypes: true });
+    assert.equal(entries.length, 2);
+    const fileNames = entries.map(e => e.name).sort();
+    assert.deepEqual(fileNames, ['notes.txt', 'photo.jpg']);
   });
 
   test('deletes single trash item permanently', async () => {
