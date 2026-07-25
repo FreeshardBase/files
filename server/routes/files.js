@@ -16,6 +16,26 @@ function getLocalProvider(req) {
 }
 
 /**
+ * Calculates total recursive directory size on disk
+ */
+async function getDirectorySize(dirOnDisk) {
+  let total = 0;
+  try {
+    const entries = await fs.readdir(dirOnDisk, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirOnDisk, entry.name);
+      if (entry.isDirectory()) {
+        total += await getDirectorySize(fullPath);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(fullPath);
+        total += stat.size;
+      }
+    }
+  } catch (e) {}
+  return total;
+}
+
+/**
  * Safely decodes UTF-8 filenames if busboy/headers parsed them as latin1/binary
  */
 function decodeUtf8Filename(filename) {
@@ -184,7 +204,9 @@ router.delete('/', async (req, res) => {
     const trashPathOnDisk = path.join(trashDir, trashId);
 
     await fs.rename(sourcePathOnDisk, trashPathOnDisk);
-    await createTrashItem(trashId, userId, requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0, meta.size || 0, 30);
+    const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
+
+    await createTrashItem(trashId, userId, requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0, sizeBytes, 30);
 
     res.json({ success: true, trashed: true, trashId });
   } catch (err) {
@@ -220,7 +242,8 @@ router.post('/batch/delete', async (req, res) => {
         const trashPathOnDisk = path.join(trashDir, trashId);
 
         await fs.rename(sourcePathOnDisk, trashPathOnDisk);
-        await createTrashItem(trashId, userId, p, path.basename(p), meta.isDirectory ? 1 : 0, meta.size || 0, 30);
+        const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
+        await createTrashItem(trashId, userId, p, path.basename(p), meta.isDirectory ? 1 : 0, sizeBytes, 30);
       }
       deletedCount++;
     }

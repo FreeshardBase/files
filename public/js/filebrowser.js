@@ -2,6 +2,8 @@ class FileBrowser {
   constructor() {
     this.currentPath = '/';
     this.currentViewType = 'local'; // 'local', 'shared', or 'trash'
+    this.currentTrashId = null;
+    this.currentTrashSubpath = '/';
     this.viewMode = 'grid'; // 'grid' or 'list'
     this.items = [];
     this.selectedItem = null;
@@ -73,6 +75,8 @@ class FileBrowser {
     document.getElementById('navTrash')?.addEventListener('click', (e) => {
       e.preventDefault();
       this.currentViewType = 'trash';
+      this.currentTrashId = null;
+      this.currentTrashSubpath = '/';
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       document.getElementById('navTrash')?.classList.add('active');
       this.loadTrash();
@@ -214,36 +218,61 @@ class FileBrowser {
     }
   }
 
-  async loadTrash() {
+  async loadTrash(trashId = null, subpath = '/') {
     this.currentViewType = 'trash';
+    this.currentTrashId = trashId;
+    this.currentTrashSubpath = subpath;
     this.clearSelection();
-    if (this.breadcrumb) {
-      this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Trash (Auto-deletes after 30 days)</span>`;
-    }
 
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
     if (emptyTrashBtn) emptyTrashBtn.style.display = 'inline-flex';
 
-    try {
-      const res = await fetch('/api/trash');
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to load trash');
+    if (this.breadcrumb) {
+      if (!trashId) {
+        this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Trash (Auto-deletes after 30 days)</span>`;
+      } else {
+        this.breadcrumb.innerHTML = `
+          <span class="breadcrumb-item" id="btnBreadcrumbTrashRoot" style="cursor: pointer;">Trash</span>
+          <span style="color: var(--ink-muted);">/</span>
+          <span class="breadcrumb-item active">${subpath}</span>
+        `;
+        document.getElementById('btnBreadcrumbTrashRoot')?.addEventListener('click', () => this.loadTrash(null, '/'));
       }
+    }
 
-      const data = await res.json();
-      const trashItems = data.items || [];
+    try {
+      if (!trashId) {
+        const res = await fetch('/api/trash');
+        if (!res.ok) throw new Error('Failed to load trash items');
+        const data = await res.json();
 
-      this.items = trashItems.map(t => ({
-        id: t.id,
-        name: t.original_name,
-        path: t.original_path,
-        isDirectory: !!t.is_directory,
-        size: t.size_bytes,
-        deletedAt: t.deleted_at,
-        expiresAt: t.expires_at,
-        isTrashItem: true
-      }));
+        this.items = (data.items || []).map(t => ({
+          id: t.id,
+          name: t.original_name,
+          path: t.original_path,
+          isDirectory: !!t.is_directory,
+          size: t.size_bytes,
+          deletedAt: t.deleted_at,
+          expiresAt: t.expires_at,
+          isTrashItem: true,
+          isTopLevelTrash: true
+        }));
+      } else {
+        const res = await fetch(`/api/trash/inspect?id=${encodeURIComponent(trashId)}&subpath=${encodeURIComponent(subpath)}`);
+        if (!res.ok) throw new Error('Failed to inspect trash folder');
+        const data = await res.json();
+
+        this.items = (data.items || []).map(item => ({
+          id: trashId,
+          name: item.name,
+          path: item.path,
+          subpath: item.subpath,
+          isDirectory: !!item.isDirectory,
+          size: item.size,
+          isTrashItem: true,
+          isTopLevelTrash: false
+        }));
+      }
 
       this.render();
     } catch (err) {
@@ -300,7 +329,7 @@ class FileBrowser {
       
       let metaText = '';
       if (item.isTrashItem) {
-        metaText = `Original: ${item.path}`;
+        metaText = `${this.formatSize(item.size)} • Original: ${item.path}`;
       } else if (item.isSharedItem) {
         metaText = `Shared by ${item.owner}`;
       } else {
@@ -310,12 +339,12 @@ class FileBrowser {
       const isChecked = this.selectedPaths.has(item.path || item.id);
 
       return `
-        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
+        <div class="file-card ${isChecked ? 'selected' : ''}" data-id="${item.id || ''}" data-subpath="${item.subpath || '/'}" data-name="${item.name}" data-is-dir="${isDir}" data-path="${item.path}">
           ${item.isTrashItem ? '' : `<input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} />`}
           <div class="file-icon">${icon}</div>
           <div class="file-name" title="${item.name}">${item.name}</div>
           <div class="file-meta" style="font-size: 11px;">${metaText}</div>
-          ${item.isTrashItem ? `
+          ${item.isTrashItem && item.isTopLevelTrash !== false ? `
             <div style="display: flex; gap: 4px; margin-top: 6px;">
               <button class="fs-btn text-sm btn-restore-trash" data-id="${item.id}" style="padding: 2px 6px; font-size: 11px;">↺ Restore</button>
               <button class="fs-btn fs-btn--danger text-sm btn-delete-trash" data-id="${item.id}" style="padding: 2px 6px; font-size: 11px;">🗑️ Delete</button>
@@ -342,10 +371,13 @@ class FileBrowser {
       });
     });
 
-    // Card & Checkbox Event Listeners (#12, #14, #15)
+    // Card & Checkbox Event Listeners (#12, #14, #15, #18)
     this.container.querySelectorAll('.file-card').forEach(card => {
       const checkbox = card.querySelector('.file-checkbox');
       const itemPath = card.getAttribute('data-path');
+      const isDir = card.getAttribute('data-is-dir') === 'true';
+      const trashId = card.getAttribute('data-id');
+      const subpath = card.getAttribute('data-subpath');
 
       if (checkbox) {
         checkbox.addEventListener('click', (e) => {
@@ -365,8 +397,13 @@ class FileBrowser {
       });
 
       card.addEventListener('dblclick', () => {
-        if (this.currentViewType === 'trash') return;
-        const isDir = card.getAttribute('data-is-dir') === 'true';
+        if (this.currentViewType === 'trash') {
+          if (isDir && trashId) {
+            this.loadTrash(trashId, subpath === '/' ? `/${card.getAttribute('data-name')}` : `${subpath}/${card.getAttribute('data-name')}`);
+          }
+          return;
+        }
+
         const name = card.getAttribute('data-name');
         if (isDir) {
           this.loadDirectory(itemPath);
@@ -379,7 +416,6 @@ class FileBrowser {
         if (this.currentViewType === 'trash') return;
         e.preventDefault();
         const name = card.getAttribute('data-name');
-        const isDir = card.getAttribute('data-is-dir') === 'true';
         const path = card.getAttribute('data-path');
 
         this.selectedItem = { name, isDirectory: isDir, path };

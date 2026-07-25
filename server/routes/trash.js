@@ -3,6 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs/promises');
 const crypto = require('crypto');
+const mime = require('mime-types');
 const { requireAuth } = require('../middleware/auth');
 const {
   createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash
@@ -22,14 +23,94 @@ function getUserRoot(userId) {
 }
 
 /**
+ * Calculates total recursive directory size on disk
+ */
+async function getDirectorySize(dirOnDisk) {
+  let total = 0;
+  try {
+    const entries = await fs.readdir(dirOnDisk, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirOnDisk, entry.name);
+      if (entry.isDirectory()) {
+        total += await getDirectorySize(fullPath);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(fullPath);
+        total += stat.size;
+      }
+    }
+  } catch (e) {}
+  return total;
+}
+
+/**
  * GET /api/trash
- * List all items in trash for current user (#18)
+ * List all top-level items in trash for current user (#18)
  */
 router.get('/', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const items = await getTrashItemsByUser(userId);
     res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/trash/inspect?id=<trashId>&subpath=/
+ * Browse/inspect contents inside a trashed directory (#18)
+ */
+router.get('/inspect', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const trashId = req.query.id;
+    const subpath = req.query.subpath || '/';
+
+    if (!trashId) {
+      return res.status(400).json({ error: 'id query parameter is required' });
+    }
+
+    const item = await getTrashItemById(trashId, userId);
+    if (!item) {
+      return res.status(404).json({ error: 'Trash item not found' });
+    }
+
+    const baseTrashItemDiskPath = path.join(getUserTrashDir(userId), item.id);
+    const targetSubPathOnDisk = path.join(baseTrashItemDiskPath, subpath);
+
+    // Prevent directory traversal out of the trashed item
+    if (!targetSubPathOnDisk.startsWith(baseTrashItemDiskPath)) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
+    }
+
+    const entries = await fs.readdir(targetSubPathOnDisk, { withFileTypes: true });
+    const items = [];
+
+    for (const entry of entries) {
+      const fullPath = path.join(targetSubPathOnDisk, entry.name);
+      const stat = await fs.stat(fullPath);
+      const isDir = entry.isDirectory();
+      const itemSubpath = path.join(subpath, entry.name);
+      const size = isDir ? await getDirectorySize(fullPath) : stat.size;
+
+      items.push({
+        name: entry.name,
+        path: path.join(item.original_path, itemSubpath),
+        subpath: itemSubpath,
+        isDirectory: isDir,
+        size,
+        modified: stat.mtime ? stat.mtime.toISOString() : null,
+        mimeType: isDir ? null : (mime.lookup(entry.name) || 'application/octet-stream')
+      });
+    }
+
+    res.json({
+      id: item.id,
+      original_name: item.original_name,
+      original_path: item.original_path,
+      subpath,
+      items
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -59,7 +140,10 @@ router.post('/move', async (req, res) => {
     const sourcePathOnDisk = provider._safe(target_path);
 
     // Move file/folder on disk into .trash/<uuid>
-    await fs.rename(sourcePathOnDisk, trashPathOnDisk);
+    await fs.rename(sourcePathOnDisk, trashPathPathOnDisk || trashPathOnDisk);
+
+    // Calculate recursive directory size if it is a directory
+    const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
 
     const item = await createTrashItem(
       trashId,
@@ -67,7 +151,7 @@ router.post('/move', async (req, res) => {
       target_path,
       path.basename(target_path),
       meta.isDirectory ? 1 : 0,
-      meta.size || 0,
+      sizeBytes,
       30
     );
 
