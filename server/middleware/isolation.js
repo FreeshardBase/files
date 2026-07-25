@@ -34,7 +34,7 @@ async function getUserStorageUsage(userRoot) {
 }
 
 async function validateUserIsolation(req, res, next) {
-  const userId = req.session?.userId || 'default-user';
+  const userId = req.userId || req.session?.userId || req.session?.user?.id || 'default-user';
   const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
   const userRoot = path.resolve(rootBase, userId);
 

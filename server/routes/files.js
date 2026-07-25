@@ -10,6 +10,32 @@ const { validateUserIsolation } = require('../middleware/isolation');
 const { updateSharePathsOnMove, createTrashItem, logActivity } = require('../db');
 const { decodeUtf8Filename } = require('../utils/utf8');
 
+function getLocalProvider(req) {
+  const userRoot = req.userRoot;
+  const provider = new LocalProvider({ userRoot });
+  return { provider, userId: req.userId };
+}
+
+/**
+ * Calculates total recursive directory size on disk
+ */
+async function getDirectorySize(dirOnDisk) {
+  let total = 0;
+  try {
+    const entries = await fs.readdir(dirOnDisk, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirOnDisk, entry.name);
+      if (entry.isDirectory()) {
+        total += await getDirectorySize(fullPath);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(fullPath);
+        total += stat.size;
+      }
+    }
+  } catch (e) {}
+  return total;
+}
+
 // Apply user isolation middleware to all file operation routes
 router.use(validateUserIsolation);
 

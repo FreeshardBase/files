@@ -244,6 +244,9 @@ async function initDb() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  // Ensure fallback default-user exists for unauthenticated operations (#44)
+  await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
 
 // ── CRUD Helpers ─────────────────────────────────────────────────────────────
