@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+const https = require('https');
 const { requireAuth } = require('../middleware/auth');
 const { addProviderConnection, getProviderConnections, run } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
@@ -7,8 +9,122 @@ const GoogleDriveProvider = require('../providers/gdrive');
 router.use(requireAuth);
 
 /**
+ * Helper to construct redirect URI
+ */
+function getRedirectUri(req) {
+  if (process.env.GDRIVE_REDIRECT_URI) return process.env.GDRIVE_REDIRECT_URI;
+  const protocol = req.protocol || 'https';
+  const host = req.get('host') || 'fs-files.gryzia.de';
+  return `${protocol}://${host}/api/providers/gdrive/callback`;
+}
+
+/**
+ * GET /api/providers/gdrive/auth
+ * Initiates standard 1-click Google OAuth 2.0 Authorization Flow (#7)
+ */
+router.get('/gdrive/auth', (req, res) => {
+  const clientId = process.env.GDRIVE_CLIENT_ID;
+  if (!clientId) {
+    return res.status(400).send('Google OAuth Client ID not configured on server. Please set GDRIVE_CLIENT_ID in environment.');
+  }
+
+  const state = crypto.randomBytes(16).toString('hex');
+  if (!req.session.oauthStates) req.session.oauthStates = {};
+  req.session.oauthStates[state] = true;
+
+  const redirectUri = getRedirectUri(req);
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/drive');
+
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&response_type=code` +
+    `&scope=${scope}` +
+    `&access_type=offline` +
+    `&prompt=consent` +
+    `&state=${state}`;
+
+  res.redirect(authUrl);
+});
+
+/**
+ * GET /api/providers/gdrive/callback
+ * Handles OAuth 2.0 authorization code callback from Google (#7)
+ */
+router.get('/gdrive/callback', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { code, state, error } = req.query;
+
+    if (error) {
+      return res.status(400).send(`Google OAuth Authorization Denied: ${error}`);
+    }
+
+    if (!code) {
+      return res.status(400).send('Missing authorization code from Google OAuth.');
+    }
+
+    if (!req.session.oauthStates || !req.session.oauthStates[state]) {
+      return res.status(403).send('Invalid OAuth state parameter.');
+    }
+    delete req.session.oauthStates[state];
+
+    const clientId = process.env.GDRIVE_CLIENT_ID;
+    const clientSecret = process.env.GDRIVE_CLIENT_SECRET;
+    const redirectUri = getRedirectUri(req);
+
+    // Exchange authorization code for tokens
+    const postData = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code'
+    }).toString();
+
+    const tokenRes = await new Promise((resolve, reject) => {
+      const request = https.request({
+        hostname: 'oauth2.googleapis.com',
+        path: '/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, (resStream) => {
+        let body = '';
+        resStream.on('data', chunk => body += chunk);
+        resStream.on('end', () => resolve({ statusCode: resStream.statusCode, body }));
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    const tokens = JSON.parse(tokenRes.body);
+    if (!tokens.refresh_token && !tokens.access_token) {
+      return res.status(400).send(`Failed to exchange Google OAuth code: ${tokens.error_description || tokenRes.body}`);
+    }
+
+    const credentials = {
+      clientId,
+      clientSecret,
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token
+    };
+
+    const connId = await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
+
+    // Redirect user back to dashboard with success message
+    res.redirect('/?gdrive_connected=true');
+  } catch (err) {
+    res.status(500).send(`OAuth Callback Error: ${err.message}`);
+  }
+});
+
+/**
  * POST /api/providers/gdrive/connect
- * Register & encrypt a Google Drive connection for the logged-in user (#3, #7)
+ * Manual/Direct credential connection endpoint (#3, #7)
  */
 router.post('/gdrive/connect', async (req, res) => {
   try {
@@ -25,7 +141,6 @@ router.post('/gdrive/connect', async (req, res) => {
       refreshToken: refresh_token
     };
 
-    // Verify credentials by creating a provider instance and requesting an access token
     const testProvider = new GoogleDriveProvider(credentials);
     await testProvider.getValidAccessToken();
 
