@@ -26,6 +26,7 @@ class FileBrowser {
     this.selectedCountText = document.getElementById('selectedCountText');
 
     this.isInternalDragging = false; // Drag & Drop file move state (#50)
+    this.activeDragPayload = null; // Drag payload fallback for DOM re-renders (#50, #59)
     this.springLoadTimer = null; // Spring-loaded folder hover timer (#59)
     this.springLoadTarget = null;
 
@@ -538,10 +539,15 @@ class FileBrowser {
           item.classList.remove('drag-target-hover');
           this.clearSpringLoadTimer();
 
-          const rawData = e.dataTransfer.getData('application/json');
-          if (!rawData) return;
+          let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+          let data = null;
+          if (rawData) {
+            try { data = JSON.parse(rawData); } catch(err){}
+          }
+          if (!data) data = this.activeDragPayload;
+          if (!data) return;
+
           try {
-            const data = JSON.parse(rawData);
             if (data.srcPath === targetPath || targetPath.startsWith(data.srcPath + '/')) {
               return;
             }
@@ -691,48 +697,53 @@ class FileBrowser {
         this.showContextMenu(e.clientX, e.clientY);
       });
 
-      // HTML5 Drag & Drop File Move (#50)
-      if (this.currentViewType !== 'trash' && !isCloudDrive) {
-        card.setAttribute('draggable', 'true');
+      // HTML5 Drag & Drop File Move (#50, #59)
+      if (this.currentViewType !== 'trash') {
+        if (!isCloudDrive) {
+          card.setAttribute('draggable', 'true');
 
-        card.addEventListener('dragstart', (e) => {
-          e.stopPropagation();
-          this.isInternalDragging = true;
+          card.addEventListener('dragstart', (e) => {
+            e.stopPropagation();
+            this.isInternalDragging = true;
 
-          let itemsToMove = [];
-          if (this.selectedPaths.size > 0 && this.selectedPaths.has(itemPath)) {
-            itemsToMove = Array.from(this.selectedPaths).map(p => {
-              const itemObj = this.items.find(i => i.path === p);
-              const name = itemObj ? itemObj.name : p.split('/').filter(Boolean).pop() || p;
-              return { srcPath: p, name };
-            });
-          } else {
-            itemsToMove = [{ srcPath: itemPath, name: card.getAttribute('data-name') }];
-          }
+            let itemsToMove = [];
+            if (this.selectedPaths.size > 0 && this.selectedPaths.has(itemPath)) {
+              itemsToMove = Array.from(this.selectedPaths).map(p => {
+                const itemObj = this.items.find(i => i.path === p);
+                const name = itemObj ? itemObj.name : p.split('/').filter(Boolean).pop() || p;
+                return { srcPath: p, name };
+              });
+            } else {
+              itemsToMove = [{ srcPath: itemPath, name: card.getAttribute('data-name') }];
+            }
 
-          const payload = {
-            items: itemsToMove,
-            srcPath: itemPath,
-            name: card.getAttribute('data-name'),
-            isDirectory: isDir,
-            viewType: this.currentViewType,
-            currentProviderId: this.currentProviderId
-          };
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('application/json', JSON.stringify(payload));
-          card.classList.add('dragging');
-        });
+            const payload = {
+              items: itemsToMove,
+              srcPath: itemPath,
+              name: card.getAttribute('data-name'),
+              isDirectory: isDir,
+              isCloudDrive: isCloudDrive,
+              viewType: this.currentViewType,
+              currentProviderId: this.currentProviderId
+            };
+            this.activeDragPayload = payload;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('application/json', JSON.stringify(payload));
+            card.classList.add('dragging');
+          });
 
-        card.addEventListener('dragend', () => {
-          this.isInternalDragging = false;
-          this.clearSpringLoadTimer();
-          card.classList.remove('dragging');
-          this.dropOverlay?.classList.remove('active');
-          document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
-        });
+          card.addEventListener('dragend', () => {
+            this.isInternalDragging = false;
+            this.activeDragPayload = null;
+            this.clearSpringLoadTimer();
+            card.classList.remove('dragging');
+            this.dropOverlay?.classList.remove('active');
+            document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+          });
+        }
 
-        // Folder card drop target
-        if (isDir) {
+        // Folder or Cloud Drive card drop target (#50, #59)
+        if (isDir || isCloudDrive) {
           card.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -771,13 +782,18 @@ class FileBrowser {
             card.classList.remove('drag-target-hover');
             this.clearSpringLoadTimer();
 
-            const rawData = e.dataTransfer.getData('application/json');
-            if (!rawData) return;
-            try {
-              const data = JSON.parse(rawData);
-              const targetFolderPath = itemPath;
+            let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+            let data = null;
+            if (rawData) {
+              try { data = JSON.parse(rawData); } catch(err){}
+            }
+            if (!data) data = this.activeDragPayload;
+            if (!data) return;
 
-              await this.handleDragDropMove(data, targetFolderPath);
+            try {
+              const targetFolderPath = isCloudDrive ? '/' : itemPath;
+              const targetProvId = isCloudDrive ? providerId : (this.currentViewType === 'provider' ? this.currentProviderId : null);
+              await this.handleDragDropMove(data, targetFolderPath, targetProvId);
             } catch (err) {
               console.error('Drag & Drop Move Error:', err);
               alert(`Move failed: ${err.message}`);
@@ -788,12 +804,17 @@ class FileBrowser {
     });
   }
 
-  async handleDragDropMove(dragData, targetDirectory) {
+  async handleDragDropMove(dragData, targetDirectory, targetProviderId = null) {
     const items = dragData.items && dragData.items.length > 0
       ? dragData.items
       : [{ srcPath: dragData.srcPath, name: dragData.name }];
 
-    if (dragData.viewType === 'local' || !dragData.viewType) {
+    const srcViewType = dragData.viewType || 'local';
+    const srcProviderId = dragData.currentProviderId;
+    const destProviderId = targetProviderId || (this.currentViewType === 'provider' ? this.currentProviderId : null);
+
+    // Scenario 1: Local to Local Move
+    if (srcViewType === 'local' && !destProviderId) {
       if (items.length > 1) {
         const batchItems = items
           .filter(i => i.srcPath !== targetDirectory && !targetDirectory.startsWith(i.srcPath + '/'))
@@ -834,6 +855,63 @@ class FileBrowser {
 
       this.clearSelection();
       this.loadDirectory(this.currentPath);
+      return;
+    }
+
+    // Scenario 2: Local to Cloud Upload
+    if (srcViewType === 'local' && destProviderId) {
+      for (const item of items) {
+        const readRes = await fetch(`/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`);
+        if (!readRes.ok) throw new Error(`Failed to read local file ${item.name}`);
+        const blob = await readRes.blob();
+
+        const formData = new FormData();
+        formData.append('path', targetDirectory);
+        formData.append('file', blob, item.name);
+
+        const uploadRes = await fetch(`/api/providers/${destProviderId}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(`Upload to Cloud failed: ${err.error || uploadRes.statusText}`);
+        }
+      }
+
+      this.clearSelection();
+      if (this.currentViewType === 'provider') {
+        this.loadProviderDirectory(destProviderId, this.currentProviderName, targetDirectory);
+      } else {
+        this.loadDirectory(this.currentPath);
+      }
+      return;
+    }
+
+    // Scenario 3: Cloud to Local Download/Move
+    if (srcViewType === 'provider' && !destProviderId && srcProviderId) {
+      for (const item of items) {
+        const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
+        if (!readRes.ok) throw new Error(`Failed to read cloud file ${item.name}`);
+        const blob = await readRes.blob();
+
+        const formData = new FormData();
+        formData.append('path', targetDirectory);
+        formData.append('file', blob, item.name);
+
+        const uploadRes = await fetch('/api/files/local/upload', {
+          method: 'POST',
+          body: formData
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(`Cloud to Local Transfer failed: ${err.error || uploadRes.statusText}`);
+        }
+      }
+
+      this.clearSelection();
+      this.loadDirectory(this.currentPath);
+      return;
     }
   }
 
