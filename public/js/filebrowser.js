@@ -1339,20 +1339,33 @@ class FileBrowser {
     const targetPath = this.currentPath === '/' ? `/${folderName}` : `${this.currentPath}/${folderName}`;
 
     try {
-      const res = await fetch('/api/files/local/mkdir', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: targetPath })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to create folder');
+      if (this.currentViewType === 'provider') {
+        const res = await fetch(`/api/providers/${this.currentProviderId}/mkdir`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to create folder in Cloud');
+        }
+        input.value = '';
+        this.hideModal('modalNewFolder');
+        this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
+      } else {
+        const res = await fetch('/api/files/local/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to create folder');
+        }
+        input.value = '';
+        this.hideModal('modalNewFolder');
+        this.loadDirectory(this.currentPath);
       }
-
-      input.value = '';
-      this.hideModal('modalNewFolder');
-      this.loadDirectory(this.currentPath);
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -1374,23 +1387,42 @@ class FileBrowser {
       return this.hideModal('modalRename');
     }
 
-    const parentPath = this.currentPath;
+    const currentItemPath = this.selectedItem.path;
+    const parts = currentItemPath.split('/').filter(Boolean);
+    parts.pop();
+    const parentPath = parts.length === 0 ? '/' : '/' + parts.join('/');
     const dstPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
 
     try {
-      const res = await fetch('/api/files/local/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ src: this.selectedItem.path, dst: dstPath })
-      });
+      if (this.currentViewType === 'provider') {
+        const res = await fetch(`/api/providers/${this.currentProviderId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: currentItemPath, dst: dstPath })
+        });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to rename');
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to rename in Cloud');
+        }
+
+        this.hideModal('modalRename');
+        this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
+      } else {
+        const res = await fetch('/api/files/local/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: currentItemPath, dst: dstPath })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to rename');
+        }
+
+        this.hideModal('modalRename');
+        this.loadDirectory(this.currentPath);
       }
-
-      this.hideModal('modalRename');
-      this.loadDirectory(this.currentPath);
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -1399,6 +1431,27 @@ class FileBrowser {
   async deleteSelectedItem() {
     this.hideContextMenu();
     if (!this.selectedItem) return;
+
+    if (this.currentViewType === 'provider') {
+      if (!confirm(`Permanently delete "${this.selectedItem.name}" from Cloud Storage?`)) return;
+
+      try {
+        const res = await fetch(`/api/providers/${this.currentProviderId}/delete?path=${encodeURIComponent(this.selectedItem.path)}`, {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to delete from Cloud');
+        }
+
+        this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+      return;
+    }
+
     if (!confirm(`Move "${this.selectedItem.name}" to Trash?`)) return;
 
     try {

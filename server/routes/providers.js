@@ -499,6 +499,42 @@ router.post('/:id/upload', async (req, res) => {
 });
 
 /**
+ * POST /api/providers/:id/move
+ */
+router.post('/:id/move', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const { src, dst } = req.body;
+    if (!src || !dst) return res.status(400).json({ error: 'src and dst are required' });
+
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+    await provider.move(src, dst);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/providers/:id/mkdir
+ */
+router.post('/:id/mkdir', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const { path: dirPath } = req.body;
+    if (!dirPath) return res.status(400).json({ error: 'path is required' });
+
+    const { provider } = await getProviderInstanceForUser(connId, userId);
+    await provider.mkdir(dirPath);
+    res.status(201).json({ success: true, path: dirPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * DELETE /api/providers/:id/delete?path=...
  */
 router.delete('/:id/delete', async (req, res) => {
