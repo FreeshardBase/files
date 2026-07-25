@@ -618,6 +618,27 @@ body {
   word-break: break-all;
 }
 
+/* Login Screen Overlay (Daylight Instrument Style) */
+.login-screen-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+  padding: var(--space-4);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background-color: var(--surface);
+  border: var(--border-w) solid var(--border-cool);
+  border-radius: var(--radius-sheet);
+  padding: var(--space-6);
+}
+
 /* Roving Keyboard Focus Ring (.fs-focusable) */
 .fs-focusable:focus-visible {
   outline: 2px solid var(--line);
