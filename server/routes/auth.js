@@ -35,15 +35,17 @@ async function getOidcClient() {
   }
 }
 
-// ── GET /api/auth/config (Public auth UI config #2, #54) ──────────────────────
+// ── GET /api/auth/config (Public auth UI config #2, #54, #55) ─────────────────
 router.get('/config', (req, res) => {
   const enableLocalAuth = process.env.ENABLE_LOCAL_AUTH !== 'false';
   const enableOidcAuth = process.env.ENABLE_OIDC_AUTH !== 'false';
+  const enableAutoOidcAuth = process.env.AUTO_OIDC_LOGIN === 'true';
   const oidcButtonLabel = process.env.OIDC_BUTTON_LABEL || 'Login mit SSO (Authelia)';
 
   res.json({
     enableLocalAuth,
     enableOidcAuth,
+    enableAutoOidcAuth,
     oidcButtonLabel
   });
 });

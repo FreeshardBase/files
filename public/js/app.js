@@ -15,11 +15,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('fs-theme', theme);
   });
 
-  // Fetch Public Auth Config (#2, #54)
+  // Fetch Public Auth Config (#2, #54, #55)
   async function loadAuthConfig() {
     try {
       const res = await fetch('/api/auth/config');
-      if (!res.ok) return;
+      if (!res.ok) return null;
 
       const config = await res.json();
       const ssoContainer = document.getElementById('ssoLoginContainer');
@@ -46,8 +46,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (divider && (config.enableLocalAuth === false || config.enableOidcAuth === false)) {
         divider.style.display = 'none';
       }
+
+      return config;
     } catch (err) {
       console.warn('Could not load auth config:', err.message);
+      return null;
     }
   }
 
@@ -85,7 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Check current auth status (#2, #48)
+  // Check current auth status (#2, #48, #55)
   async function checkAuth() {
     try {
       const res = await fetch('/api/auth/me');
@@ -121,10 +124,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         }
       } else {
-        // Unauthenticated State: Show Login Screen, Hide App Dashboard
+        // Unauthenticated State: Check for Auto-OIDC Redirect (#55)
+        const config = await loadAuthConfig();
+        if (config && config.enableAutoOidcAuth && !sessionStorage.getItem('fs_oidc_redirecting')) {
+          sessionStorage.setItem('fs_oidc_redirecting', 'true');
+          window.location.href = '/api/auth/login';
+          return;
+        }
+
         if (mainApp) mainApp.style.display = 'none';
         if (loginScreen) loginScreen.style.display = 'flex';
-        await loadAuthConfig();
       }
     } catch (err) {
       console.error('Auth check error:', err);
