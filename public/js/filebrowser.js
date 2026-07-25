@@ -47,6 +47,7 @@ class FileBrowser {
   init() {
     this.checkOAuthCallback();
     this.setupEventListeners();
+    this.loadSidebarProviders();
     this.loadDirectory(this.currentPath);
   }
 
@@ -55,9 +56,121 @@ class FileBrowser {
     if (urlParams.get('gdrive_connected') === 'true') {
       alert('🎉 Successfully connected Google Drive account via OAuth 2.0!');
       window.history.replaceState({}, document.title, window.location.pathname);
+      this.loadSidebarProviders();
     } else if (urlParams.get('dropbox_connected') === 'true') {
       alert('🎉 Successfully connected Dropbox account via OAuth 2.0!');
       window.history.replaceState({}, document.title, window.location.pathname);
+      this.loadSidebarProviders();
+    }
+  }
+
+  async loadSidebarProviders() {
+    const listEl = document.getElementById('sidebarProvidersList');
+    const titleEl = document.getElementById('sectionExternalStorageTitle');
+    if (!listEl) return;
+
+    try {
+      const res = await fetch('/api/providers/connections');
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const connections = data.connections || [];
+
+      if (connections.length === 0) {
+        listEl.innerHTML = '';
+        if (titleEl) titleEl.style.display = 'none';
+        return;
+      }
+
+      if (titleEl) titleEl.style.display = 'block';
+
+      listEl.innerHTML = connections.map(conn => {
+        const icon = conn.provider_type === 'dropbox' ? '📦' : '☁️';
+        const name = conn.display_name || (conn.provider_type === 'gdrive' ? 'Google Drive' : 'Dropbox');
+        const isActive = this.currentViewType === 'provider' && this.currentProviderId === String(conn.id);
+
+        return `
+          <li class="nav-item ${isActive ? 'active' : ''}" id="navProvider_${conn.id}" data-id="${conn.id}" data-type="${conn.provider_type}" data-name="${name}">
+            <a href="#/provider/${conn.id}">
+              <span class="nav-icon">${icon}</span>
+              <span class="fs-label">${name}</span>
+            </a>
+          </li>
+        `;
+      }).join('');
+
+      // Add click & Drag and Drop event listeners to each sidebar provider item
+      connections.forEach(conn => {
+        const navEl = document.getElementById(`navProvider_${conn.id}`);
+        if (!navEl) return;
+
+        const name = conn.display_name || (conn.provider_type === 'gdrive' ? 'Google Drive' : 'Dropbox');
+
+        navEl.addEventListener('click', (e) => {
+          e.preventDefault();
+          document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+          navEl.classList.add('active');
+          this.loadProviderDirectory(conn.id, name, '/');
+        });
+
+        // Sidebar Provider Drag & Drop target for direct cross-storage uploads/moves (#50, #56, #59)
+        navEl.addEventListener('dragover', (e) => {
+          if (!this.isInternalDragging && !this.activeDragPayload) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          navEl.classList.add('drag-target-hover');
+
+          if (this.springLoadTarget !== navEl) {
+            this.clearSpringLoadTimer();
+            this.springLoadTarget = navEl;
+            navEl.classList.add('drag-spring-loading');
+            this.springLoadTimer = setTimeout(() => {
+              this.clearSpringLoadTimer();
+              if (this.isInternalDragging || this.activeDragPayload) {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                navEl.classList.add('active');
+                this.loadProviderDirectory(conn.id, name, '/');
+              }
+            }, 750);
+          }
+        });
+
+        navEl.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          navEl.classList.remove('drag-target-hover');
+          this.clearSpringLoadTimer();
+        });
+
+        navEl.addEventListener('drop', async (e) => {
+          if (!this.isInternalDragging && !this.activeDragPayload) return;
+          e.preventDefault();
+          e.stopPropagation();
+          navEl.classList.remove('drag-target-hover');
+          this.clearSpringLoadTimer();
+
+          let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+          let data = null;
+          if (rawData) {
+            try { data = JSON.parse(rawData); } catch(err){}
+          }
+          if (!data) data = this.activeDragPayload;
+          if (!data) return;
+
+          try {
+            const payload = data;
+            this.activeDragPayload = null;
+            this.isInternalDragging = false;
+            await this.handleDragDropMove(payload, '/', conn.id);
+          } catch (err) {
+            console.error('Sidebar Provider Drop Error:', err);
+            alert(`Move failed: ${err.message}`);
+          }
+        });
+      });
+    } catch (err) {
+      console.error('Failed to load sidebar provider connections:', err);
     }
   }
 
@@ -273,6 +386,9 @@ class FileBrowser {
     this.clearSelection();
     this.renderBreadcrumb();
 
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('navHome')?.classList.add('active');
+
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
     if (emptyTrashBtn) emptyTrashBtn.style.display = 'none';
 
@@ -285,31 +401,6 @@ class FileBrowser {
 
       const data = await res.json();
       this.items = data.items || [];
-
-      // If viewing root directory, also fetch connected Cloud Drives (#7)
-      if (dirPath === '/') {
-        try {
-          const connRes = await fetch('/api/providers/connections');
-          if (connRes.ok) {
-            const connData = await connRes.json();
-            const connections = connData.connections || [];
-            connections.forEach(conn => {
-              this.items.unshift({
-                name: conn.display_name || 'Google Drive',
-                path: '/',
-                isDirectory: true,
-                isCloudDrive: true,
-                providerId: conn.id,
-                providerType: conn.provider_type,
-                mimeType: 'cloud/drive'
-              });
-            });
-          }
-        } catch (e) {
-          console.error('Error fetching provider connections:', e);
-        }
-      }
-
       this.render();
     } catch (err) {
       console.error('Error loading directory:', err);
@@ -319,10 +410,13 @@ class FileBrowser {
 
   async loadProviderDirectory(providerId, providerName, dirPath) {
     this.currentViewType = 'provider';
-    this.currentProviderId = providerId;
+    this.currentProviderId = String(providerId);
     this.currentProviderName = providerName;
     this.currentPath = dirPath;
     this.clearSelection();
+
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.getElementById(`navProvider_${providerId}`)?.classList.add('active');
 
     if (this.breadcrumb) {
       const pathParts = dirPath.split('/').filter(Boolean);
