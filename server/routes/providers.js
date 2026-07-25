@@ -454,11 +454,11 @@ router.post('/:id/upload', async (req, res) => {
     const { provider } = await getProviderInstanceForUser(connId, userId);
 
     const busboy = Busboy({ headers: req.headers });
-    let targetPath = '/';
+    let targetPath = req.query.path || '/';
     let uploadedFile = null;
 
     busboy.on('field', (fieldname, val) => {
-      if (fieldname === 'path') targetPath = val;
+      if (fieldname === 'path' && val) targetPath = val;
     });
 
     busboy.on('file', async (fieldname, fileStream, filenameObj, encoding, mimetype) => {

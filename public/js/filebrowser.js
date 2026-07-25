@@ -183,6 +183,41 @@ class FileBrowser {
     // Close Context Menu on Global Click
     document.addEventListener('click', () => this.hideContextMenu());
 
+    // Container-level Drop Zone (#50, #59)
+    if (this.container) {
+      this.container.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      });
+
+      this.container.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.clearSpringLoadTimer();
+        document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
+
+        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+        let data = null;
+        if (rawData) {
+          try { data = JSON.parse(rawData); } catch(err){}
+        }
+        if (!data) data = this.activeDragPayload;
+        if (!data) return;
+
+        try {
+          const targetDir = this.currentPath;
+          const targetProvId = this.currentViewType === 'provider' ? this.currentProviderId : null;
+          await this.handleDragDropMove(data, targetDir, targetProvId);
+        } catch (err) {
+          console.error('Container Drop Error:', err);
+          alert(`Move failed: ${err.message}`);
+        }
+      });
+    }
+
     // Context Menu Actions
     document.getElementById('ctxOpen')?.addEventListener('click', () => this.openSelectedItem());
     document.getElementById('ctxDetails')?.addEventListener('click', () => this.showFileDetailsModalFromContextMenu());
@@ -869,7 +904,7 @@ class FileBrowser {
         formData.append('path', targetDirectory);
         formData.append('file', blob, item.name);
 
-        const uploadRes = await fetch(`/api/providers/${destProviderId}/upload`, {
+        const uploadRes = await fetch(`/api/providers/${destProviderId}/upload?path=${encodeURIComponent(targetDirectory)}`, {
           method: 'POST',
           body: formData
         });
