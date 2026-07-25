@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const mime = require('mime-types');
 const { requireAuth } = require('../middleware/auth');
 const {
-  createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash
+  createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash, logActivity
 } = require('../db');
 const LocalProvider = require('../providers/local');
 
@@ -165,6 +165,8 @@ router.post('/move', async (req, res) => {
       30
     );
 
+    await logActivity(userId, 'delete', target_path, path.basename(target_path), meta.isDirectory ? 1 : 0);
+
     res.status(201).json({ success: true, item });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -173,7 +175,7 @@ router.post('/move', async (req, res) => {
 
 /**
  * POST /api/trash/:id/restore
- * Restore file/folder from trash back to original path (#18)
+ * Restore file/folder from trash back to original path (#18, #22)
  */
 router.post('/:id/restore', async (req, res) => {
   try {
@@ -195,6 +197,7 @@ router.post('/:id/restore', async (req, res) => {
     // Move from .trash/<uuid> back to original location
     await fs.rename(trashPathOnDisk, targetPathOnDisk);
     await deleteTrashItem(trashId, userId);
+    await logActivity(userId, 'restore', item.original_path, item.original_name, item.is_directory);
 
     res.json({ success: true, original_path: item.original_path });
   } catch (err) {
@@ -204,7 +207,7 @@ router.post('/:id/restore', async (req, res) => {
 
 /**
  * DELETE /api/trash/:id
- * Permanently delete a single item from trash (#18)
+ * Permanently delete a single item from trash (#18, #22)
  */
 router.delete('/:id', async (req, res) => {
   try {
@@ -219,6 +222,7 @@ router.delete('/:id', async (req, res) => {
     const trashPathOnDisk = path.join(getUserTrashDir(userId), item.id);
     await fs.rm(trashPathOnDisk, { recursive: true, force: true });
     await deleteTrashItem(trashId, userId);
+    await logActivity(userId, 'delete_permanent', item.original_path, item.original_name, item.is_directory);
 
     res.json({ success: true });
   } catch (err) {
@@ -228,7 +232,7 @@ router.delete('/:id', async (req, res) => {
 
 /**
  * DELETE /api/trash
- * Empty entire trash for user (#18)
+ * Empty entire trash for user (#18, #22)
  */
 router.delete('/', async (req, res) => {
   try {
@@ -240,6 +244,8 @@ router.delete('/', async (req, res) => {
       const diskPath = path.join(trashDir, item.id);
       await fs.rm(diskPath, { recursive: true, force: true });
     }
+
+    await logActivity(userId, 'empty_trash', '/.trash', 'Trash', 1, JSON.stringify({ count: items.length }));
 
     res.json({ success: true, count: items.length });
   } catch (err) {

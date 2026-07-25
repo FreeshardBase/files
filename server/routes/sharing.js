@@ -2,16 +2,17 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const path = require('path');
 const { requireAuth } = require('../middleware/auth');
 const {
   createFileShare, getFileSharesByOwner, getFileSharesForSharee, deleteFileShare,
-  createPublicShare, getPublicSharesByUser, deletePublicShare
+  createPublicShare, getPublicSharesByUser, deletePublicShare, logActivity
 } = require('../db');
 
 // Require session authentication for all link creation operations
 router.use(requireAuth);
 
-// ── INTERNAL SHARING (#14) ───────────────────────────────────────────────────
+// ── INTERNAL SHARING (#14, #22) ──────────────────────────────────────────────
 
 router.post('/internal', async (req, res) => {
   try {
@@ -39,6 +40,8 @@ router.post('/internal', async (req, res) => {
     }
 
     const share = await createFileShare(ownerUserId, shareeUser.id, file_path, 'local', is_directory, read_write);
+    await logActivity(ownerUserId, 'share_internal', file_path, path.basename(file_path), is_directory, JSON.stringify({ sharee: shareeUser.username }));
+
     res.status(201).json({ success: true, share });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -79,7 +82,7 @@ router.delete('/internal/:id', async (req, res) => {
   }
 });
 
-// ── PUBLIC LINK SHARING (#15) ────────────────────────────────────────────────
+// ── PUBLIC LINK SHARING (#15, #22) ───────────────────────────────────────────
 
 router.post('/public', async (req, res) => {
   try {
@@ -100,6 +103,8 @@ router.post('/public', async (req, res) => {
     const protocol = req.protocol || 'https';
     const host = req.get('host') || 'fs-files.gryzia.de';
     const shareUrl = `${protocol}://${host}/s/${token}`;
+
+    await logActivity(userId, 'share_public', file_path, path.basename(file_path), is_directory, JSON.stringify({ token }));
 
     res.status(201).json({
       success: true,

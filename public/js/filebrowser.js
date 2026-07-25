@@ -1,7 +1,7 @@
 class FileBrowser {
   constructor() {
     this.currentPath = '/';
-    this.currentViewType = 'local'; // 'local', 'shared', or 'trash'
+    this.currentViewType = 'local'; // 'local', 'shared', 'trash', or 'activity'
     this.currentTrashId = null;
     this.currentTrashSubpath = '/';
     this.viewMode = 'grid'; // 'grid' or 'list'
@@ -55,7 +55,7 @@ class FileBrowser {
       window.location.href = '/api/providers/gdrive/auth';
     });
 
-    // Sidebar Navigation (#14, #18)
+    // Sidebar Navigation (#14, #18, #22)
     document.getElementById('navHome')?.addEventListener('click', (e) => {
       e.preventDefault();
       this.currentViewType = 'local';
@@ -80,6 +80,14 @@ class FileBrowser {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       document.getElementById('navTrash')?.classList.add('active');
       this.loadTrash();
+    });
+
+    document.getElementById('navActivity')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.currentViewType = 'activity';
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('navActivity')?.classList.add('active');
+      this.loadActivity();
     });
 
     document.getElementById('btnEmptyTrash')?.addEventListener('click', () => this.emptyTrash());
@@ -281,6 +289,85 @@ class FileBrowser {
     }
   }
 
+  async loadActivity() {
+    this.currentViewType = 'activity';
+    this.clearSelection();
+
+    const emptyTrashBtn = document.getElementById('btnEmptyTrash');
+    if (emptyTrashBtn) emptyTrashBtn.style.display = 'none';
+
+    if (this.breadcrumb) {
+      this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Activity Log & File Operations</span>`;
+    }
+
+    try {
+      const res = await fetch('/api/activity?limit=50');
+      if (!res.ok) throw new Error('Failed to load activity log');
+
+      const data = await res.json();
+      const activities = data.activities || [];
+
+      if (activities.length === 0) {
+        this.container.innerHTML = `
+          <div class="placeholder-card" style="grid-column: 1 / -1;">
+            <span style="font-size: 3rem;">🕒</span>
+            <h3 style="margin-top: 0.5rem; color: var(--ink-muted);">No activity recorded yet.</h3>
+          </div>
+        `;
+        return;
+      }
+
+      this.container.className = 'list-view';
+      this.container.innerHTML = activities.map(act => {
+        let actionBadge = '📄';
+        let actionTitle = act.action;
+        let detailsText = '';
+
+        if (act.details) {
+          try {
+            const parsed = JSON.parse(act.details);
+            if (parsed.dst) detailsText = ` ➔ ${parsed.dst}`;
+            if (parsed.sharee) detailsText = ` with ${parsed.sharee}`;
+            if (parsed.token) detailsText = ` (Token: ${parsed.token.substring(0, 8)}...)`;
+          } catch (e) {
+            detailsText = ` (${act.details})`;
+          }
+        }
+
+        switch (act.action) {
+          case 'upload': actionBadge = '📥 Uploaded'; break;
+          case 'mkdir': actionBadge = '📁 Created folder'; break;
+          case 'move': actionBadge = '🚚 Moved'; break;
+          case 'copy': actionBadge = '📋 Copied'; break;
+          case 'delete': actionBadge = '🗑️ Trashed'; break;
+          case 'delete_permanent': actionBadge = '❌ Permanently deleted'; break;
+          case 'restore': actionBadge = '↺ Restored'; break;
+          case 'share_internal': actionBadge = '👥 Shared'; break;
+          case 'share_public': actionBadge = '🔗 Public link'; break;
+          case 'download_zip': actionBadge = '📦 Downloaded Zip'; break;
+        }
+
+        const dateFormatted = new Date(act.created_at + 'Z').toLocaleString();
+
+        return `
+          <div class="file-card" style="cursor: default; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+              <span style="font-size: 1.25rem;">${act.is_directory ? '📁' : '📄'}</span>
+              <div>
+                <div class="file-name" style="font-weight: 500;">${act.file_name} <span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">${act.file_path}${detailsText}</span></div>
+                <div style="font-size: 11px; color: var(--ink-muted); font-family: var(--font-mono); margin-top: 2px;">${dateFormatted}</div>
+              </div>
+            </div>
+            <span class="fs-mono text-sm" style="background: rgba(255, 255, 255, 0.06); padding: 4px 10px; border-radius: 4px;">${actionBadge}</span>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Error loading activity:', err);
+      this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
+    }
+  }
+
   renderBreadcrumb() {
     if (!this.breadcrumb || this.currentViewType !== 'local') return;
 
@@ -419,7 +506,7 @@ class FileBrowser {
       });
 
       card.addEventListener('contextmenu', (e) => {
-        if (this.currentViewType === 'trash') return;
+        if (this.currentViewType === 'trash' || this.currentViewType === 'activity') return;
         e.preventDefault();
         const name = card.getAttribute('data-name');
         const path = card.getAttribute('data-path');

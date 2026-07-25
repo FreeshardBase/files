@@ -407,6 +407,25 @@ async function cleanupExpiredTrashItems() {
   return expiredItems;
 }
 
+// ── Activity Log Helpers (#22) ───────────────────────────────────────────────
+
+async function logActivity(userId, action, filePath, fileName, isDirectory = 0, details = null, providerType = 'local') {
+  const res = await run(`
+    INSERT INTO activity_log (user_id, action, provider_type, file_path, file_name, is_directory, details)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, action, providerType, filePath, fileName, isDirectory ? 1 : 0, details]);
+  return get('SELECT * FROM activity_log WHERE id = ?', [res.lastID]);
+}
+
+async function getActivityLogByUser(userId, limit = 50, offset = 0) {
+  return all(`
+    SELECT * FROM activity_log
+    WHERE user_id = ?
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+  `, [userId, limit, offset]);
+}
+
 module.exports = {
   getDb,
   run,
@@ -432,5 +451,7 @@ module.exports = {
   getTrashItemById,
   deleteTrashItem,
   emptyTrash,
-  cleanupExpiredTrashItems
+  cleanupExpiredTrashItems,
+  logActivity,
+  getActivityLogByUser
 };

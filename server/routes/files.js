@@ -7,7 +7,7 @@ const archiver = require('archiver');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove, createTrashItem } = require('../db');
+const { updateSharePathsOnMove, createTrashItem, logActivity } = require('../db');
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -91,7 +91,7 @@ router.get('/read', async (req, res) => {
 // POST /api/files/local/upload (Streaming upload via Busboy with UTF-8 filename decoding)
 router.post('/upload', (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const busboy = Busboy({ headers: req.headers });
     let targetPath = '/';
 
@@ -106,6 +106,7 @@ router.post('/upload', (req, res) => {
 
       try {
         const result = await provider.write(destinationPath, fileStream);
+        await logActivity(userId, 'upload', destinationPath, filename, 0);
         res.status(201).json({ success: true, file: result });
       } catch (err) {
         if (err.message.includes('Path traversal blocked')) {
@@ -128,11 +129,12 @@ router.post('/upload', (req, res) => {
 // POST /api/files/local/mkdir
 router.post('/mkdir', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const { path: dirPath } = req.body;
     if (!dirPath) return res.status(400).json({ error: 'path is required' });
 
     await provider.mkdir(dirPath);
+    await logActivity(userId, 'mkdir', dirPath, path.basename(dirPath), 1);
     res.status(201).json({ success: true, path: dirPath });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
@@ -153,6 +155,7 @@ router.post('/move', async (req, res) => {
 
     // Invariant: Update internal & public share link target paths on move (#14, #15, #45)
     await updateSharePathsOnMove(userId, src, dst);
+    await logActivity(userId, 'move', src, path.basename(src), 0, JSON.stringify({ dst }));
 
     res.json({ success: true });
   } catch (err) {
@@ -166,11 +169,12 @@ router.post('/move', async (req, res) => {
 // POST /api/files/local/copy
 router.post('/copy', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const { src, dst } = req.body;
     if (!src || !dst) return res.status(400).json({ error: 'src and dst are required' });
 
     await provider.copy(src, dst);
+    await logActivity(userId, 'copy', src, path.basename(src), 0, JSON.stringify({ dst }));
     res.json({ success: true });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
@@ -180,7 +184,7 @@ router.post('/copy', async (req, res) => {
   }
 });
 
-// DELETE /api/files/local (Soft-delete to Trash by default, permanent=true for instant deletion) (#18)
+// DELETE /api/files/local (Soft-delete to Trash by default, permanent=true for instant deletion) (#18, #22)
 router.delete('/', async (req, res) => {
   try {
     const { provider, userId } = getLocalProvider(req);
@@ -191,6 +195,7 @@ router.delete('/', async (req, res) => {
 
     if (isPermanent) {
       await provider.delete(requestedPath);
+      await logActivity(userId, 'delete_permanent', requestedPath, path.basename(requestedPath), 0);
       return res.json({ success: true, permanent: true });
     }
 
@@ -207,6 +212,7 @@ router.delete('/', async (req, res) => {
     const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
 
     await createTrashItem(trashId, userId, requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0, sizeBytes, 30);
+    await logActivity(userId, 'delete', requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0);
 
     res.json({ success: true, trashed: true, trashId });
   } catch (err) {
@@ -217,7 +223,7 @@ router.delete('/', async (req, res) => {
   }
 });
 
-// ── BATCH OPERATIONS (#12, #18) ──────────────────────────────────────────────
+// ── BATCH OPERATIONS (#12, #18, #22) ──────────────────────────────────────────
 
 // POST /api/files/local/batch/delete (Soft-delete to Trash by default)
 router.post('/batch/delete', async (req, res) => {
@@ -235,6 +241,7 @@ router.post('/batch/delete', async (req, res) => {
     for (const p of paths) {
       if (permanent) {
         await provider.delete(p);
+        await logActivity(userId, 'delete_permanent', p, path.basename(p), 0);
       } else {
         const meta = await provider.metadata(p);
         const trashId = crypto.randomUUID();
@@ -244,6 +251,7 @@ router.post('/batch/delete', async (req, res) => {
         await fs.rename(sourcePathOnDisk, trashPathOnDisk);
         const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
         await createTrashItem(trashId, userId, p, path.basename(p), meta.isDirectory ? 1 : 0, sizeBytes, 30);
+        await logActivity(userId, 'delete', p, path.basename(p), meta.isDirectory ? 1 : 0);
       }
       deletedCount++;
     }
@@ -271,6 +279,7 @@ router.post('/batch/move', async (req, res) => {
       if (item.src && item.dst) {
         await provider.move(item.src, item.dst);
         await updateSharePathsOnMove(userId, item.src, item.dst);
+        await logActivity(userId, 'move', item.src, path.basename(item.src), 0, JSON.stringify({ dst: item.dst }));
         movedCount++;
       }
     }
@@ -287,7 +296,7 @@ router.post('/batch/move', async (req, res) => {
 // GET /api/files/local/batch/zip?paths=/Documents/f1.txt,/Documents/f2.txt
 router.get('/batch/zip', async (req, res) => {
   try {
-    const { provider } = getLocalProvider(req);
+    const { provider, userId } = getLocalProvider(req);
     const rawPaths = req.query.paths;
     if (!rawPaths) return res.status(400).json({ error: 'paths parameter is required' });
 
@@ -313,6 +322,7 @@ router.get('/batch/zip', async (req, res) => {
     }
 
     await archive.finalize();
+    await logActivity(userId, 'download_zip', pathsList.join(', '), 'freeshard-files.zip', 0);
   } catch (err) {
     if (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root')) {
       return res.status(403).json({ error: 'Path traversal blocked' });

@@ -11,6 +11,7 @@ const sharingRouter = require('./routes/sharing');
 const publicShareRouter = require('./routes/public_share');
 const providersRouter = require('./routes/providers');
 const trashRouter = require('./routes/trash');
+const activityRouter = require('./routes/activity');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -48,6 +49,7 @@ app.use('/api/i18n', i18nRouter);
 app.use('/api/shares', sharingRouter);
 app.use('/api/providers', providersRouter);
 app.use('/api/trash', trashRouter);
+app.use('/api/activity', activityRouter);
 app.use('/s', publicShareRouter);
 
 // Health check endpoint
@@ -68,7 +70,7 @@ function startTrashAutoCleanup() {
       const expiredItems = await db.cleanupExpiredTrashItems();
       if (expiredItems.length > 0) {
         console.log(`[TrashCleanup] Purged ${expiredItems.length} expired items from database.`);
-        const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+        const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
         for (const item of expiredItems) {
           const diskPath = path.join(dataDir, 'users', item.user_id, '.trash', item.id);
           await fs.rm(diskPath, { recursive: true, force: true }).catch(() => {});
