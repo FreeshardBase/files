@@ -27,8 +27,8 @@ class DropboxProvider extends BaseProvider {
   /**
    * Refreshes OAuth 2.0 Access Token if expired
    */
-  async getValidAccessToken() {
-    if (this.accessToken) return this.accessToken;
+  async getValidAccessToken(forceRefresh = false) {
+    if (this.accessToken && !forceRefresh) return this.accessToken;
     if (!this.refreshToken || !this.clientId || !this.clientSecret) {
       throw new Error('Dropbox credentials incomplete: refreshToken, clientId, and clientSecret required.');
     }
@@ -94,9 +94,9 @@ class DropboxProvider extends BaseProvider {
   }
 
   /**
-   * Helper for Dropbox RPC API calls (api.dropboxapi.com)
+   * Helper for Dropbox RPC API calls (api.dropboxapi.com) with 401 auto-retry
    */
-  async _dropboxRpcApi(apiPath, bodyObj = {}) {
+  async _dropboxRpcApi(apiPath, bodyObj = {}, retryOn401 = true) {
     const token = await this.getValidAccessToken();
     const bodyData = JSON.stringify(bodyObj);
 
@@ -110,6 +110,12 @@ class DropboxProvider extends BaseProvider {
         'Content-Length': Buffer.byteLength(bodyData)
       }
     }, bodyData);
+
+    if (res.statusCode === 401 && retryOn401 && this.refreshToken) {
+      this.accessToken = null;
+      await this.getValidAccessToken(true);
+      return this._dropboxRpcApi(apiPath, bodyObj, false);
+    }
 
     if (res.statusCode >= 400) {
       throw new Error(`Dropbox API ${apiPath} failed (${res.statusCode}): ${res.body}`);

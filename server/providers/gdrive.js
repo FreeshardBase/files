@@ -32,8 +32,8 @@ class GoogleDriveProvider extends BaseProvider {
   /**
    * Refreshes OAuth 2.0 Access Token if expired
    */
-  async getValidAccessToken() {
-    if (this.accessToken) return this.accessToken;
+  async getValidAccessToken(forceRefresh = false) {
+    if (this.accessToken && !forceRefresh) return this.accessToken;
     if (!this.refreshToken || !this.clientId || !this.clientSecret) {
       throw new Error('Google Drive credentials incomplete: refreshToken, clientId, and clientSecret required.');
     }
@@ -99,9 +99,9 @@ class GoogleDriveProvider extends BaseProvider {
   }
 
   /**
-   * Helper for authenticated Google Drive REST API GET/POST/PATCH/DELETE
+   * Helper for authenticated Google Drive REST API GET/POST/PATCH/DELETE with 401 auto-retry
    */
-  async _driveApi(apiPath, method = 'GET', bodyObj = null, extraHeaders = {}) {
+  async _driveApi(apiPath, method = 'GET', bodyObj = null, extraHeaders = {}, retryOn401 = true) {
     const token = await this.getValidAccessToken();
     const headers = {
       'Authorization': `Bearer ${token}`,
@@ -123,6 +123,12 @@ class GoogleDriveProvider extends BaseProvider {
       method,
       headers
     }, bodyData);
+
+    if (res.statusCode === 401 && retryOn401 && this.refreshToken) {
+      this.accessToken = null;
+      await this.getValidAccessToken(true);
+      return this._driveApi(apiPath, method, bodyObj, extraHeaders, false);
+    }
 
     if (res.statusCode >= 400) {
       throw new Error(`Google Drive API ${method} ${apiPath} failed (${res.statusCode}): ${res.body}`);

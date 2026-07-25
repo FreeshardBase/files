@@ -127,14 +127,27 @@ router.get('/gdrive/callback', async (req, res) => {
       return res.status(400).send(`Failed to exchange Google OAuth code: ${tokens.error_description || tokenRes.body}`);
     }
 
+    const existingConnections = await getProviderConnections(userId);
+    const existingGdrive = existingConnections.find(c => c.provider_type === 'gdrive');
+    const refreshToken = tokens.refresh_token || (existingGdrive && existingGdrive.credentials ? existingGdrive.credentials.refreshToken : null);
+
     const credentials = {
       clientId,
       clientSecret,
-      refreshToken: tokens.refresh_token,
+      refreshToken,
       accessToken: tokens.access_token
     };
 
-    await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
+    if (existingGdrive) {
+      const { encrypt } = require('../utils/crypto');
+      const { iv, authTag, data: encryptedData } = encrypt(JSON.stringify(credentials));
+      await run(
+        'UPDATE provider_connections SET credentials_encrypted = ?, iv = ?, auth_tag = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        [encryptedData, iv, authTag, existingGdrive.id]
+      );
+    } else {
+      await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
+    }
 
     res.redirect('/?gdrive_connected=true');
   } catch (err) {
