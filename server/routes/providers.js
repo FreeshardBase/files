@@ -55,7 +55,7 @@ router.get('/gdrive/auth', (req, res) => {
   req.session.oauthStates[state] = true;
 
   const redirectUri = getRedirectUri(req);
-  const scope = encodeURIComponent('https://www.googleapis.com/auth/drive');
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email');
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
     `client_id=${encodeURIComponent(clientId)}` +
@@ -127,26 +127,51 @@ router.get('/gdrive/callback', async (req, res) => {
       return res.status(400).send(`Failed to exchange Google OAuth code: ${tokens.error_description || tokenRes.body}`);
     }
 
+    // Fetch account email to support multiple Google Drive accounts per user
+    let accountEmail = null;
+    try {
+      const userInfoRes = await new Promise((resolve) => {
+        https.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+        }, (resStream) => {
+          let b = '';
+          resStream.on('data', c => b += c);
+          resStream.on('end', () => resolve(b));
+        }).on('error', () => resolve(null));
+      });
+      if (userInfoRes) {
+        const uInfo = JSON.parse(userInfoRes);
+        accountEmail = uInfo.email;
+      }
+    } catch (e) {}
+
+    const displayName = accountEmail ? `Google Drive (${accountEmail})` : 'Google Drive';
+
     const existingConnections = await getProviderConnections(userId);
-    const existingGdrive = existingConnections.find(c => c.provider_type === 'gdrive');
+    const existingGdrive = existingConnections.find(c =>
+      c.provider_type === 'gdrive' &&
+      (accountEmail ? (c.credentials && c.credentials.accountEmail === accountEmail) : true)
+    );
+
     const refreshToken = tokens.refresh_token || (existingGdrive && existingGdrive.credentials ? existingGdrive.credentials.refreshToken : null);
 
     const credentials = {
       clientId,
       clientSecret,
       refreshToken,
-      accessToken: tokens.access_token
+      accessToken: tokens.access_token,
+      accountEmail
     };
 
     if (existingGdrive) {
       const { encrypt } = require('../utils/crypto');
       const { iv, authTag, data: encryptedData } = encrypt(JSON.stringify(credentials));
       await run(
-        'UPDATE provider_connections SET credentials_encrypted = ?, iv = ?, auth_tag = ?, updated_at = datetime(\'now\') WHERE id = ?',
-        [encryptedData, iv, authTag, existingGdrive.id]
+        'UPDATE provider_connections SET display_name = ?, credentials_encrypted = ?, iv = ?, auth_tag = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        [displayName, encryptedData, iv, authTag, existingGdrive.id]
       );
     } else {
-      await addProviderConnection(userId, 'gdrive', 'Google Drive', credentials);
+      await addProviderConnection(userId, 'gdrive', displayName, credentials);
     }
 
     res.redirect('/?gdrive_connected=true');
@@ -243,14 +268,61 @@ router.get('/dropbox/callback', async (req, res) => {
       return res.status(400).send(`Failed to exchange Dropbox OAuth code: ${tokens.error_description || tokenRes.body}`);
     }
 
+    // Fetch account email to support multiple Dropbox accounts per user
+    let accountEmail = null;
+    try {
+      const dbxUserRes = await new Promise((resolve) => {
+        const req = https.request({
+          hostname: 'api.dropboxapi.com',
+          path: '/2/users/get_current_account',
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tokens.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        }, (resStream) => {
+          let b = '';
+          resStream.on('data', c => b += c);
+          resStream.on('end', () => resolve(b));
+        });
+        req.on('error', () => resolve(null));
+        req.write('null');
+        req.end();
+      });
+      if (dbxUserRes) {
+        const uInfo = JSON.parse(dbxUserRes);
+        accountEmail = uInfo.email;
+      }
+    } catch (e) {}
+
+    const displayName = accountEmail ? `Dropbox (${accountEmail})` : 'Dropbox';
+
+    const existingConnections = await getProviderConnections(userId);
+    const existingDropbox = existingConnections.find(c =>
+      c.provider_type === 'dropbox' &&
+      (accountEmail ? (c.credentials && c.credentials.accountEmail === accountEmail) : true)
+    );
+
+    const refreshToken = tokens.refresh_token || (existingDropbox && existingDropbox.credentials ? existingDropbox.credentials.refreshToken : null);
+
     const credentials = {
       clientId,
       clientSecret,
-      refreshToken: tokens.refresh_token,
-      accessToken: tokens.access_token
+      refreshToken,
+      accessToken: tokens.access_token,
+      accountEmail
     };
 
-    await addProviderConnection(userId, 'dropbox', 'Dropbox', credentials);
+    if (existingDropbox) {
+      const { encrypt } = require('../utils/crypto');
+      const { iv, authTag, data: encryptedData } = encrypt(JSON.stringify(credentials));
+      await run(
+        'UPDATE provider_connections SET display_name = ?, credentials_encrypted = ?, iv = ?, auth_tag = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        [displayName, encryptedData, iv, authTag, existingDropbox.id]
+      );
+    } else {
+      await addProviderConnection(userId, 'dropbox', displayName, credentials);
+    }
 
     res.redirect('/?dropbox_connected=true');
   } catch (err) {
@@ -315,7 +387,7 @@ router.get('/connections', async (req, res) => {
  * DELETE /api/providers/connections/:id
  * Remove a provider connection
  */
-router.delete('/connections/:id', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
