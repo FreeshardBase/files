@@ -25,6 +25,8 @@ class FileBrowser {
     this.selectionActionBar = document.getElementById('selectionActionBar');
     this.selectedCountText = document.getElementById('selectedCountText');
 
+    this.isInternalDragging = false; // Drag & Drop file move state (#50)
+
     this.init();
   }
 
@@ -140,10 +142,14 @@ class FileBrowser {
       }
     });
 
-    // Drag & Drop Upload Overlay
+    // Drag & Drop Upload Overlay (Only for OS file uploads, ignore internal file moves)
     window.addEventListener('dragover', (e) => {
       e.preventDefault();
-      this.dropOverlay?.classList.add('active');
+      if (this.isInternalDragging) return;
+      const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
+      if (types.includes('Files')) {
+        this.dropOverlay?.classList.add('active');
+      }
     });
 
     this.dropOverlay?.addEventListener('dragleave', (e) => {
@@ -154,7 +160,8 @@ class FileBrowser {
     this.dropOverlay?.addEventListener('drop', (e) => {
       e.preventDefault();
       this.dropOverlay.classList.remove('active');
-      if (e.dataTransfer.files.length) {
+      if (this.isInternalDragging) return;
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
         this.handleFileUpload(e.dataTransfer.files);
       }
     });
@@ -663,6 +670,7 @@ class FileBrowser {
 
         card.addEventListener('dragstart', (e) => {
           e.stopPropagation();
+          this.isInternalDragging = true;
           const payload = {
             srcPath: itemPath,
             name: card.getAttribute('data-name'),
@@ -676,7 +684,9 @@ class FileBrowser {
         });
 
         card.addEventListener('dragend', () => {
+          this.isInternalDragging = false;
           card.classList.remove('dragging');
+          this.dropOverlay?.classList.remove('active');
           document.querySelectorAll('.drag-target-hover').forEach(el => el.classList.remove('drag-target-hover'));
         });
 
