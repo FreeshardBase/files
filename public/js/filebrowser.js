@@ -361,6 +361,7 @@ class FileBrowser {
     }
   }
 
+  setupEventListeners() {
     // Multi-Tab New Tab Button (#60)
     document.getElementById('btnNewTab')?.addEventListener('click', () => this.createTab('local', '/'));
 
