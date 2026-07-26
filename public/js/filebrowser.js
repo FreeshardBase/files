@@ -165,16 +165,25 @@ class FileBrowser {
     this.activeTabId = tabId;
     this.saveTabsToSession();
 
-    if (targetTab.viewType === 'provider' && targetTab.providerId) {
-      this.loadProviderDirectory(targetTab.providerId, targetTab.providerName, targetTab.path, false);
-    } else if (targetTab.viewType === 'shared') {
-      this.loadSharedWithMe(false);
-    } else if (targetTab.viewType === 'trash') {
-      this.loadTrash(false);
-    } else if (targetTab.viewType === 'activity') {
-      this.loadActivity(false);
+    if (this.isSplitViewActive && this.activePane === 'secondary') {
+      this.loadSecondaryDirectory(
+        targetTab.path || '/',
+        targetTab.viewType,
+        targetTab.providerId,
+        targetTab.providerName
+      );
     } else {
-      this.loadDirectory(targetTab.path || '/', false);
+      if (targetTab.viewType === 'provider' && targetTab.providerId) {
+        this.loadProviderDirectory(targetTab.providerId, targetTab.providerName, targetTab.path, false);
+      } else if (targetTab.viewType === 'shared') {
+        this.loadSharedWithMe(false);
+      } else if (targetTab.viewType === 'trash') {
+        this.loadTrash(false);
+      } else if (targetTab.viewType === 'activity') {
+        this.loadActivity(false);
+      } else {
+        this.loadDirectory(targetTab.path || '/', false);
+      }
     }
 
     this.renderTabBar();
@@ -2235,6 +2244,20 @@ class FileBrowser {
     if (menu) menu.style.display = 'none';
   }
 
+  setActivePane(paneName) {
+    this.activePane = paneName;
+    const priPane = document.getElementById('primaryPane');
+    const secPane = document.getElementById('secondaryPane');
+
+    if (paneName === 'primary') {
+      priPane?.classList.add('active-pane');
+      secPane?.classList.remove('active-pane');
+    } else {
+      secPane?.classList.add('active-pane');
+      priPane?.classList.remove('active-pane');
+    }
+  }
+
   toggleSplitView(targetTab = null) {
     const wrapper = document.getElementById('panesWrapper');
     const secPane = document.getElementById('secondaryPane');
@@ -2252,31 +2275,41 @@ class FileBrowser {
       this.loadSecondaryDirectory(
         tabToRender ? tabToRender.path : '/',
         tabToRender ? tabToRender.viewType : 'local',
-        tabToRender ? tabToRender.providerId : null
+        tabToRender ? tabToRender.providerId : null,
+        tabToRender ? tabToRender.providerName : null
       );
+      this.setActivePane('secondary');
     } else {
       wrapper.classList.remove('split-view-active');
       secPane.style.display = 'none';
       if (btn) btn.classList.remove('active');
+      this.setActivePane('primary');
     }
   }
 
-  async loadSecondaryDirectory(path, viewType = 'local', providerId = null) {
+  async loadSecondaryDirectory(path, viewType = 'local', providerId = null, providerName = null) {
     const secContainer = document.getElementById('secondaryFileContainer');
     const secBreadcrumb = document.getElementById('secondaryBreadcrumb');
     if (!secContainer) return;
 
-    if (secBreadcrumb) secBreadcrumb.textContent = `${viewType === 'provider' ? 'Cloud' : 'Home'} ${path}`;
+    const normProviderId = (providerId && providerId !== 'null' && providerId !== 'undefined') ? String(providerId) : null;
+    this.secondaryState = { viewType, path, providerId: normProviderId, providerName };
+    const pName = providerName || (viewType === 'provider' ? 'Cloud' : 'Home');
+    if (secBreadcrumb) secBreadcrumb.textContent = `${pName} ${path}`;
 
     try {
-      let listUrl = viewType === 'provider'
-        ? `/api/providers/${providerId}/list?path=${encodeURIComponent(path)}`
+      let listUrl = (viewType === 'provider' && normProviderId)
+        ? `/api/providers/${normProviderId}/list?path=${encodeURIComponent(path)}`
         : `/api/files/local/list?path=${encodeURIComponent(path)}`;
 
       const res = await fetch(listUrl);
-      if (!res.ok) throw new Error('Failed to load secondary pane directory');
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || 'Failed to load secondary pane directory');
+      }
       const data = await res.json();
       const items = data.items || [];
+      this.secondaryItems = items;
 
       secContainer.innerHTML = items.map(item => `
         <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}">
@@ -2284,8 +2317,31 @@ class FileBrowser {
           <div class="file-name" style="font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
         </div>
       `).join('');
+
+      secContainer.querySelectorAll('.file-card').forEach(card => {
+        const isDir = card.getAttribute('data-is-dir') === 'true';
+        const itemPath = card.getAttribute('data-path');
+        const itemName = card.getAttribute('data-name');
+
+        card.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+        });
+
+        card.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+          if (isDir) {
+            this.loadSecondaryDirectory(itemPath, viewType, normProviderId, providerName);
+          } else {
+            const item = items.find(i => i.path === itemPath || i.name === itemName);
+            this.openMediaViewer(item || { name: itemName, path: itemPath });
+          }
+        });
+      });
     } catch (err) {
-      secContainer.innerHTML = `<div style="padding: 12px; color: var(--ink-muted); font-size: 12px;">Ordner konnte nicht geladen werden</div>`;
+      console.error('Error in secondary pane:', err);
+      secContainer.innerHTML = `<div style="padding: 12px; color: var(--danger); font-size: 12px;">Ordner konnte nicht geladen werden (${err.message})</div>`;
     }
   }
 

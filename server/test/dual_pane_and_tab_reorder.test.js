@@ -69,5 +69,43 @@ describe('Dual-Pane Side-by-Side View (#61) & Tab Drag-to-Reorder (#69)', () => 
       assert.equal(targetTab.id, 'tab-2');
       assert.equal(targetTab.path, '/Photos');
     });
+
+    test('tracks active pane focus state and routes tab switching correctly', () => {
+      let activePane = 'primary';
+      let primaryTab = 'tab-1';
+      let secondaryTab = 'tab-2';
+
+      const switchTab = (tabId) => {
+        if (activePane === 'secondary') {
+          secondaryTab = tabId;
+        } else {
+          primaryTab = tabId;
+        }
+      };
+
+      // When primary pane is focused, switching tab updates primary pane
+      switchTab('tab-3');
+      assert.equal(primaryTab, 'tab-3');
+      assert.equal(secondaryTab, 'tab-2');
+
+      // Set focus to secondary pane
+      activePane = 'secondary';
+      switchTab('tab-4');
+      assert.equal(primaryTab, 'tab-3');
+      assert.equal(secondaryTab, 'tab-4');
+    });
+
+    test('normalizes stringified null/undefined providerId in secondary pane', () => {
+      const normalizeProviderId = (providerId) => {
+        return (providerId && providerId !== 'null' && providerId !== 'undefined') ? String(providerId) : null;
+      };
+
+      assert.equal(normalizeProviderId('1'), '1');
+      assert.equal(normalizeProviderId(1), '1');
+      assert.equal(normalizeProviderId(null), null);
+      assert.equal(normalizeProviderId('null'), null);
+      assert.equal(normalizeProviderId(undefined), null);
+      assert.equal(normalizeProviderId('undefined'), null);
+    });
   });
 });
