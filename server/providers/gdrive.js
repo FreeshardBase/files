@@ -338,6 +338,17 @@ class GoogleDriveProvider extends BaseProvider {
   }
 
   async move(srcPath, dstPath) {
+    if (srcPath !== dstPath) {
+      try {
+        const existing = await this.resolvePathToId(dstPath);
+        if (existing && existing.id) {
+          throw new Error(`Target item '${path.basename(dstPath)}' already exists in Google Drive.`);
+        }
+      } catch (err) {
+        if (!err.message.includes('Path not found') && !err.message.includes('already exists')) throw err;
+      }
+    }
+
     const itemInfo = await this.resolvePathToId(srcPath);
     const newDir = path.dirname(dstPath);
     const newName = path.basename(dstPath);

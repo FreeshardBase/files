@@ -143,6 +143,15 @@ class LocalProvider extends BaseProvider {
     const fullSrc = this._resolve(srcPath);
     const fullDst = this._resolve(dstPath);
 
+    if (fullSrc !== fullDst) {
+      try {
+        await fs.access(fullDst);
+        throw new Error(`Target item '${path.basename(dstPath)}' already exists in destination.`);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+
     await fs.mkdir(path.dirname(fullDst), { recursive: true });
     await fs.rename(fullSrc, fullDst);
     return true;

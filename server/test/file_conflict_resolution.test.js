@@ -99,4 +99,36 @@ describe('File Conflict Resolution & Collision Detection (#66)', () => {
       assert.equal(transferExecuted, false);
     });
   });
+
+  describe('Rename Duplicate Name Protection Algorithm (#COLLISION-RENAME)', () => {
+    test('blocks rename if target filename already exists in folder', () => {
+      const currentItems = [
+        { name: 'Document.pdf', path: '/Document.pdf' },
+        { name: 'Notes.txt', path: '/Notes.txt' }
+      ];
+      const selectedItem = { name: 'Notes.txt', path: '/Notes.txt' };
+      const newName = 'document.pdf';
+
+      const duplicateExists = currentItems.some(
+        i => i.name.toLowerCase() === newName.toLowerCase() && i.name !== selectedItem.name
+      );
+
+      assert.equal(duplicateExists, true);
+    });
+
+    test('allows rename if target filename is unchanged or unique', () => {
+      const currentItems = [
+        { name: 'Document.pdf', path: '/Document.pdf' },
+        { name: 'Notes.txt', path: '/Notes.txt' }
+      ];
+      const selectedItem = { name: 'Notes.txt', path: '/Notes.txt' };
+      const newName = 'Summary.txt';
+
+      const duplicateExists = currentItems.some(
+        i => i.name.toLowerCase() === newName.toLowerCase() && i.name !== selectedItem.name
+      );
+
+      assert.equal(duplicateExists, false);
+    });
+  });
 });

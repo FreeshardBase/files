@@ -2210,6 +2210,13 @@ class FileBrowser {
       return this.hideModal('modalRename');
     }
 
+    // Uniqueness & Collision Protection: Block renaming if target name already exists (#COLLISION-RENAME)
+    const duplicateExists = this.items.some(i => i.name.toLowerCase() === newName.toLowerCase() && i.name !== this.selectedItem.name);
+    if (duplicateExists) {
+      alert(`Eine Datei oder ein Ordner mit dem Namen "${newName}" existiert bereits in diesem Verzeichnis.`);
+      return;
+    }
+
     const currentItemPath = this.selectedItem.path;
     const parts = currentItemPath.split('/').filter(Boolean);
     parts.pop();
