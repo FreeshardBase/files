@@ -157,7 +157,7 @@ class DropboxProvider extends BaseProvider {
     return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, (c) => '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4));
   }
 
-  async read(filePath) {
+  async read(filePath, retryOn401 = true) {
     const token = await this.getValidAccessToken();
     const argHeader = this._formatApiArg({ path: filePath });
 
@@ -170,7 +170,18 @@ class DropboxProvider extends BaseProvider {
           'Authorization': `Bearer ${token}`,
           'Dropbox-API-Arg': argHeader
         }
-      }, (res) => {
+      }, async (res) => {
+        if (res.statusCode === 401 && retryOn401 && this.refreshToken) {
+          this.accessToken = null;
+          try {
+            await this.getValidAccessToken(true);
+            const retryResult = await this.read(filePath, false);
+            return resolve(retryResult);
+          } catch (e) {
+            return reject(e);
+          }
+        }
+
         if (res.statusCode >= 400) {
           let errBody = '';
           res.on('data', chunk => errBody += chunk);
@@ -196,7 +207,7 @@ class DropboxProvider extends BaseProvider {
     });
   }
 
-  async write(filePath, dataStream, options = {}) {
+  async write(filePath, dataStream, options = {}, retryOn401 = true) {
     const token = await this.getValidAccessToken();
     const argHeader = this._formatApiArg({
       path: filePath,
@@ -215,6 +226,12 @@ class DropboxProvider extends BaseProvider {
         'Content-Type': 'application/octet-stream'
       }
     }, dataStream);
+
+    if (uploadRes.statusCode === 401 && retryOn401 && this.refreshToken) {
+      this.accessToken = null;
+      await this.getValidAccessToken(true);
+      return this.write(filePath, dataStream, options, false);
+    }
 
     if (uploadRes.statusCode >= 400) {
       throw new Error(`Dropbox Upload Stream Failed (${uploadRes.statusCode}): ${uploadRes.body}`);
