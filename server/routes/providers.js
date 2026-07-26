@@ -385,14 +385,127 @@ router.get('/connections', async (req, res) => {
 });
 
 /**
+ * POST /api/providers/:id/disconnect
+ * Soft disconnect a provider connection and suspend associated share links (#58)
+ */
+router.post('/:id/disconnect', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+
+    await run('UPDATE provider_connections SET enabled = 0 WHERE id = ? AND user_id = ?', [connId, userId]);
+    await run("UPDATE file_shares SET status = 'suspended' WHERE provider_connection_id = ? AND owner_user_id = ?", [connId, userId]);
+    await run("UPDATE public_shares SET status = 'suspended' WHERE provider_connection_id = ? AND user_id = ?", [connId, userId]);
+
+    res.json({ success: true, suspended: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/providers/:id/reconnect
+ * Re-enable a provider connection and check for suspended shares needing reconciliation (#58)
+ */
+router.post('/:id/reconnect', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+
+    await run('UPDATE provider_connections SET enabled = 1 WHERE id = ? AND user_id = ?', [connId, userId]);
+
+    const internalRes = await get("SELECT count(*) as count FROM file_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connId]);
+    const publicRes = await get("SELECT count(*) as count FROM public_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connId]);
+
+    const suspendedCount = (internalRes?.count || 0) + (publicRes?.count || 0);
+
+    res.json({
+      success: true,
+      requiresReconciliation: suspendedCount > 0,
+      suspendedCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/providers/:id/reconcile-shares
+ * Retrieve list of suspended shares for reconciliation (#58)
+ */
+router.get('/:id/reconcile-shares', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+
+    const internalShares = await all(
+      `SELECT fs.id, fs.file_path, fs.is_directory, fs.read_write, u.username as sharee_username, u.display_name as sharee_display_name
+       FROM file_shares fs
+       JOIN users u ON fs.sharee_user_id = u.id
+       WHERE fs.provider_connection_id = ? AND fs.owner_user_id = ? AND fs.status = 'suspended'`,
+      [connId, userId]
+    );
+
+    const publicShares = await all(
+      `SELECT id, token, label, file_path, is_directory, permission_mode, download_count
+       FROM public_shares
+       WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'`,
+      [connId, userId]
+    );
+
+    res.json({ connectionId: connId, internalShares, publicShares });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/providers/:id/reconcile-shares/restore
+ * Restore all suspended shares for a re-connected provider (#58)
+ */
+router.post('/:id/reconcile-shares/restore', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+
+    await run("UPDATE file_shares SET status = 'active' WHERE provider_connection_id = ? AND owner_user_id = ?", [connId, userId]);
+    await run("UPDATE public_shares SET status = 'active' WHERE provider_connection_id = ? AND user_id = ?", [connId, userId]);
+
+    res.json({ success: true, restored: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/providers/:id/reconcile-shares/discard
+ * Discard/delete all suspended shares for a unlinked provider (#58)
+ */
+router.post('/:id/reconcile-shares/discard', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+
+    await run("DELETE FROM file_shares WHERE provider_connection_id = ? AND owner_user_id = ? AND status = 'suspended'", [connId, userId]);
+    await run("DELETE FROM public_shares WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'", [connId, userId]);
+
+    res.json({ success: true, discarded: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * DELETE /api/providers/connections/:id
- * Remove a provider connection
+ * Remove a provider connection permanently (#58)
  */
 router.delete('/:id', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
 
+    await run('DELETE FROM file_shares WHERE provider_connection_id = ? AND owner_user_id = ?', [connId, userId]);
+    await run('DELETE FROM public_shares WHERE provider_connection_id = ? AND user_id = ?', [connId, userId]);
     await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
     res.json({ success: true });
   } catch (err) {

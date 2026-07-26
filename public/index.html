@@ -181,6 +181,13 @@
     <div class="context-menu-item danger" id="ctxTabClose">✖ Tab schließen</div>
   </div>
 
+  <!-- Provider Context Menu (#58) -->
+  <div id="providerContextMenu" class="context-menu" style="display: none;">
+    <div class="context-menu-item" id="ctxProviderToggleState">🔌 Entkoppeln (Soft Disconnect)</div>
+    <div class="context-menu-divider" style="height: 1px; background: var(--border); margin: 4px 0;"></div>
+    <div class="context-menu-item danger" id="ctxProviderDelete">🗑️ Endgültig löschen</div>
+  </div>
+
   <!-- Modal: File Details & Sharing Overview Panel (#52) -->
   <div id="modalFileDetails" class="modal" style="display: none;">
     <div class="modal-content fs-sheet" style="max-width: 520px; width: 90%;">
@@ -227,6 +234,28 @@
 
       <div class="modal-actions" style="margin-top: 1.25rem;">
         <button class="fs-btn" id="btnDetailsClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Share Reconciliation Wizard (#58) -->
+  <div id="modalShareReconciliation" class="fs-modal-overlay" style="display: none;">
+    <div class="fs-modal-content" style="max-width: 540px;">
+      <div class="fs-modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border);">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          🔗 <span>Freigaben wiederherstellen (Reconciliation Wizard)</span>
+        </h3>
+      </div>
+      <div style="padding: 20px; font-size: 13px; line-height: 1.5; color: var(--ink);">
+        <p style="margin-bottom: 12px;">Für diesen Cloud-Speicher wurden während der Trennung <strong><span id="reconcileCountText">0</span> Freigaben</strong> pausiert. Möchtest du diese Freigabelinks wiederherstellen?</p>
+
+        <div id="reconcileShareList" style="max-height: 220px; overflow-y: auto; margin: 12px 0; padding: 10px; background: var(--bg); border: 1px solid var(--border-cool); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated list of suspended internal & public shares -->
+        </div>
+      </div>
+      <div class="fs-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px; background: var(--surface-muted); border-top: 1px solid var(--border);">
+        <button class="fs-btn" id="btnReconcileDiscard">Verwerfen (Löschen)</button>
+        <button class="fs-btn fs-btn--primary" id="btnReconcileRestore">Freigaben wiederherstellen</button>
       </div>
     </div>
   </div>

@@ -417,18 +417,19 @@ class FileBrowser {
         const icon = this.getProviderIconSvg(conn.provider_type, 18);
         const name = conn.display_name || (conn.provider_type === 'gdrive' ? 'Google Drive' : 'Dropbox');
         const isActive = this.currentViewType === 'provider' && this.currentProviderId === String(conn.id);
+        const isEnabled = conn.enabled !== 0;
 
         return `
-          <li class="nav-item ${isActive ? 'active' : ''}" id="navProvider_${conn.id}" data-id="${conn.id}" data-type="${conn.provider_type}" data-name="${name}">
+          <li class="nav-item ${isActive ? 'active' : ''} ${!isEnabled ? 'disabled-provider' : ''}" id="navProvider_${conn.id}" data-id="${conn.id}" data-type="${conn.provider_type}" data-name="${name}" style="${!isEnabled ? 'opacity: 0.6;' : ''}">
             <a href="#/provider/${conn.id}">
               <span class="nav-icon" style="display: flex; align-items: center; justify-content: center;">${icon}</span>
-              <span class="fs-label" style="text-transform: none; letter-spacing: normal;">${name}</span>
+              <span class="fs-label" style="text-transform: none; letter-spacing: normal;">${name} ${!isEnabled ? '<small style="font-size: 10px; color: var(--ink-muted);">(Entkoppelt)</small>' : ''}</span>
             </a>
           </li>
         `;
       }).join('');
 
-      // Add click & Drag and Drop event listeners to each sidebar provider item
+      // Add click, ContextMenu & Drag and Drop event listeners to each sidebar provider item
       connections.forEach(conn => {
         const navEl = document.getElementById(`navProvider_${conn.id}`);
         if (!navEl) return;
@@ -437,9 +438,21 @@ class FileBrowser {
 
         navEl.addEventListener('click', (e) => {
           e.preventDefault();
+          if (conn.enabled === 0) {
+            if (confirm(`"${name}" ist aktuell entkoppelt. Möchtest du diesen Cloud-Speicher wieder aktivieren?`)) {
+              this.reconnectProvider(conn.id);
+            }
+            return;
+          }
           document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
           navEl.classList.add('active');
           this.loadProviderDirectory(conn.id, name, '/');
+        });
+
+        navEl.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.showProviderContextMenu(e.clientX, e.clientY, conn);
         });
 
         // Sidebar Provider Drag & Drop target for direct cross-storage uploads/moves (#50, #56, #59)
@@ -607,7 +620,30 @@ class FileBrowser {
       }
     });
 
-    document.addEventListener('click', () => this.hideTabContextMenu());
+    // Provider Context Menu Event Handlers (#58)
+    document.getElementById('ctxProviderToggleState')?.addEventListener('click', () => {
+      this.hideProviderContextMenu();
+      if (this.selectedProviderForContext) {
+        if (this.selectedProviderForContext.enabled !== 0) {
+          this.disconnectProvider(this.selectedProviderForContext.id);
+        } else {
+          this.reconnectProvider(this.selectedProviderForContext.id);
+        }
+      }
+    });
+
+    document.getElementById('ctxProviderDelete')?.addEventListener('click', () => {
+      this.hideProviderContextMenu();
+      if (this.selectedProviderForContext) {
+        const pName = this.selectedProviderForContext.display_name || 'Cloud Storage';
+        this.deleteProviderPermanently(this.selectedProviderForContext.id, pName);
+      }
+    });
+
+    document.addEventListener('click', () => {
+      this.hideTabContextMenu();
+      this.hideProviderContextMenu();
+    });
 
     // Upload Input
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
@@ -2282,6 +2318,148 @@ class FileBrowser {
   hideTabContextMenu() {
     const menu = document.getElementById('tabContextMenu');
     if (menu) menu.style.display = 'none';
+  }
+
+  showProviderContextMenu(x, y, conn) {
+    const menu = document.getElementById('providerContextMenu');
+    if (!menu) return;
+    this.selectedProviderForContext = conn;
+
+    const toggleItem = document.getElementById('ctxProviderToggleState');
+    if (toggleItem) {
+      toggleItem.textContent = conn.enabled !== 0 ? '🔌 Entkoppeln (Soft Disconnect)' : '⚡ Reaktivieren (Reconnect)';
+    }
+
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.style.display = 'block';
+  }
+
+  hideProviderContextMenu() {
+    const menu = document.getElementById('providerContextMenu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  async disconnectProvider(connId) {
+    try {
+      const res = await fetch(`/api/providers/${connId}/disconnect`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to disconnect provider');
+      await this.loadSidebarProviders();
+      alert('Cloud-Speicher wurde entkoppelt. Zugehörige Freigabelinks wurden pausiert.');
+    } catch (err) {
+      alert('Fehler beim Entkoppeln: ' + err.message);
+    }
+  }
+
+  async reconnectProvider(connId) {
+    try {
+      const res = await fetch(`/api/providers/${connId}/reconnect`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to reconnect provider');
+      const data = await res.json();
+
+      await this.loadSidebarProviders();
+
+      if (data.requiresReconciliation) {
+        this.openShareReconciliationWizard(connId, data.suspendedCount);
+      } else {
+        alert('Cloud-Speicher erfolgreich reaktiviert.');
+      }
+    } catch (err) {
+      alert('Fehler beim Reaktivieren: ' + err.message);
+    }
+  }
+
+  async deleteProviderPermanently(connId, name) {
+    if (!confirm(`Möchtest du den Cloud-Speicher "${name}" und ALLE zugehörigen Freigaben wirklich ENDGÜLTIG löschen?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/providers/${connId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete provider connection');
+      await this.loadSidebarProviders();
+      this.loadDirectory('/');
+      alert('Cloud-Speicher wurde endgültig entfernt.');
+    } catch (err) {
+      alert('Fehler beim Löschen: ' + err.message);
+    }
+  }
+
+  async openShareReconciliationWizard(connId, suspendedCount) {
+    const modal = document.getElementById('modalShareReconciliation');
+    const countText = document.getElementById('reconcileCountText');
+    const listEl = document.getElementById('reconcileShareList');
+    if (!modal || !listEl) return;
+
+    if (countText) countText.textContent = suspendedCount;
+
+    try {
+      const res = await fetch(`/api/providers/${connId}/reconcile-shares`);
+      if (!res.ok) throw new Error('Failed to fetch suspended shares');
+      const data = await res.json();
+
+      const internalShares = data.internalShares || [];
+      const publicShares = data.publicShares || [];
+
+      let html = '';
+
+      internalShares.forEach(s => {
+        html += `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 6px 10px; background: var(--surface); border-radius: var(--radius-sm); border: var(--border-w) solid var(--border);">
+            <span>👥 Intern: <strong>${s.file_path}</strong> (Empfänger: ${s.sharee_display_name || s.sharee_username})</span>
+            <span class="fs-mono" style="color: var(--ink-muted); font-size: 10px;">Pausiert</span>
+          </div>
+        `;
+      });
+
+      publicShares.forEach(s => {
+        html += `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 6px 10px; background: var(--surface); border-radius: var(--radius-sm); border: var(--border-w) solid var(--border);">
+            <span>🔗 Öffentlicher Link: <strong>${s.file_path}</strong> ${s.label ? `(${s.label})` : ''}</span>
+            <span class="fs-mono" style="color: var(--ink-muted); font-size: 10px;">Token: ${s.token.substring(0, 8)}...</span>
+          </div>
+        `;
+      });
+
+      listEl.innerHTML = html || '<div style="font-size: 12px; color: var(--ink-muted);">Keine pausierten Freigaben gefunden.</div>';
+
+      const btnRestore = document.getElementById('btnReconcileRestore');
+      const btnDiscard = document.getElementById('btnReconcileDiscard');
+
+      const cleanup = () => {
+        this.hideModal('modalShareReconciliation');
+        btnRestore?.removeEventListener('click', onRestore);
+        btnDiscard?.removeEventListener('click', onDiscard);
+      };
+
+      const onRestore = async () => {
+        cleanup();
+        try {
+          const res = await fetch(`/api/providers/${connId}/reconcile-shares/restore`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to restore shares');
+          alert('🎉 Alle pausierten Freigaben wurden erfolgreich wiederhergestellt!');
+        } catch (e) {
+          alert('Fehler beim Wiederherstellen: ' + e.message);
+        }
+      };
+
+      const onDiscard = async () => {
+        cleanup();
+        try {
+          const res = await fetch(`/api/providers/${connId}/reconcile-shares/discard`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to discard shares');
+          alert('Pausierte Freigaben wurden verworfen.');
+        } catch (e) {
+          alert('Fehler beim Verwerfen: ' + e.message);
+        }
+      };
+
+      btnRestore?.addEventListener('click', onRestore);
+      btnDiscard?.addEventListener('click', onDiscard);
+
+      this.showModal('modalShareReconciliation');
+    } catch (err) {
+      alert('Wizard Error: ' + err.message);
+    }
   }
 
   setActivePane(paneName) {

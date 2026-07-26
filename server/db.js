@@ -133,6 +133,7 @@ async function initDb() {
       file_path TEXT NOT NULL,
       is_directory INTEGER DEFAULT 0,
       read_write INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -153,9 +154,15 @@ async function initDb() {
       expires_at TEXT,
       max_downloads INTEGER,
       download_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  const fileSharesCols = await all("PRAGMA table_info(file_shares);");
+  if (!fileSharesCols.some(c => c.name === 'status')) {
+    try { await run("ALTER TABLE file_shares ADD COLUMN status TEXT DEFAULT 'active';"); } catch (e) {}
+  }
 
   const publicColumns = await all("PRAGMA table_info(public_shares);");
   const hasLabel = publicColumns.some(c => c.name === 'label');
@@ -165,6 +172,9 @@ async function initDb() {
     } catch (e) {
       if (!e.message.includes('duplicate column')) throw e;
     }
+  }
+  if (!publicColumns.some(c => c.name === 'status')) {
+    try { await run("ALTER TABLE public_shares ADD COLUMN status TEXT DEFAULT 'active';"); } catch (e) {}
   }
 
   // Trash Items (#18)
