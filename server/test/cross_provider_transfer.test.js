@@ -90,4 +90,44 @@ describe('Cross-Provider Cloud Storage Transfer & Internal Move (#7, #56)', () =
     await mockProvider.move('/FolderA/test.txt', '/FolderB/test.txt');
     assert.equal(moveCalled, true);
   });
+
+  test('executes Cloud-to-Local transfer flow cleanly (Cloud Provider -> Local Home)', async () => {
+    let readCalled = false;
+    let localWriteCalled = false;
+    let cloudDeleteCalled = false;
+
+    const mockSourceCloudProvider = {
+      read: async (path) => {
+        readCalled = true;
+        return {
+          stream: Readable.from([Buffer.from('cloud file content')]),
+          size: 18,
+          mimeType: 'image/jpeg'
+        };
+      },
+      delete: async (path) => {
+        cloudDeleteCalled = true;
+        return true;
+      }
+    };
+
+    const mockLocalProvider = {
+      write: async (path, stream) => {
+        localWriteCalled = true;
+        return { path, size: 18 };
+      }
+    };
+
+    const item = { srcPath: '/Indila - Dernière Danse.jpg', name: 'Indila - Dernière Danse.jpg' };
+    const readResult = await mockSourceCloudProvider.read(item.srcPath);
+    assert.equal(readCalled, true);
+
+    const writeResult = await mockLocalProvider.write('/Indila - Dernière Danse.jpg', readResult.stream);
+    assert.equal(writeResult.path, '/Indila - Dernière Danse.jpg');
+    assert.equal(localWriteCalled, true);
+
+    const deleteResult = await mockSourceCloudProvider.delete(item.srcPath);
+    assert.equal(deleteResult, true);
+    assert.equal(cloudDeleteCalled, true);
+  });
 });

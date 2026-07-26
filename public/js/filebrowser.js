@@ -199,14 +199,74 @@ class FileBrowser {
       this.hideModal('modalAddProvider');
     });
 
-    // Sidebar Navigation (#14, #18, #22)
-    document.getElementById('navHome')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      this.currentViewType = 'local';
-      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-      document.getElementById('navHome')?.classList.add('active');
-      this.loadDirectory('/');
-    });
+    // Sidebar Navigation (#14, #18, #22, #50, #56)
+    const navHomeEl = document.getElementById('navHome');
+    if (navHomeEl) {
+      navHomeEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.currentViewType = 'local';
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        navHomeEl.classList.add('active');
+        this.loadDirectory('/');
+      });
+
+      // Sidebar Home Drag & Drop target (move cloud files back to Home /)
+      navHomeEl.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        navHomeEl.classList.add('drag-target-hover');
+
+        if (this.springLoadTarget !== navHomeEl) {
+          this.clearSpringLoadTimer();
+          this.springLoadTarget = navHomeEl;
+          navHomeEl.classList.add('drag-spring-loading');
+          this.springLoadTimer = setTimeout(() => {
+            this.clearSpringLoadTimer();
+            if (this.isInternalDragging || this.activeDragPayload) {
+              this.currentViewType = 'local';
+              document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+              navHomeEl.classList.add('active');
+              this.loadDirectory('/');
+            }
+          }, 750);
+        }
+      });
+
+      navHomeEl.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navHomeEl.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+      });
+
+      navHomeEl.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        navHomeEl.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+
+        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+        let data = null;
+        if (rawData) {
+          try { data = JSON.parse(rawData); } catch(err){}
+        }
+        if (!data) data = this.activeDragPayload;
+        if (!data) return;
+
+        try {
+          const payload = data;
+          this.activeDragPayload = null;
+          this.isInternalDragging = false;
+          await this.handleDragDropMove(payload, '/');
+        } catch (err) {
+          console.error('Sidebar Home Drop Error:', err);
+          alert(`Move failed: ${err.message}`);
+        }
+      });
+    }
 
     document.getElementById('navShared')?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -325,9 +385,9 @@ class FileBrowser {
     window.addEventListener('drop', async (e) => {
       if (!this.isInternalDragging && !this.activeDragPayload) return;
 
-      // Ignore if drop target was a subfolder card or a breadcrumb link (which have their own specific target handlers)
+      // Ignore if drop target was a subfolder card, breadcrumb link, or sidebar nav item (which have their own specific target handlers)
       if (e.target && e.target.closest) {
-        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item')) {
+        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item') || e.target.closest('.nav-item')) {
           return;
         }
       }
@@ -1083,7 +1143,8 @@ class FileBrowser {
         }
 
         this.clearSelection();
-        this.loadDirectory(this.currentPath);
+        this.currentViewType = 'local';
+        this.loadDirectory(targetDirectory || '/');
         return;
       }
 
