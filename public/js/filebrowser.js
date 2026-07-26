@@ -739,26 +739,7 @@ class FileBrowser {
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById(`navProvider_${providerId}`)?.classList.add('active');
 
-    if (this.breadcrumb) {
-      const pathParts = dirPath.split('/').filter(Boolean);
-      let crumbHtml = `<span class="breadcrumb-item"><a href="#/files" onclick="window.fileBrowser.loadDirectory('/')">🏠 Home</a></span>`;
-      const provType = providerName.toLowerCase().includes('dropbox') ? 'dropbox' : (providerName.toLowerCase().includes('google') ? 'gdrive' : 'cloud');
-      const providerSvg = this.getProviderIconSvg(provType, 16);
-      crumbHtml += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '/')" style="display: inline-flex; align-items: center; gap: 4px;">${providerSvg} ${providerName}</a></span>`;
-
-      let accumPath = '';
-      pathParts.forEach((part, index) => {
-        accumPath += '/' + part;
-        const isLast = index === pathParts.length - 1;
-        crumbHtml += ` <span class="breadcrumb-separator">/</span> `;
-        if (isLast) {
-          crumbHtml += `<span class="breadcrumb-item active">${part}</span>`;
-        } else {
-          crumbHtml += `<span class="breadcrumb-item"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '${accumPath}')">${part}</a></span>`;
-        }
-      });
-      this.breadcrumb.innerHTML = crumbHtml;
-    }
+    this.renderBreadcrumb();
 
     try {
       const res = await fetch(`/api/providers/${providerId}/list?path=${encodeURIComponent(dirPath)}`);
@@ -968,82 +949,132 @@ class FileBrowser {
   }
 
   renderBreadcrumb() {
-    if (!this.breadcrumb || this.currentViewType !== 'local') return;
+    if (!this.breadcrumb) return;
 
-    const parts = this.currentPath.split('/').filter(Boolean);
-    let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-path="/">Home</span>`;
+    if (this.currentViewType === 'local') {
+      const parts = this.currentPath.split('/').filter(Boolean);
+      let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-path="/">🏠 Home</span>`;
 
-    let accumulatedPath = '';
-    parts.forEach((part, index) => {
-      accumulatedPath += '/' + part;
-      const isActive = index === parts.length - 1;
+      let accumulatedPath = '';
+      parts.forEach((part, index) => {
+        accumulatedPath += '/' + part;
+        const isActive = index === parts.length - 1;
+        html += ` <span style="color: var(--ink-muted);">/</span> `;
+        html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
+      });
+
+      this.breadcrumb.innerHTML = html;
+
+      this.attachBreadcrumbDragAndClickHandlers((targetPath) => {
+        this.loadDirectory(targetPath);
+      }, null);
+
+    } else if (this.currentViewType === 'provider' && this.currentProviderId) {
+      const providerId = this.currentProviderId;
+      const providerName = this.currentProviderName || 'Cloud Drive';
+      const pathParts = this.currentPath.split('/').filter(Boolean);
+      const provType = providerName.toLowerCase().includes('dropbox') ? 'dropbox' : (providerName.toLowerCase().includes('google') ? 'gdrive' : 'cloud');
+      const providerSvg = this.getProviderIconSvg(provType, 16);
+
+      let html = `<span class="breadcrumb-item" data-path="home_root">🏠 Home</span>`;
       html += ` <span style="color: var(--ink-muted);">/</span> `;
-      html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
-    });
+      html += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}" data-path="/" style="display: inline-flex; align-items: center; gap: 4px;">${providerSvg} ${providerName}</span>`;
 
-    this.breadcrumb.innerHTML = html;
+      let accumulatedPath = '';
+      pathParts.forEach((part, index) => {
+        accumulatedPath += '/' + part;
+        const isActive = index === pathParts.length - 1;
+        html += ` <span style="color: var(--ink-muted);">/</span> `;
+        html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
+      });
 
+      this.breadcrumb.innerHTML = html;
+
+      this.attachBreadcrumbDragAndClickHandlers((targetPath) => {
+        if (targetPath === 'home_root') {
+          this.loadDirectory('/');
+        } else {
+          this.loadProviderDirectory(providerId, providerName, targetPath);
+        }
+      }, providerId);
+    }
+  }
+
+  attachBreadcrumbDragAndClickHandlers(navigateFn, destProviderId = null) {
     this.breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
       const targetPath = item.getAttribute('data-path');
 
       item.addEventListener('click', (e) => {
         if (targetPath && targetPath !== this.currentPath) {
-          this.loadDirectory(targetPath);
+          navigateFn(targetPath);
         }
       });
 
-      if (this.currentViewType === 'local') {
-        item.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
-          item.classList.add('drag-target-hover');
+      item.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        item.classList.add('drag-target-hover');
 
-          if (targetPath && targetPath !== this.currentPath && this.springLoadTarget !== item) {
+        if (targetPath && (targetPath !== this.currentPath || targetPath === 'home_root') && this.springLoadTarget !== item) {
+          this.clearSpringLoadTimer();
+          this.springLoadTarget = item;
+          item.classList.add('drag-spring-loading');
+          this.springLoadTimer = setTimeout(() => {
             this.clearSpringLoadTimer();
-            this.springLoadTarget = item;
-            item.classList.add('drag-spring-loading');
-            this.springLoadTimer = setTimeout(() => {
-              this.clearSpringLoadTimer();
-              if (this.isInternalDragging) {
-                this.loadDirectory(targetPath);
-              }
-            }, 750);
-          }
-        });
-
-        item.addEventListener('dragleave', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          item.classList.remove('drag-target-hover');
-          this.clearSpringLoadTimer();
-        });
-
-        item.addEventListener('drop', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          item.classList.remove('drag-target-hover');
-          this.clearSpringLoadTimer();
-
-          let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
-          let data = null;
-          if (rawData) {
-            try { data = JSON.parse(rawData); } catch(err){}
-          }
-          if (!data) data = this.activeDragPayload;
-          if (!data) return;
-
-          try {
-            if (data.srcPath === targetPath || targetPath.startsWith(data.srcPath + '/')) {
-              return;
+            if (this.isInternalDragging || this.activeDragPayload) {
+              navigateFn(targetPath);
             }
-            await this.handleDragDropMove(data, targetPath);
-          } catch (err) {
-            console.error('Breadcrumb Drag & Drop Error:', err);
-            alert(`Move failed: ${err.message}`);
+          }, 750);
+        }
+      });
+
+      item.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        item.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+      });
+
+      item.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        item.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+
+        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+        let data = null;
+        if (rawData) {
+          try { data = JSON.parse(rawData); } catch(err){}
+        }
+        if (!data) data = this.activeDragPayload;
+        if (!data) return;
+
+        try {
+          const payload = data;
+          this.activeDragPayload = null;
+          this.isInternalDragging = false;
+
+          let actualTargetDir = targetPath;
+          let actualTargetProvId = destProviderId;
+
+          if (targetPath === 'home_root') {
+            actualTargetDir = '/';
+            actualTargetProvId = null;
           }
-        });
-      }
+
+          if (payload.srcPath === actualTargetDir || actualTargetDir.startsWith(payload.srcPath + '/')) {
+            return;
+          }
+          await this.handleDragDropMove(payload, actualTargetDir, actualTargetProvId);
+          navigateFn(targetPath);
+        } catch (err) {
+          console.error('Breadcrumb Drag & Drop Error:', err);
+          alert(`Move failed: ${err.message}`);
+        }
+      });
     });
   }
 
