@@ -214,7 +214,7 @@ class GoogleDriveProvider extends BaseProvider {
     });
   }
 
-  async read(filePath) {
+  async read(filePath, retryOn401 = true) {
     const fileInfo = await this.resolvePathToId(filePath);
     if (fileInfo.isDirectory) {
       throw new Error(`Cannot read directory "${filePath}" as a file stream.`);
@@ -226,7 +226,18 @@ class GoogleDriveProvider extends BaseProvider {
     return new Promise((resolve, reject) => {
       const req = https.get(downloadUrl, {
         headers: { 'Authorization': `Bearer ${token}` }
-      }, (res) => {
+      }, async (res) => {
+        if (res.statusCode === 401 && retryOn401 && this.refreshToken) {
+          this.accessToken = null;
+          try {
+            await this.getValidAccessToken(true);
+            const retryResult = await this.read(filePath, false);
+            return resolve(retryResult);
+          } catch (e) {
+            return reject(e);
+          }
+        }
+
         if (res.statusCode >= 400) {
           return reject(new Error(`Failed to download file from Google Drive (${res.statusCode})`));
         }
@@ -240,7 +251,7 @@ class GoogleDriveProvider extends BaseProvider {
     });
   }
 
-  async write(filePath, dataStream, options = {}) {
+  async write(filePath, dataStream, options = {}, retryOn401 = true) {
     const dirPath = path.dirname(filePath);
     const fileName = path.basename(filePath);
     const parentDirInfo = await this.resolvePathToId(dirPath);
@@ -263,6 +274,12 @@ class GoogleDriveProvider extends BaseProvider {
         'X-Upload-Content-Type': metadata.mimeType
       }
     }, JSON.stringify(metadata));
+
+    if (initRes.statusCode === 401 && retryOn401 && this.refreshToken) {
+      this.accessToken = null;
+      await this.getValidAccessToken(true);
+      return this.write(filePath, dataStream, options, false);
+    }
 
     if (initRes.statusCode !== 200) {
       throw new Error(`Google Drive Upload Initialization Failed (${initRes.statusCode}): ${initRes.body}`);

@@ -9,6 +9,8 @@ describe('File Details & Sharing Overview (#52)', () => {
 
   before(async () => {
     await db.initDb();
+    await db.run('DELETE FROM file_shares WHERE owner_user_id = ?', [owner.id]);
+    await db.run('DELETE FROM public_shares WHERE user_id = ?', [owner.id]);
     await db.upsertUser(owner.id, owner.username, 'owner@example.com', 'local', null, owner.displayName);
     await db.upsertUser(sharee.id, sharee.username, 'sharee@example.com', 'local', null, sharee.displayName);
   });
