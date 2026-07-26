@@ -1005,3 +1005,41 @@ body {
     flex-wrap: wrap;
   }
 }
+
+/* Dual-Pane Side-by-Side View System (#61) */
+.panes-wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  width: 100%;
+  transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panes-wrapper.split-view-active {
+  grid-template-columns: 1fr 1fr;
+}
+
+.content-area.active-pane {
+  border: var(--border-w) solid var(--line) !important;
+  box-shadow: 0 0 0 1px var(--line) !important;
+}
+
+.content-area.secondary-pane {
+  background: var(--bg);
+  border: var(--border-w) solid var(--border-cool);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tab Reorder Insertion Highlight (#69) */
+.tab-item.drag-tab-over {
+  border-left: 3px solid var(--line) !important;
+  background-color: color-mix(in srgb, var(--line) 15%, var(--surface)) !important;
+}
+
+@media (max-width: 768px) {
+  .panes-wrapper.split-view-active {
+    grid-template-columns: 1fr !important; /* Stack vertically on mobile viewports */
+  }
+}

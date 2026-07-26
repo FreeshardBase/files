@@ -240,8 +240,34 @@ class FileBrowser {
         this.closeTab(id, e);
       });
 
-      // Cross-Tab Drag & Drop Target & Spring-Loading (#60)
+      // Tab Context Menu Right-Click Handler (#61)
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showTabContextMenu(e.clientX, e.clientY, tabObj);
+      });
+
+      // Interactive Tab Drag-to-Reorder (#69)
+      el.setAttribute('draggable', 'true');
+
+      el.addEventListener('dragstart', (e) => {
+        if (e.target.closest('.tab-close')) return;
+        this.draggingTabId = id;
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', `tab_reorder:${id}`);
+        }
+      });
+
+      // Cross-Tab Drag & Drop Target & Tab Reorder (#60, #69)
       el.addEventListener('dragover', (e) => {
+        if (this.draggingTabId && this.draggingTabId !== id) {
+          e.preventDefault();
+          e.stopPropagation();
+          el.classList.add('drag-tab-over');
+          return;
+        }
+
         if (!this.isInternalDragging && !this.activeDragPayload) return;
         e.preventDefault();
         e.stopPropagation();
@@ -264,11 +290,29 @@ class FileBrowser {
       el.addEventListener('dragleave', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        el.classList.remove('drag-tab-over');
         el.classList.remove('drag-target-hover');
-        this.clearSpringLoadTimer();
+        if (!this.draggingTabId) this.clearSpringLoadTimer();
       });
 
       el.addEventListener('drop', async (e) => {
+        if (this.draggingTabId) {
+          e.preventDefault();
+          e.stopPropagation();
+          el.classList.remove('drag-tab-over');
+
+          const fromIdx = this.tabs.findIndex(t => t.id === this.draggingTabId);
+          const toIdx = this.tabs.findIndex(t => t.id === id);
+          if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+            const [movedTab] = this.tabs.splice(fromIdx, 1);
+            this.tabs.splice(toIdx, 0, movedTab);
+            this.saveTabsToSession();
+            this.renderTabBar();
+          }
+          this.draggingTabId = null;
+          return;
+        }
+
         if (!this.isInternalDragging && !this.activeDragPayload) return;
         e.preventDefault();
         e.stopPropagation();
@@ -495,6 +539,39 @@ class FileBrowser {
     // View Toggle
     document.getElementById('btnGridView')?.addEventListener('click', () => this.setViewMode('grid'));
     document.getElementById('btnListView')?.addEventListener('click', () => this.setViewMode('list'));
+
+    // Dual-Pane Split View (#61)
+    document.getElementById('btnToggleSplitView')?.addEventListener('click', () => this.toggleSplitView());
+    document.getElementById('btnCloseSecondaryPane')?.addEventListener('click', () => this.toggleSplitView());
+
+    // Tab Context Menu Event Handlers (#61, #69)
+    document.getElementById('ctxTabSplitRight')?.addEventListener('click', () => {
+      this.hideTabContextMenu();
+      if (this.selectedTabForContext) {
+        this.toggleSplitView(this.selectedTabForContext);
+      }
+    });
+
+    document.getElementById('ctxTabDuplicate')?.addEventListener('click', () => {
+      this.hideTabContextMenu();
+      if (this.selectedTabForContext) {
+        this.createTab(
+          this.selectedTabForContext.viewType,
+          this.selectedTabForContext.path,
+          this.selectedTabForContext.providerId,
+          this.selectedTabForContext.providerName
+        );
+      }
+    });
+
+    document.getElementById('ctxTabClose')?.addEventListener('click', () => {
+      this.hideTabContextMenu();
+      if (this.selectedTabForContext) {
+        this.closeTab(this.selectedTabForContext.id);
+      }
+    });
+
+    document.addEventListener('click', () => this.hideTabContextMenu());
 
     // Upload Input
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
@@ -2142,6 +2219,74 @@ class FileBrowser {
 
   hideContextMenu() {
     if (this.contextMenu) this.contextMenu.style.display = 'none';
+  }
+
+  showTabContextMenu(x, y, tabObj) {
+    const menu = document.getElementById('tabContextMenu');
+    if (!menu) return;
+    this.selectedTabForContext = tabObj;
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.style.display = 'block';
+  }
+
+  hideTabContextMenu() {
+    const menu = document.getElementById('tabContextMenu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  toggleSplitView(targetTab = null) {
+    const wrapper = document.getElementById('panesWrapper');
+    const secPane = document.getElementById('secondaryPane');
+    const btn = document.getElementById('btnToggleSplitView');
+    if (!wrapper || !secPane) return;
+
+    this.isSplitViewActive = !this.isSplitViewActive;
+
+    if (this.isSplitViewActive) {
+      wrapper.classList.add('split-view-active');
+      secPane.style.display = 'flex';
+      if (btn) btn.classList.add('active');
+
+      const tabToRender = targetTab || this.tabs.find(t => t.id !== this.activeTabId) || this.tabs[0];
+      this.loadSecondaryDirectory(
+        tabToRender ? tabToRender.path : '/',
+        tabToRender ? tabToRender.viewType : 'local',
+        tabToRender ? tabToRender.providerId : null
+      );
+    } else {
+      wrapper.classList.remove('split-view-active');
+      secPane.style.display = 'none';
+      if (btn) btn.classList.remove('active');
+    }
+  }
+
+  async loadSecondaryDirectory(path, viewType = 'local', providerId = null) {
+    const secContainer = document.getElementById('secondaryFileContainer');
+    const secBreadcrumb = document.getElementById('secondaryBreadcrumb');
+    if (!secContainer) return;
+
+    if (secBreadcrumb) secBreadcrumb.textContent = `${viewType === 'provider' ? 'Cloud' : 'Home'} ${path}`;
+
+    try {
+      let listUrl = viewType === 'provider'
+        ? `/api/providers/${providerId}/list?path=${encodeURIComponent(path)}`
+        : `/api/files/local/list?path=${encodeURIComponent(path)}`;
+
+      const res = await fetch(listUrl);
+      if (!res.ok) throw new Error('Failed to load secondary pane directory');
+      const data = await res.json();
+      const items = data.items || [];
+
+      secContainer.innerHTML = items.map(item => `
+        <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}">
+          <div class="file-icon" style="font-size: 24px;">${item.isDirectory ? '📁' : this.getFileIconEmoji(item.name)}</div>
+          <div class="file-name" style="font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
+        </div>
+      `).join('');
+    } catch (err) {
+      secContainer.innerHTML = `<div style="padding: 12px; color: var(--ink-muted); font-size: 12px;">Ordner konnte nicht geladen werden</div>`;
+    }
   }
 
   showModal(id) {
