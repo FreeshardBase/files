@@ -1019,7 +1019,7 @@ body {
   grid-template-columns: 1fr 1fr;
 }
 
-.content-area.active-pane {
+.panes-wrapper.split-view-active .content-area.active-pane {
   border: var(--border-w) solid var(--line) !important;
   box-shadow: 0 0 0 1px var(--line) !important;
 }

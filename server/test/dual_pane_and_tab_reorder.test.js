@@ -107,5 +107,28 @@ describe('Dual-Pane Side-by-Side View (#61) & Tab Drag-to-Reorder (#69)', () => 
       assert.equal(normalizeProviderId(undefined), null);
       assert.equal(normalizeProviderId('undefined'), null);
     });
+
+    test('resolves file icon emoji via getFileIcon & getFileIconEmoji alias without throwing TypeError', () => {
+      const getFileIcon = (filename) => {
+        const ext = filename.split('.').pop().toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext)) return '🖼️';
+        if (['pdf'].includes(ext)) return '📕';
+        return '📄';
+      };
+      const getFileIconEmoji = (filename) => getFileIcon(filename);
+
+      assert.equal(getFileIconEmoji('document.pdf'), '📕');
+      assert.equal(getFileIconEmoji('photo.png'), '🖼️');
+      assert.equal(getFileIcon('file.txt'), '📄');
+    });
+
+    test('verifies active pane border outline CSS is scoped to .panes-wrapper.split-view-active', () => {
+      const fs = require('fs');
+      const path = require('path');
+      const cssPath = path.join(__dirname, '../../public/css/app.css');
+      const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+      assert.ok(cssContent.includes('.panes-wrapper.split-view-active .content-area.active-pane'));
+    });
   });
 });

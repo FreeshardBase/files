@@ -1976,6 +1976,10 @@ class FileBrowser {
     return '📝';
   }
 
+  getFileIconEmoji(filename) {
+    return this.getFileIcon(filename);
+  }
+
   formatSize(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -2313,7 +2317,7 @@ class FileBrowser {
 
       secContainer.innerHTML = items.map(item => `
         <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}">
-          <div class="file-icon" style="font-size: 24px;">${item.isDirectory ? '📁' : this.getFileIconEmoji(item.name)}</div>
+          <div class="file-icon" style="font-size: 24px;">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</div>
           <div class="file-name" style="font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
         </div>
       `).join('');
