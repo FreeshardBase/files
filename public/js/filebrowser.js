@@ -64,6 +64,16 @@ class FileBrowser {
     }
   }
 
+  getProviderIconSvg(providerType, size = 18) {
+    if (providerType === 'gdrive') {
+      return `<svg width="${size}" height="${size}" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; flex-shrink: 0;"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.2-2.1 7.4-12.8c.8-1.4 1.2-2.95 1.2-4.5h-27.5l6.85 11.85z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.95-1.2-4.5-1.2h-18.5c-1.55 0-3.15.4-4.5 1.2z" fill="#00832d"/><path d="m59.8 50h27.5c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8z" fill="#ffba00"/><path d="m27.5 50 13.75 23.8c1.35.8 2.95 1.2 4.5 1.2h27.5c1.55 0 3.15-.4 4.5-1.2l-13.75-23.8z" fill="#2684fc"/></svg>`;
+    }
+    if (providerType === 'dropbox') {
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#0061FF" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; flex-shrink: 0;"><path d="M6 2L0 6l6 4 6-4-6-4zm12 0l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4l-6 4 6 4 6-4-6-4zM6 19.5l6 4 6-4-6-3.5-6 3.5z"/></svg>`;
+    }
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; flex-shrink: 0;"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+  }
+
   async loadSidebarProviders() {
     const listEl = document.getElementById('sidebarProvidersList');
     const titleEl = document.getElementById('sectionExternalStorageTitle');
@@ -85,15 +95,15 @@ class FileBrowser {
       if (titleEl) titleEl.style.display = 'block';
 
       listEl.innerHTML = connections.map(conn => {
-        const icon = conn.provider_type === 'dropbox' ? '📦' : '☁️';
+        const icon = this.getProviderIconSvg(conn.provider_type, 18);
         const name = conn.display_name || (conn.provider_type === 'gdrive' ? 'Google Drive' : 'Dropbox');
         const isActive = this.currentViewType === 'provider' && this.currentProviderId === String(conn.id);
 
         return `
           <li class="nav-item ${isActive ? 'active' : ''}" id="navProvider_${conn.id}" data-id="${conn.id}" data-type="${conn.provider_type}" data-name="${name}">
             <a href="#/provider/${conn.id}">
-              <span class="nav-icon">${icon}</span>
-              <span class="fs-label">${name}</span>
+              <span class="nav-icon" style="display: flex; align-items: center; justify-content: center;">${icon}</span>
+              <span class="fs-label" style="text-transform: none; letter-spacing: normal;">${name}</span>
             </a>
           </li>
         `;
@@ -421,8 +431,9 @@ class FileBrowser {
     if (this.breadcrumb) {
       const pathParts = dirPath.split('/').filter(Boolean);
       let crumbHtml = `<span class="breadcrumb-item"><a href="#/files" onclick="window.fileBrowser.loadDirectory('/')">🏠 Home</a></span>`;
-      crumbHtml += ` <span class="breadcrumb-separator">/</span> `;
-      crumbHtml += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '/')">☁️ ${providerName}</a></span>`;
+      const provType = providerName.toLowerCase().includes('dropbox') ? 'dropbox' : (providerName.toLowerCase().includes('google') ? 'gdrive' : 'cloud');
+      const providerSvg = this.getProviderIconSvg(provType, 16);
+      crumbHtml += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}"><a href="#" onclick="window.fileBrowser.loadProviderDirectory(${providerId}, '${providerName}', '/')" style="display: inline-flex; align-items: center; gap: 4px;">${providerSvg} ${providerName}</a></span>`;
 
       let accumPath = '';
       pathParts.forEach((part, index) => {
