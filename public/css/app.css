@@ -935,3 +935,73 @@ body {
   from { opacity: 0; transform: scale(0.95) translateY(10px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* Mobile & Tablet Responsiveness Rules (#67) */
+@media (max-width: 640px) {
+  /* 1. Conflict Resolution Modal Stacking */
+  .conflict-comparison-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--space-3) !important;
+  }
+
+  .fs-modal-content {
+    max-width: 95vw !important;
+    margin: var(--space-2);
+  }
+
+  .fs-modal-footer {
+    flex-direction: column-reverse;
+    gap: var(--space-2) !important;
+  }
+
+  .fs-modal-footer .fs-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px; /* Touch target minimum height */
+  }
+
+  /* 2. Touch-Scrollable & Compact Multi-Tab Bar */
+  .tab-bar-container {
+    padding: 2px var(--space-2) 0 var(--space-2) !important;
+  }
+
+  .tab-bar-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+  
+  .tab-bar-scroll::-webkit-scrollbar {
+    display: none; /* Safari & Chrome */
+  }
+
+  .tab-item {
+    max-width: 130px !important;
+    padding: 5px 8px !important;
+  }
+
+  .tab-item:not(.active) .tab-title {
+    display: none !important; /* Hide text on inactive tabs on narrow mobile */
+  }
+
+  /* 3. Toolbar & Breadcrumbs Scrollable Container */
+  .breadcrumb-area {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .breadcrumb-area::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbar-area {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .actions-group {
+    flex-wrap: wrap;
+  }
+}
