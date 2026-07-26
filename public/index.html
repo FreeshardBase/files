@@ -141,11 +141,11 @@
 
         <!-- Secondary File Pane (Split View) -->
         <div class="content-area secondary-pane" id="secondaryPane" data-pane="secondary" style="display: none;">
-          <div class="secondary-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--surface); border-bottom: var(--border-w) solid var(--border); border-top-left-radius: var(--radius-card); border-top-right-radius: var(--radius-card);">
-            <div class="secondary-breadcrumb fs-mono" id="secondaryBreadcrumb" style="font-size: 12px; color: var(--ink-muted);">Home /</div>
-            <button class="fs-btn text-sm" id="btnCloseSecondaryPane" style="padding: 2px 6px;">✖ Close Pane</button>
+          <div class="secondary-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--surface); border-bottom: var(--border-w) solid var(--border); border-top-left-radius: var(--radius-card); border-top-right-radius: var(--radius-card);">
+            <div class="breadcrumb" id="secondaryBreadcrumb"></div>
+            <button class="fs-btn text-sm" id="btnCloseSecondaryPane" title="Pane schließen" style="padding: 2px 8px;">✖</button>
           </div>
-          <div id="secondaryFileContainer" class="grid-view" style="padding: var(--space-3);"></div>
+          <div id="secondaryFileContainer" class="grid-view" style="padding: var(--space-3); flex: 1; overflow-y: auto;"></div>
         </div>
       </div>
 

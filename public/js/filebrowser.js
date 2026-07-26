@@ -162,28 +162,47 @@ class FileBrowser {
     const targetTab = this.tabs.find(t => t.id === tabId);
     if (!targetTab) return;
 
-    this.activeTabId = tabId;
+    if (this.isSplitViewActive) {
+      if (tabId === this.secondaryTabId) {
+        this.setActivePane('secondary');
+        this.renderTabBar();
+        return;
+      } else if (tabId === this.primaryTabId) {
+        this.setActivePane('primary');
+        this.renderTabBar();
+        return;
+      }
+
+      if (this.activePane === 'secondary') {
+        this.secondaryTabId = tabId;
+        this.loadSecondaryDirectory(
+          targetTab.path || '/',
+          targetTab.viewType,
+          targetTab.providerId,
+          targetTab.providerName
+        );
+        this.renderTabBar();
+        return;
+      } else {
+        this.primaryTabId = tabId;
+        this.activeTabId = tabId;
+      }
+    } else {
+      this.activeTabId = tabId;
+    }
+
     this.saveTabsToSession();
 
-    if (this.isSplitViewActive && this.activePane === 'secondary') {
-      this.loadSecondaryDirectory(
-        targetTab.path || '/',
-        targetTab.viewType,
-        targetTab.providerId,
-        targetTab.providerName
-      );
+    if (targetTab.viewType === 'provider' && targetTab.providerId) {
+      this.loadProviderDirectory(targetTab.providerId, targetTab.providerName, targetTab.path, false);
+    } else if (targetTab.viewType === 'shared') {
+      this.loadSharedWithMe(false);
+    } else if (targetTab.viewType === 'trash') {
+      this.loadTrash(false);
+    } else if (targetTab.viewType === 'activity') {
+      this.loadActivity(false);
     } else {
-      if (targetTab.viewType === 'provider' && targetTab.providerId) {
-        this.loadProviderDirectory(targetTab.providerId, targetTab.providerName, targetTab.path, false);
-      } else if (targetTab.viewType === 'shared') {
-        this.loadSharedWithMe(false);
-      } else if (targetTab.viewType === 'trash') {
-        this.loadTrash(false);
-      } else if (targetTab.viewType === 'activity') {
-        this.loadActivity(false);
-      } else {
-        this.loadDirectory(targetTab.path || '/', false);
-      }
+      this.loadDirectory(targetTab.path || '/', false);
     }
 
     this.renderTabBar();
@@ -552,6 +571,14 @@ class FileBrowser {
     // Dual-Pane Split View (#61)
     document.getElementById('btnToggleSplitView')?.addEventListener('click', () => this.toggleSplitView());
     document.getElementById('btnCloseSecondaryPane')?.addEventListener('click', () => this.toggleSplitView());
+
+    document.getElementById('primaryPane')?.addEventListener('click', () => {
+      if (this.isSplitViewActive) this.setActivePane('primary');
+    });
+
+    document.getElementById('secondaryPane')?.addEventListener('click', () => {
+      if (this.isSplitViewActive) this.setActivePane('secondary');
+    });
 
     // Tab Context Menu Event Handlers (#61, #69)
     document.getElementById('ctxTabSplitRight')?.addEventListener('click', () => {
@@ -1954,6 +1981,15 @@ class FileBrowser {
     document.getElementById('btnListView')?.classList.toggle('active', mode === 'list');
     this.render();
 
+    if (this.isSplitViewActive && this.secondaryState) {
+      this.loadSecondaryDirectory(
+        this.secondaryState.path,
+        this.secondaryState.viewType,
+        this.secondaryState.providerId,
+        this.secondaryState.providerName
+      );
+    }
+
     try {
       await fetch('/api/users/me', {
         method: 'PATCH',
@@ -2275,12 +2311,16 @@ class FileBrowser {
       secPane.style.display = 'flex';
       if (btn) btn.classList.add('active');
 
-      const tabToRender = targetTab || this.tabs.find(t => t.id !== this.activeTabId) || this.tabs[0];
+      this.primaryTabId = this.activeTabId;
+
+      const secondaryTabObj = targetTab || this.tabs.find(t => t.id !== this.activeTabId) || this.tabs[0];
+      this.secondaryTabId = secondaryTabObj ? secondaryTabObj.id : this.activeTabId;
+
       this.loadSecondaryDirectory(
-        tabToRender ? tabToRender.path : '/',
-        tabToRender ? tabToRender.viewType : 'local',
-        tabToRender ? tabToRender.providerId : null,
-        tabToRender ? tabToRender.providerName : null
+        secondaryTabObj ? secondaryTabObj.path : '/',
+        secondaryTabObj ? secondaryTabObj.viewType : 'local',
+        secondaryTabObj ? secondaryTabObj.providerId : null,
+        secondaryTabObj ? secondaryTabObj.providerName : null
       );
       this.setActivePane('secondary');
     } else {
@@ -2291,15 +2331,77 @@ class FileBrowser {
     }
   }
 
+  renderSecondaryBreadcrumb(path, viewType = 'local', providerId = null, providerName = null) {
+    const secBreadcrumb = document.getElementById('secondaryBreadcrumb');
+    if (!secBreadcrumb) return;
+
+    if (viewType === 'local') {
+      const parts = (path || '/').split('/').filter(Boolean);
+      let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-path="/">🏠 Home</span>`;
+
+      let accumulatedPath = '';
+      parts.forEach((part, index) => {
+        accumulatedPath += '/' + part;
+        const isActive = index === parts.length - 1;
+        html += ` <span style="color: var(--ink-muted);">/</span> `;
+        html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
+      });
+
+      secBreadcrumb.innerHTML = html;
+
+      secBreadcrumb.querySelectorAll('.breadcrumb-item').forEach(el => {
+        const targetPath = el.getAttribute('data-path');
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+          this.loadSecondaryDirectory(targetPath, 'local');
+        });
+      });
+    } else if (viewType === 'provider' && providerId) {
+      const pName = providerName || 'Cloud Drive';
+      const pathParts = (path || '/').split('/').filter(Boolean);
+      const provType = pName.toLowerCase().includes('dropbox') ? 'dropbox' : (pName.toLowerCase().includes('google') ? 'gdrive' : 'cloud');
+      const providerSvg = this.getProviderIconSvg(provType, 16);
+
+      let html = `<span class="breadcrumb-item" data-path="home_root">🏠 Home</span>`;
+      html += ` <span style="color: var(--ink-muted);">/</span> `;
+      html += `<span class="breadcrumb-item ${pathParts.length === 0 ? 'active' : ''}" data-path="/" style="display: inline-flex; align-items: center; gap: 4px;">${providerSvg} ${pName}</span>`;
+
+      let accumulatedPath = '';
+      pathParts.forEach((part, index) => {
+        accumulatedPath += '/' + part;
+        const isActive = index === pathParts.length - 1;
+        html += ` <span style="color: var(--ink-muted);">/</span> `;
+        html += `<span class="breadcrumb-item ${isActive ? 'active' : ''}" data-path="${accumulatedPath}">${part}</span>`;
+      });
+
+      secBreadcrumb.innerHTML = html;
+
+      secBreadcrumb.querySelectorAll('.breadcrumb-item').forEach(el => {
+        const targetPath = el.getAttribute('data-path');
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+          if (targetPath === 'home_root') {
+            this.loadSecondaryDirectory('/', 'local');
+          } else {
+            this.loadSecondaryDirectory(targetPath, 'provider', providerId, pName);
+          }
+        });
+      });
+    }
+  }
+
   async loadSecondaryDirectory(path, viewType = 'local', providerId = null, providerName = null) {
     const secContainer = document.getElementById('secondaryFileContainer');
-    const secBreadcrumb = document.getElementById('secondaryBreadcrumb');
     if (!secContainer) return;
 
     const normProviderId = (providerId && providerId !== 'null' && providerId !== 'undefined') ? String(providerId) : null;
     this.secondaryState = { viewType, path, providerId: normProviderId, providerName };
-    const pName = providerName || (viewType === 'provider' ? 'Cloud' : 'Home');
-    if (secBreadcrumb) secBreadcrumb.textContent = `${pName} ${path}`;
+
+    this.renderSecondaryBreadcrumb(path, viewType, normProviderId, providerName);
 
     try {
       let listUrl = (viewType === 'provider' && normProviderId)
@@ -2315,12 +2417,26 @@ class FileBrowser {
       const items = data.items || [];
       this.secondaryItems = items;
 
-      secContainer.innerHTML = items.map(item => `
-        <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}">
-          <div class="file-icon" style="font-size: 24px;">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</div>
-          <div class="file-name" style="font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
-        </div>
-      `).join('');
+      secContainer.className = this.viewMode === 'grid' ? 'grid-view' : 'list-view';
+
+      if (this.viewMode === 'list') {
+        secContainer.innerHTML = items.map(item => `
+          <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}" style="display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 8px 12px; margin-bottom: 4px; border-radius: var(--radius-sm); border: var(--border-w) solid var(--border);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="file-icon" style="font-size: 20px;">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</span>
+              <span class="file-name" style="font-size: 13px; font-weight: 500;">${item.name}</span>
+            </div>
+            <span class="fs-mono" style="font-size: 11px; color: var(--ink-muted);">${item.isDirectory ? '' : this.formatSize(item.size)}</span>
+          </div>
+        `).join('');
+      } else {
+        secContainer.innerHTML = items.map(item => `
+          <div class="file-card" data-name="${item.name}" data-path="${item.path}" data-is-dir="${item.isDirectory}">
+            <div class="file-icon" style="font-size: 24px;">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</div>
+            <div class="file-name" style="font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
+          </div>
+        `).join('');
+      }
 
       secContainer.querySelectorAll('.file-card').forEach(card => {
         const isDir = card.getAttribute('data-is-dir') === 'true';

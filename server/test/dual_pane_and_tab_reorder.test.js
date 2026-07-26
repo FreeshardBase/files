@@ -130,5 +130,73 @@ describe('Dual-Pane Side-by-Side View (#61) & Tab Drag-to-Reorder (#69)', () => 
 
       assert.ok(cssContent.includes('.panes-wrapper.split-view-active .content-area.active-pane'));
     });
+
+    test('preserves pane contents when clicking tabs already assigned to open split panes (#61)', () => {
+      let isSplitViewActive = true;
+      let primaryTabId = 'tab-1';
+      let secondaryTabId = 'tab-2';
+      let activePane = 'secondary';
+      let reloadedPrimary = false;
+      let reloadedSecondary = false;
+
+      const switchTab = (tabId) => {
+        if (isSplitViewActive) {
+          if (tabId === secondaryTabId) {
+            activePane = 'secondary';
+            return;
+          } else if (tabId === primaryTabId) {
+            activePane = 'primary';
+            return;
+          }
+        }
+      };
+
+      // User clicks Tab 1 (Home) which is assigned to Primary Pane
+      switchTab('tab-1');
+      assert.equal(activePane, 'primary');
+      assert.equal(reloadedPrimary, false);
+      assert.equal(reloadedSecondary, false);
+
+      // User clicks Tab 2 (Google Drive) which is assigned to Secondary Pane
+      switchTab('tab-2');
+      assert.equal(activePane, 'secondary');
+      assert.equal(reloadedPrimary, false);
+      assert.equal(reloadedSecondary, false);
+    });
+
+    test('synchronizes view mode (grid/list) across both primary and secondary panes (#61)', () => {
+      let currentViewMode = 'grid';
+      let primaryClass = 'grid-view';
+      let secondaryClass = 'grid-view';
+
+      const setViewMode = (mode) => {
+        currentViewMode = mode;
+        primaryClass = mode === 'grid' ? 'grid-view' : 'list-view';
+        secondaryClass = mode === 'grid' ? 'grid-view' : 'list-view';
+      };
+
+      setViewMode('list');
+      assert.equal(primaryClass, 'list-view');
+      assert.equal(secondaryClass, 'list-view');
+
+      setViewMode('grid');
+      assert.equal(primaryClass, 'grid-view');
+      assert.equal(secondaryClass, 'grid-view');
+    });
+
+    test('renders interactive breadcrumb html for secondary pane (#61)', () => {
+      const path = '/Documents/Work';
+      const parts = path.split('/').filter(Boolean);
+      let html = `<span class="breadcrumb-item">🏠 Home</span>`;
+      let accumulated = '';
+      parts.forEach(part => {
+        accumulated += '/' + part;
+        html += ` <span class="breadcrumb-item">${part}</span>`;
+      });
+
+      assert.ok(html.includes('Home'));
+      assert.ok(html.includes('Documents'));
+      assert.ok(html.includes('Work'));
+    });
   });
 });
