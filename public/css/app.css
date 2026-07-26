@@ -844,3 +844,94 @@ body {
     box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent);
   }
 }
+
+/* Modern Centered Modal Dialog System (#MODAL-CENTER) */
+.fs-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+  padding: var(--space-4);
+  animation: fadeInModal 0.2s ease-out;
+}
+
+.fs-modal-content {
+  background: var(--surface, #ffffff);
+  border: var(--border-w) solid var(--border-cool, var(--border));
+  border-radius: var(--radius-card, 12px);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  animation: popInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fs-modal-header {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: var(--border-w) solid var(--border);
+}
+
+.fs-modal-title {
+  font-size: var(--fs-title, 1.1rem);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.fs-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.fs-modal-close:hover {
+  color: var(--ink);
+  background: var(--surface-hover, rgba(0,0,0,0.05));
+}
+
+.fs-modal-body {
+  padding: var(--space-5);
+  flex: 1;
+}
+
+.fs-modal-footer {
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--border-w) solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  background: var(--surface);
+  border-bottom-left-radius: var(--radius-card, 12px);
+  border-bottom-right-radius: var(--radius-card, 12px);
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popInModal {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
