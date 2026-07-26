@@ -76,7 +76,7 @@ class FileBrowser {
 
   async loadSidebarProviders() {
     const listEl = document.getElementById('sidebarProvidersList');
-    const titleEl = document.getElementById('sectionExternalStorageTitle');
+    const headerEl = document.getElementById('sectionExternalStorageHeader');
     if (!listEl) return;
 
     try {
@@ -86,13 +86,12 @@ class FileBrowser {
       const data = await res.json();
       const connections = data.connections || [];
 
+      if (headerEl) headerEl.style.display = 'flex';
+
       if (connections.length === 0) {
-        listEl.innerHTML = '';
-        if (titleEl) titleEl.style.display = 'none';
+        listEl.innerHTML = `<li style="padding: 4px var(--space-3); font-size: 11px; color: var(--ink-muted); font-family: var(--font-mono);">Keine Konten verbunden</li>`;
         return;
       }
-
-      if (titleEl) titleEl.style.display = 'block';
 
       listEl.innerHTML = connections.map(conn => {
         const icon = this.getProviderIconSvg(conn.provider_type, 18);

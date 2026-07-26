@@ -62,8 +62,11 @@
         <li class="nav-item" id="navActivity"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
       </ul>
 
-      <div class="sidebar-section-title" id="sectionExternalStorageTitle" style="display: none;">
-        Externer Speicher
+      <div class="sidebar-section-header" id="sectionExternalStorageHeader">
+        <span class="sidebar-section-title">Externer Speicher</span>
+        <button id="btnAddCloudDrive" class="btn-sidebar-add" title="Cloud-Speicher verbinden" aria-label="Cloud-Speicher verbinden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
       </div>
       <ul class="nav-list" id="sidebarProvidersList">
         <!-- Dynamically populated connected cloud accounts -->
@@ -96,7 +99,6 @@
         <div class="action-buttons">
           <button class="fs-btn fs-btn--danger" id="btnEmptyTrash" style="display: none;">🗑️ <span>Empty Trash</span></button>
           <button class="fs-btn" id="btnFileDetails" style="display: none;">ℹ️ <span>Details</span></button>
-          <button class="fs-btn" id="btnAddCloudDrive">☁️ <span>Connect Drive</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
           <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer;">
             📤 <span data-i18n="files.upload">Upload</span>
