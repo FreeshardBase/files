@@ -2,116 +2,138 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { run, get, all, initDb } = require('../db');
 
-describe('Cloud Storage Lifecycle & Share Reconciliation Wizard (#58)', () => {
-  const userId = 'test_user_lifecycle';
-  let connectionId;
+describe('Cloud Storage Lifecycle & Share Reconciliation Wizard with Retention Window (#58)', () => {
+  const userId = 'user_lifecycle_retention';
+  let oldConnectionId;
+  let newConnectionId;
 
   before(async () => {
+    process.env.PROVIDER_SHARE_RETENTION_DAYS = '90';
     await initDb();
-    await run("INSERT OR IGNORE INTO users (id, username, email) VALUES (?, ?, ?)", [userId, 'lifecycle_user', 'lifecycle@test.com']);
-    await run("INSERT OR IGNORE INTO users (id, username, email) VALUES ('sharee_user', 'sharee', 'sharee@test.com')");
+    await run("INSERT OR IGNORE INTO users (id, username, email) VALUES (?, ?, ?)", [userId, 'retention_user', 'retention@test.com']);
+    await run("INSERT OR IGNORE INTO users (id, username, email) VALUES ('sharee_retention', 'sharee2', 'sharee2@test.com')");
   });
 
-  test('creates a test cloud provider connection and associated share links', async () => {
+  test('creates a cloud provider connection and associated share links', async () => {
     const res = await run(
       "INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
-      [userId, 'gdrive', 'Google Drive Work', 'enc_data', 'iv', 'tag']
+      [userId, 'gdrive', 'Google Drive Old', 'enc_data', 'iv', 'tag']
     );
-    connectionId = res.lastID;
+    oldConnectionId = res.lastID;
 
     // Create an internal share and a public share link bound to this provider connection
     await run(
       "INSERT INTO file_shares (owner_user_id, sharee_user_id, provider_type, provider_connection_id, file_path, status) VALUES (?, ?, ?, ?, ?, 'active')",
-      [userId, 'sharee_user', 'gdrive', connectionId, '/Documents/Report.pdf']
+      [userId, 'sharee_retention', 'gdrive', oldConnectionId, '/Documents/ProjectReport.pdf']
     );
 
     await run(
       "INSERT INTO public_shares (user_id, token, label, provider_type, provider_connection_id, file_path, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
-      [userId, 'token_lifecycle_123', 'Work Link', 'gdrive', connectionId, '/Photos/Vacation.jpg']
+      [userId, 'token_retention_90', 'Project Link', 'gdrive', oldConnectionId, '/Photos/Gallery.zip']
     );
 
-    const conn = await get("SELECT * FROM provider_connections WHERE id = ?", [connectionId]);
-    assert.equal(conn.enabled, 1);
+    const conn = await get("SELECT * FROM provider_connections WHERE id = ?", [oldConnectionId]);
+    assert.ok(conn);
   });
 
-  test('soft disconnects provider and suspends associated share links', async () => {
-    await run('UPDATE provider_connections SET enabled = 0 WHERE id = ? AND user_id = ?', [connectionId, userId]);
-    await run("UPDATE file_shares SET status = 'suspended' WHERE provider_connection_id = ? AND owner_user_id = ?", [connectionId, userId]);
-    await run("UPDATE public_shares SET status = 'suspended' WHERE provider_connection_id = ? AND user_id = ?", [connectionId, userId]);
+  test('truly unlinks provider connection while storing shares as orphaned for 90 days', async () => {
+    // Simulate DELETE /api/providers/:id
+    await run(
+      "UPDATE file_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND owner_user_id = ?",
+      [oldConnectionId, userId]
+    );
+    await run(
+      "UPDATE public_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND user_id = ?",
+      [oldConnectionId, userId]
+    );
+    await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [oldConnectionId, userId]);
 
-    const conn = await get("SELECT enabled FROM provider_connections WHERE id = ?", [connectionId]);
-    assert.equal(conn.enabled, 0);
+    // Provider connection record is truly deleted!
+    const deletedConn = await get("SELECT * FROM provider_connections WHERE id = ?", [oldConnectionId]);
+    assert.equal(deletedConn, undefined);
 
-    const intShare = await get("SELECT status FROM file_shares WHERE provider_connection_id = ?", [connectionId]);
-    assert.equal(intShare.status, 'suspended');
+    // Shares are retained as orphaned with unlinked_at timestamp
+    const intShare = await get("SELECT * FROM file_shares WHERE owner_user_id = ? AND provider_type = 'gdrive'", [userId]);
+    assert.equal(intShare.status, 'orphaned');
+    assert.equal(intShare.provider_connection_id, null);
+    assert.ok(intShare.unlinked_at);
 
-    const pubShare = await get("SELECT status FROM public_shares WHERE provider_connection_id = ?", [connectionId]);
-    assert.equal(pubShare.status, 'suspended');
+    const pubShare = await get("SELECT * FROM public_shares WHERE user_id = ? AND provider_type = 'gdrive'", [userId]);
+    assert.equal(pubShare.status, 'orphaned');
+    assert.equal(pubShare.provider_connection_id, null);
+    assert.ok(pubShare.unlinked_at);
   });
 
-  test('re-enables provider and identifies suspended shares requiring reconciliation', async () => {
-    await run('UPDATE provider_connections SET enabled = 1 WHERE id = ? AND user_id = ?', [connectionId, userId]);
+  test('re-connecting a new provider connection offers share reconciliation for orphaned shares within 90 days', async () => {
+    const res = await run(
+      "INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      [userId, 'gdrive', 'Google Drive New', 'enc_data', 'iv', 'tag']
+    );
+    newConnectionId = res.lastID;
 
-    const internalRes = await get("SELECT count(*) as count FROM file_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connectionId]);
-    const publicRes = await get("SELECT count(*) as count FROM public_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connectionId]);
-
-    const suspendedCount = (internalRes?.count || 0) + (publicRes?.count || 0);
-    assert.equal(suspendedCount, 2);
-  });
-
-  test('retrieves suspended shares for reconciliation wizard', async () => {
+    // Fetch orphaned shares matching provider_type within 90 days
     const internalShares = await all(
       `SELECT fs.id, fs.file_path, u.username as sharee_username
        FROM file_shares fs
        JOIN users u ON fs.sharee_user_id = u.id
-       WHERE fs.provider_connection_id = ? AND fs.owner_user_id = ? AND fs.status = 'suspended'`,
-      [connectionId, userId]
+       WHERE fs.owner_user_id = ? AND fs.provider_type = 'gdrive' AND fs.status = 'orphaned'
+         AND fs.unlinked_at >= datetime('now', '-90 days')`,
+      [userId]
     );
 
     const publicShares = await all(
       `SELECT id, token, label, file_path
        FROM public_shares
-       WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'`,
-      [connectionId, userId]
+       WHERE user_id = ? AND provider_type = 'gdrive' AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-90 days')`,
+      [userId]
     );
 
     assert.equal(internalShares.length, 1);
-    assert.equal(internalShares[0].file_path, '/Documents/Report.pdf');
+    assert.equal(internalShares[0].file_path, '/Documents/ProjectReport.pdf');
+
     assert.equal(publicShares.length, 1);
-    assert.equal(publicShares[0].token, 'token_lifecycle_123');
+    assert.equal(publicShares[0].token, 'token_retention_90');
   });
 
-  test('reconciles and restores all suspended share links', async () => {
-    await run("UPDATE file_shares SET status = 'active' WHERE provider_connection_id = ? AND owner_user_id = ?", [connectionId, userId]);
-    await run("UPDATE public_shares SET status = 'active' WHERE provider_connection_id = ? AND user_id = ?", [connectionId, userId]);
+  test('restores orphaned shares binding them to the new provider connection ID', async () => {
+    await run(
+      `UPDATE file_shares SET status = 'active', provider_connection_id = ?, unlinked_at = NULL
+       WHERE owner_user_id = ? AND provider_type = 'gdrive' AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-90 days')`,
+      [newConnectionId, userId]
+    );
 
-    const intShare = await get("SELECT status FROM file_shares WHERE provider_connection_id = ?", [connectionId]);
+    await run(
+      `UPDATE public_shares SET status = 'active', provider_connection_id = ?, unlinked_at = NULL
+       WHERE user_id = ? AND provider_type = 'gdrive' AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-90 days')`,
+      [newConnectionId, userId]
+    );
+
+    const intShare = await get("SELECT * FROM file_shares WHERE owner_user_id = ? AND provider_type = 'gdrive'", [userId]);
     assert.equal(intShare.status, 'active');
+    assert.equal(intShare.provider_connection_id, newConnectionId);
+    assert.equal(intShare.unlinked_at, null);
 
-    const pubShare = await get("SELECT status FROM public_shares WHERE provider_connection_id = ?", [connectionId]);
+    const pubShare = await get("SELECT * FROM public_shares WHERE user_id = ? AND provider_type = 'gdrive'", [userId]);
     assert.equal(pubShare.status, 'active');
+    assert.equal(pubShare.provider_connection_id, newConnectionId);
+    assert.equal(pubShare.unlinked_at, null);
   });
 
-  test('discards suspended share links upon user request', async () => {
-    // Suspend again
-    await run("UPDATE file_shares SET status = 'suspended' WHERE provider_connection_id = ?", [connectionId]);
-    await run("UPDATE public_shares SET status = 'suspended' WHERE provider_connection_id = ?", [connectionId]);
+  test('purges expired orphaned shares older than retention window (90 days)', async () => {
+    // Insert an old orphaned share from 91 days ago
+    await run(
+      "INSERT INTO file_shares (owner_user_id, sharee_user_id, provider_type, file_path, status, unlinked_at) VALUES (?, 'sharee_retention', 'dropbox', '/Old/Doc.pdf', 'orphaned', datetime('now', '-91 days'))",
+      [userId]
+    );
 
-    // Discard action
-    await run("DELETE FROM file_shares WHERE provider_connection_id = ? AND owner_user_id = ? AND status = 'suspended'", [connectionId, userId]);
-    await run("DELETE FROM public_shares WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'", [connectionId, userId]);
+    // Run cleanup
+    const retentionDays = 90;
+    await run(`DELETE FROM file_shares WHERE status = 'orphaned' AND unlinked_at < datetime('now', '-' || ? || ' days')`, [retentionDays]);
 
-    const intShares = await all("SELECT * FROM file_shares WHERE provider_connection_id = ?", [connectionId]);
-    assert.equal(intShares.length, 0);
-
-    const pubShares = await all("SELECT * FROM public_shares WHERE provider_connection_id = ?", [connectionId]);
-    assert.equal(pubShares.length, 0);
-  });
-
-  test('permanently deletes provider connection', async () => {
-    await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [connectionId, userId]);
-
-    const conn = await get("SELECT * FROM provider_connections WHERE id = ?", [connectionId]);
-    assert.equal(conn, undefined);
+    const oldShares = await all("SELECT * FROM file_shares WHERE file_path = '/Old/Doc.pdf'");
+    assert.equal(oldShares.length, 0);
   });
 });

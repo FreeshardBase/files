@@ -371,16 +371,15 @@ class FileBrowser {
     });
   }
 
-  checkOAuthCallback() {
+  async checkOAuthCallback() {
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('gdrive_connected') === 'true') {
-      alert('🎉 Successfully connected Google Drive account via OAuth 2.0!');
+    const connId = urlParams.get('connection_id');
+    if (urlParams.get('gdrive_connected') === 'true' || urlParams.get('dropbox_connected') === 'true') {
       window.history.replaceState({}, document.title, window.location.pathname);
-      this.loadSidebarProviders();
-    } else if (urlParams.get('dropbox_connected') === 'true') {
-      alert('🎉 Successfully connected Dropbox account via OAuth 2.0!');
-      window.history.replaceState({}, document.title, window.location.pathname);
-      this.loadSidebarProviders();
+      await this.loadSidebarProviders();
+      if (connId) {
+        this.openShareReconciliationWizard(connId);
+      }
     }
   }
 
@@ -2324,12 +2323,6 @@ class FileBrowser {
     const menu = document.getElementById('providerContextMenu');
     if (!menu) return;
     this.selectedProviderForContext = conn;
-
-    const toggleItem = document.getElementById('ctxProviderToggleState');
-    if (toggleItem) {
-      toggleItem.textContent = conn.enabled !== 0 ? '🔌 Entkoppeln (Soft Disconnect)' : '⚡ Reaktivieren (Reconnect)';
-    }
-
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
     menu.style.display = 'block';
@@ -2340,65 +2333,41 @@ class FileBrowser {
     if (menu) menu.style.display = 'none';
   }
 
-  async disconnectProvider(connId) {
-    try {
-      const res = await fetch(`/api/providers/${connId}/disconnect`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to disconnect provider');
-      await this.loadSidebarProviders();
-      alert('Cloud-Speicher wurde entkoppelt. Zugehörige Freigabelinks wurden pausiert.');
-    } catch (err) {
-      alert('Fehler beim Entkoppeln: ' + err.message);
-    }
-  }
-
-  async reconnectProvider(connId) {
-    try {
-      const res = await fetch(`/api/providers/${connId}/reconnect`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to reconnect provider');
-      const data = await res.json();
-
-      await this.loadSidebarProviders();
-
-      if (data.requiresReconciliation) {
-        this.openShareReconciliationWizard(connId, data.suspendedCount);
-      } else {
-        alert('Cloud-Speicher erfolgreich reaktiviert.');
-      }
-    } catch (err) {
-      alert('Fehler beim Reaktivieren: ' + err.message);
-    }
-  }
-
   async deleteProviderPermanently(connId, name) {
-    if (!confirm(`Möchtest du den Cloud-Speicher "${name}" und ALLE zugehörigen Freigaben wirklich ENDGÜLTIG löschen?`)) {
+    if (!confirm(`Möchtest du die Kopplung mit "${name}" aufheben?\n\nDie Verbindung wird gelöscht, deine Freigaben bleiben für 90 Tage für eine erneute Kopplung im Hintergrund aufbewahrt.`)) {
       return;
     }
     try {
       const res = await fetch(`/api/providers/${connId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete provider connection');
+      if (!res.ok) throw new Error('Failed to unlink provider connection');
       await this.loadSidebarProviders();
       this.loadDirectory('/');
-      alert('Cloud-Speicher wurde endgültig entfernt.');
+      alert('Kopplung wurde aufgehoben. Freigaben werden 90 Tage lang für eine erneute Reaktivierung aufbewahrt.');
     } catch (err) {
-      alert('Fehler beim Löschen: ' + err.message);
+      alert('Fehler beim Aufheben der Kopplung: ' + err.message);
     }
   }
 
-  async openShareReconciliationWizard(connId, suspendedCount) {
+  async openShareReconciliationWizard(connId) {
     const modal = document.getElementById('modalShareReconciliation');
     const countText = document.getElementById('reconcileCountText');
+    const daysText = document.getElementById('reconcileDaysText');
     const listEl = document.getElementById('reconcileShareList');
     if (!modal || !listEl) return;
 
-    if (countText) countText.textContent = suspendedCount;
-
     try {
       const res = await fetch(`/api/providers/${connId}/reconcile-shares`);
-      if (!res.ok) throw new Error('Failed to fetch suspended shares');
+      if (!res.ok) throw new Error('Failed to fetch orphaned shares');
       const data = await res.json();
 
       const internalShares = data.internalShares || [];
       const publicShares = data.publicShares || [];
+      const totalCount = internalShares.length + publicShares.length;
+
+      if (totalCount === 0) return;
+
+      if (countText) countText.textContent = totalCount;
+      if (daysText) daysText.textContent = data.retentionDays || 90;
 
       let html = '';
 
@@ -2406,7 +2375,7 @@ class FileBrowser {
         html += `
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 6px 10px; background: var(--surface); border-radius: var(--radius-sm); border: var(--border-w) solid var(--border);">
             <span>👥 Intern: <strong>${s.file_path}</strong> (Empfänger: ${s.sharee_display_name || s.sharee_username})</span>
-            <span class="fs-mono" style="color: var(--ink-muted); font-size: 10px;">Pausiert</span>
+            <span class="fs-mono" style="color: var(--ink-muted); font-size: 10px;">Aufbewahrt</span>
           </div>
         `;
       });
@@ -2420,7 +2389,7 @@ class FileBrowser {
         `;
       });
 
-      listEl.innerHTML = html || '<div style="font-size: 12px; color: var(--ink-muted);">Keine pausierten Freigaben gefunden.</div>';
+      listEl.innerHTML = html;
 
       const btnRestore = document.getElementById('btnReconcileRestore');
       const btnDiscard = document.getElementById('btnReconcileDiscard');
@@ -2436,7 +2405,7 @@ class FileBrowser {
         try {
           const res = await fetch(`/api/providers/${connId}/reconcile-shares/restore`, { method: 'POST' });
           if (!res.ok) throw new Error('Failed to restore shares');
-          alert('🎉 Alle pausierten Freigaben wurden erfolgreich wiederhergestellt!');
+          alert('🎉 Freigaben wurden erfolgreich an das neue Konto gekoppelt!');
         } catch (e) {
           alert('Fehler beim Wiederherstellen: ' + e.message);
         }
@@ -2447,7 +2416,7 @@ class FileBrowser {
         try {
           const res = await fetch(`/api/providers/${connId}/reconcile-shares/discard`, { method: 'POST' });
           if (!res.ok) throw new Error('Failed to discard shares');
-          alert('Pausierte Freigaben wurden verworfen.');
+          alert('Aufbewahrte Freigaben wurden verworfen.');
         } catch (e) {
           alert('Fehler beim Verwerfen: ' + e.message);
         }
@@ -2458,7 +2427,7 @@ class FileBrowser {
 
       this.showModal('modalShareReconciliation');
     } catch (err) {
-      alert('Wizard Error: ' + err.message);
+      console.warn('Share Reconciliation Wizard check skipped:', err.message);
     }
   }
 

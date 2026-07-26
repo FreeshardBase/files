@@ -134,6 +134,7 @@ async function initDb() {
       is_directory INTEGER DEFAULT 0,
       read_write INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
+      unlinked_at TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -155,6 +156,7 @@ async function initDb() {
       max_downloads INTEGER,
       download_count INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
+      unlinked_at TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -162,6 +164,9 @@ async function initDb() {
   const fileSharesCols = await all("PRAGMA table_info(file_shares);");
   if (!fileSharesCols.some(c => c.name === 'status')) {
     try { await run("ALTER TABLE file_shares ADD COLUMN status TEXT DEFAULT 'active';"); } catch (e) {}
+  }
+  if (!fileSharesCols.some(c => c.name === 'unlinked_at')) {
+    try { await run("ALTER TABLE file_shares ADD COLUMN unlinked_at TEXT DEFAULT NULL;"); } catch (e) {}
   }
 
   const publicColumns = await all("PRAGMA table_info(public_shares);");
@@ -175,6 +180,9 @@ async function initDb() {
   }
   if (!publicColumns.some(c => c.name === 'status')) {
     try { await run("ALTER TABLE public_shares ADD COLUMN status TEXT DEFAULT 'active';"); } catch (e) {}
+  }
+  if (!publicColumns.some(c => c.name === 'unlinked_at')) {
+    try { await run("ALTER TABLE public_shares ADD COLUMN unlinked_at TEXT DEFAULT NULL;"); } catch (e) {}
   }
 
   // Trash Items (#18)

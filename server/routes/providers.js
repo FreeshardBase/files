@@ -164,7 +164,9 @@ router.get('/gdrive/callback', async (req, res) => {
       accountEmail
     };
 
+    let connId;
     if (existingGdrive) {
+      connId = existingGdrive.id;
       const { encrypt } = require('../utils/crypto');
       const { iv, authTag, data: encryptedData } = encrypt(JSON.stringify(credentials));
       await run(
@@ -172,10 +174,10 @@ router.get('/gdrive/callback', async (req, res) => {
         [displayName, encryptedData, iv, authTag, existingGdrive.id]
       );
     } else {
-      await addProviderConnection(userId, 'gdrive', displayName, credentials);
+      connId = await addProviderConnection(userId, 'gdrive', displayName, credentials);
     }
 
-    res.redirect('/?gdrive_connected=true');
+    res.redirect(`/?gdrive_connected=true&connection_id=${connId}`);
   } catch (err) {
     res.status(500).send(`OAuth Callback Error: ${err.message}`);
   }
@@ -314,7 +316,9 @@ router.get('/dropbox/callback', async (req, res) => {
       accountEmail
     };
 
+    let connId;
     if (existingDropbox) {
+      connId = existingDropbox.id;
       const { encrypt } = require('../utils/crypto');
       const { iv, authTag, data: encryptedData } = encrypt(JSON.stringify(credentials));
       await run(
@@ -322,10 +326,10 @@ router.get('/dropbox/callback', async (req, res) => {
         [displayName, encryptedData, iv, authTag, existingDropbox.id]
       );
     } else {
-      await addProviderConnection(userId, 'dropbox', displayName, credentials);
+      connId = await addProviderConnection(userId, 'dropbox', displayName, credentials);
     }
 
-    res.redirect('/?dropbox_connected=true');
+    res.redirect(`/?dropbox_connected=true&connection_id=${connId}`);
   } catch (err) {
     res.status(500).send(`Dropbox OAuth Callback Error: ${err.message}`);
   }
@@ -385,45 +389,48 @@ router.get('/connections', async (req, res) => {
 });
 
 /**
- * POST /api/providers/:id/disconnect
- * Soft disconnect a provider connection and suspend associated share links (#58)
+ * Helper to purge expired orphaned shares older than PROVIDER_SHARE_RETENTION_DAYS (#58)
  */
-router.post('/:id/disconnect', async (req, res) => {
+async function cleanupExpiredOrphanedShares() {
+  const retentionDays = parseInt(process.env.PROVIDER_SHARE_RETENTION_DAYS || '90', 10);
   try {
-    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
-    const connId = req.params.id;
-
-    await run('UPDATE provider_connections SET enabled = 0 WHERE id = ? AND user_id = ?', [connId, userId]);
-    await run("UPDATE file_shares SET status = 'suspended' WHERE provider_connection_id = ? AND owner_user_id = ?", [connId, userId]);
-    await run("UPDATE public_shares SET status = 'suspended' WHERE provider_connection_id = ? AND user_id = ?", [connId, userId]);
-
-    res.json({ success: true, suspended: true });
+    await run(`DELETE FROM file_shares WHERE status = 'orphaned' AND unlinked_at < datetime('now', '-' || ? || ' days')`, [retentionDays]);
+    await run(`DELETE FROM public_shares WHERE status = 'orphaned' AND unlinked_at < datetime('now', '-' || ? || ' days')`, [retentionDays]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.warn('Failed to cleanup expired orphaned shares:', err.message);
   }
-});
+}
 
 /**
- * POST /api/providers/:id/reconnect
- * Re-enable a provider connection and check for suspended shares needing reconciliation (#58)
+ * DELETE /api/providers/:id
+ * Truly unlinks/deletes a provider connection, while retaining shares as 'orphaned' for X days (#58)
  */
-router.post('/:id/reconnect', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
 
-    await run('UPDATE provider_connections SET enabled = 1 WHERE id = ? AND user_id = ?', [connId, userId]);
+    const conn = await get('SELECT id, provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
+    if (!conn) {
+      return res.status(404).json({ error: 'Provider connection not found' });
+    }
 
-    const internalRes = await get("SELECT count(*) as count FROM file_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connId]);
-    const publicRes = await get("SELECT count(*) as count FROM public_shares WHERE provider_connection_id = ? AND status = 'suspended'", [connId]);
+    // Mark associated shares as orphaned with timestamp so they can be restored upon re-linking within X days (#58)
+    await run(
+      "UPDATE file_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND owner_user_id = ?",
+      [connId, userId]
+    );
+    await run(
+      "UPDATE public_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND user_id = ?",
+      [connId, userId]
+    );
 
-    const suspendedCount = (internalRes?.count || 0) + (publicRes?.count || 0);
+    // Truly delete the connection record
+    await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
 
-    res.json({
-      success: true,
-      requiresReconciliation: suspendedCount > 0,
-      suspendedCount
-    });
+    await cleanupExpiredOrphanedShares();
+
+    res.json({ success: true, unlinked: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -431,29 +438,39 @@ router.post('/:id/reconnect', async (req, res) => {
 
 /**
  * GET /api/providers/:id/reconcile-shares
- * Retrieve list of suspended shares for reconciliation (#58)
+ * Retrieve list of orphaned shares for a newly connected provider within retention window (#58)
  */
 router.get('/:id/reconcile-shares', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
+    const retentionDays = parseInt(process.env.PROVIDER_SHARE_RETENTION_DAYS || '90', 10);
+
+    await cleanupExpiredOrphanedShares();
+
+    const conn = await get('SELECT provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
+    if (!conn) {
+      return res.status(404).json({ error: 'Provider connection not found' });
+    }
 
     const internalShares = await all(
-      `SELECT fs.id, fs.file_path, fs.is_directory, fs.read_write, u.username as sharee_username, u.display_name as sharee_display_name
+      `SELECT fs.id, fs.file_path, fs.is_directory, fs.read_write, fs.unlinked_at, u.username as sharee_username, u.display_name as sharee_display_name
        FROM file_shares fs
        JOIN users u ON fs.sharee_user_id = u.id
-       WHERE fs.provider_connection_id = ? AND fs.owner_user_id = ? AND fs.status = 'suspended'`,
-      [connId, userId]
+       WHERE fs.owner_user_id = ? AND fs.provider_type = ? AND fs.status = 'orphaned'
+         AND fs.unlinked_at >= datetime('now', '-' || ? || ' days')`,
+      [userId, conn.provider_type, retentionDays]
     );
 
     const publicShares = await all(
-      `SELECT id, token, label, file_path, is_directory, permission_mode, download_count
+      `SELECT id, token, label, file_path, is_directory, permission_mode, download_count, unlinked_at
        FROM public_shares
-       WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'`,
-      [connId, userId]
+       WHERE user_id = ? AND provider_type = ? AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-' || ? || ' days')`,
+      [userId, conn.provider_type, retentionDays]
     );
 
-    res.json({ connectionId: connId, internalShares, publicShares });
+    res.json({ connectionId: connId, retentionDays, internalShares, publicShares });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -461,15 +478,32 @@ router.get('/:id/reconcile-shares', async (req, res) => {
 
 /**
  * POST /api/providers/:id/reconcile-shares/restore
- * Restore all suspended shares for a re-connected provider (#58)
+ * Restore orphaned shares binding them to the new provider connection (#58)
  */
 router.post('/:id/reconcile-shares/restore', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
+    const retentionDays = parseInt(process.env.PROVIDER_SHARE_RETENTION_DAYS || '90', 10);
 
-    await run("UPDATE file_shares SET status = 'active' WHERE provider_connection_id = ? AND owner_user_id = ?", [connId, userId]);
-    await run("UPDATE public_shares SET status = 'active' WHERE provider_connection_id = ? AND user_id = ?", [connId, userId]);
+    const conn = await get('SELECT provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
+    if (!conn) {
+      return res.status(404).json({ error: 'Provider connection not found' });
+    }
+
+    await run(
+      `UPDATE file_shares SET status = 'active', provider_connection_id = ?, unlinked_at = NULL
+       WHERE owner_user_id = ? AND provider_type = ? AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-' || ? || ' days')`,
+      [connId, userId, conn.provider_type, retentionDays]
+    );
+
+    await run(
+      `UPDATE public_shares SET status = 'active', provider_connection_id = ?, unlinked_at = NULL
+       WHERE user_id = ? AND provider_type = ? AND status = 'orphaned'
+         AND unlinked_at >= datetime('now', '-' || ? || ' days')`,
+      [connId, userId, conn.provider_type, retentionDays]
+    );
 
     res.json({ success: true, restored: true });
   } catch (err) {
@@ -479,35 +513,22 @@ router.post('/:id/reconcile-shares/restore', async (req, res) => {
 
 /**
  * POST /api/providers/:id/reconcile-shares/discard
- * Discard/delete all suspended shares for a unlinked provider (#58)
+ * Discard/delete orphaned shares for a provider type (#58)
  */
 router.post('/:id/reconcile-shares/discard', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     const connId = req.params.id;
 
-    await run("DELETE FROM file_shares WHERE provider_connection_id = ? AND owner_user_id = ? AND status = 'suspended'", [connId, userId]);
-    await run("DELETE FROM public_shares WHERE provider_connection_id = ? AND user_id = ? AND status = 'suspended'", [connId, userId]);
+    const conn = await get('SELECT provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
+    if (!conn) {
+      return res.status(404).json({ error: 'Provider connection not found' });
+    }
+
+    await run("DELETE FROM file_shares WHERE owner_user_id = ? AND provider_type = ? AND status = 'orphaned'", [userId, conn.provider_type]);
+    await run("DELETE FROM public_shares WHERE user_id = ? AND provider_type = ? AND status = 'orphaned'", [userId, conn.provider_type]);
 
     res.json({ success: true, discarded: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * DELETE /api/providers/connections/:id
- * Remove a provider connection permanently (#58)
- */
-router.delete('/:id', async (req, res) => {
-  try {
-    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
-    const connId = req.params.id;
-
-    await run('DELETE FROM file_shares WHERE provider_connection_id = ? AND owner_user_id = ?', [connId, userId]);
-    await run('DELETE FROM public_shares WHERE provider_connection_id = ? AND user_id = ?', [connId, userId]);
-    await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
-    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

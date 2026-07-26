@@ -183,17 +183,17 @@
 
   <!-- Provider Context Menu (#58) -->
   <div id="providerContextMenu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" id="ctxProviderToggleState">🔌 Entkoppeln (Soft Disconnect)</div>
-    <div class="context-menu-divider" style="height: 1px; background: var(--border); margin: 4px 0;"></div>
-    <div class="context-menu-item danger" id="ctxProviderDelete">🗑️ Endgültig löschen</div>
+    <div class="context-menu-item danger" id="ctxProviderDelete">🔌 Kopplung aufheben (Löschen)</div>
   </div>
 
   <!-- Modal: File Details & Sharing Overview Panel (#52) -->
   <div id="modalFileDetails" class="modal" style="display: none;">
     <div class="modal-content fs-sheet" style="max-width: 520px; width: 90%;">
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
-        <h3 id="detailsHeaderTitle" style="font-size: var(--fs-h3); margin: 0;">ℹ️ File Details & Shares</h3>
-        <button id="btnCloseFileDetails" class="fs-btn text-sm" style="padding: 2px 8px;">✖</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: var(--border-w) solid var(--border-cool); padding-bottom: 0.75rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px;">
+          <span>ℹ️ File Information & Shares</span>
+        </h3>
+        <button class="fs-btn text-sm" id="btnDetailsCloseHeader" style="padding: 2px 8px;">✕</button>
       </div>
 
       <!-- File Metadata Section -->
@@ -247,10 +247,10 @@
         </h3>
       </div>
       <div style="padding: 20px; font-size: 13px; line-height: 1.5; color: var(--ink);">
-        <p style="margin-bottom: 12px;">Für diesen Cloud-Speicher wurden während der Trennung <strong><span id="reconcileCountText">0</span> Freigaben</strong> pausiert. Möchtest du diese Freigabelinks wiederherstellen?</p>
+        <p style="margin-bottom: 12px;">Für diesen Cloud-Dienst wurden <strong><span id="reconcileCountText">0</span> Freigaben</strong> einer früheren Kopplung gefunden (gespeichert für max. <span id="reconcileDaysText">90</span> Tage). Möchtest du diese Freigaben an dein neues Konto koppeln?</p>
 
         <div id="reconcileShareList" style="max-height: 220px; overflow-y: auto; margin: 12px 0; padding: 10px; background: var(--bg); border: 1px solid var(--border-cool); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 8px;">
-          <!-- Dynamically populated list of suspended internal & public shares -->
+          <!-- Dynamically populated list of orphaned internal & public shares -->
         </div>
       </div>
       <div class="fs-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px; background: var(--surface-muted); border-top: 1px solid var(--border);">
