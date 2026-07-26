@@ -1038,8 +1038,8 @@ class FileBrowser {
             body: formData
           });
           if (!uploadRes.ok) {
-            const err = await uploadRes.json();
-            throw new Error(`Upload to Cloud failed: ${err.error || uploadRes.statusText}`);
+            const errText = await this.parseResponseError(uploadRes, 'Upload to Cloud failed');
+            throw new Error(`Upload to Cloud failed: ${errText}`);
           }
 
           // Delete source local file after successful upload to cloud
@@ -1073,8 +1073,8 @@ class FileBrowser {
             body: formData
           });
           if (!uploadRes.ok) {
-            const err = await uploadRes.json();
-            throw new Error(`Cloud to Local Transfer failed: ${err.error || uploadRes.statusText}`);
+            const errText = await this.parseResponseError(uploadRes, 'Cloud to Local Transfer failed');
+            throw new Error(`Cloud to Local Transfer failed: ${errText}`);
           }
 
           // Delete source cloud file after successful download to local
@@ -1090,6 +1090,21 @@ class FileBrowser {
     } finally {
       this.isTransferring = false;
     }
+  }
+
+  async parseResponseError(res, fallbackText = 'Operation failed') {
+    let errMessage = res.statusText || fallbackText;
+    try {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data && data.error) errMessage = data.error;
+      } else {
+        const text = await res.text();
+        if (text) errMessage = text.substring(0, 200);
+      }
+    } catch (e) {}
+    return errMessage;
   }
 
   async restoreTrashItem(id) {

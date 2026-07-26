@@ -150,9 +150,16 @@ class DropboxProvider extends BaseProvider {
     });
   }
 
+  /**
+   * Helper to format Dropbox-API-Arg header safely for UTF-8 / non-ASCII paths (RFC 5987 compliance)
+   */
+  _formatApiArg(obj) {
+    return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, (c) => '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4));
+  }
+
   async read(filePath) {
     const token = await this.getValidAccessToken();
-    const argHeader = JSON.stringify({ path: filePath });
+    const argHeader = this._formatApiArg({ path: filePath });
 
     return new Promise((resolve, reject) => {
       const req = https.request({
@@ -191,7 +198,7 @@ class DropboxProvider extends BaseProvider {
 
   async write(filePath, dataStream, options = {}) {
     const token = await this.getValidAccessToken();
-    const argHeader = JSON.stringify({
+    const argHeader = this._formatApiArg({
       path: filePath,
       mode: 'overwrite',
       autorename: false,

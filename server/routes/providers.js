@@ -456,34 +456,49 @@ router.post('/:id/upload', async (req, res) => {
 
     const busboy = Busboy({ headers: req.headers });
     let targetPath = req.query.path || '/';
-    let uploadedFile = null;
+    let uploadPromise = null;
+    let uploadError = null;
 
     busboy.on('field', (fieldname, val) => {
       if (fieldname === 'path' && val) targetPath = val;
     });
 
-    busboy.on('file', async (fieldname, fileStream, filenameObj, encoding, mimetype) => {
+    busboy.on('file', (fieldname, fileStream, filenameObj, encoding, mimetype) => {
       const rawFilename = typeof filenameObj === 'object' ? filenameObj.filename : filenameObj;
       const filename = decodeUtf8Filename(rawFilename);
       const fullPath = targetPath === '/' ? `/${filename}` : `${targetPath.replace(/\/+$/, '')}/${filename}`;
+
+      uploadPromise = provider.write(fullPath, fileStream, { mimeType: mimetype }).catch(err => {
+        uploadError = err;
+      });
+    });
+
+    busboy.on('finish', async () => {
       try {
-        uploadedFile = await provider.write(fullPath, fileStream, { mimeType: mimetype });
+        if (uploadPromise) {
+          const uploadedFile = await uploadPromise;
+          if (uploadError) throw uploadError;
+          return res.status(201).json({ success: true, file: uploadedFile });
+        }
+        return res.status(400).json({ error: 'No file uploaded in request' });
       } catch (err) {
-        busboy.emit('error', err);
+        if (!res.headersSent) {
+          return res.status(500).json({ error: err.message || 'Cloud upload failed' });
+        }
       }
     });
 
-    busboy.on('finish', () => {
-      res.status(201).json({ success: true, file: uploadedFile });
-    });
-
     busboy.on('error', (err) => {
-      res.status(500).json({ error: err.message });
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message });
+      }
     });
 
     req.pipe(busboy);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: err.message });
+    }
   }
 });
 

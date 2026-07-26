@@ -41,4 +41,11 @@ describe('DropboxProvider & Multi-Cloud Storage Contract (#56)', () => {
     assert.equal(meta.isDirectory, false);
     assert.equal(meta.size, 1048576);
   });
+
+  test('formats Dropbox-API-Arg with unicode escape sequences for RFC 5987 compliance', () => {
+    const provider = new DropboxProvider(credentials);
+    const formatted = provider._formatApiArg({ path: '/Indira/Cover (Español).jpg', mode: 'overwrite' });
+    assert.ok(!/[\u007f-\uffff]/.test(formatted), 'Header must contain zero unescaped non-ASCII characters');
+    assert.ok(formatted.includes('\\u00f1'), 'Spanish ñ must be escaped to \\u00f1');
+  });
 });
