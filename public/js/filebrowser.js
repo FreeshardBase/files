@@ -30,6 +30,10 @@ class FileBrowser {
     this.springLoadTimer = null; // Spring-loaded folder hover timer (#59)
     this.springLoadTarget = null;
 
+    // Multi-Tab UI System (#60)
+    this.tabs = [];
+    this.activeTabId = null;
+
     this.init();
   }
 
@@ -48,7 +52,181 @@ class FileBrowser {
     this.checkOAuthCallback();
     this.setupEventListeners();
     this.loadSidebarProviders();
-    this.loadDirectory(this.currentPath);
+    this.loadTabsFromSession();
+
+    const activeTab = this.getActiveTab();
+    if (activeTab) {
+      this.switchTab(activeTab.id);
+    } else {
+      this.loadDirectory(this.currentPath);
+    }
+  }
+
+  // ── Multi-Tab Session & State Management (#60) ───────────────────────────
+  loadTabsFromSession() {
+    try {
+      const stored = sessionStorage.getItem('fs_ui_tabs');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
+          this.tabs = parsed.tabs;
+          this.activeTabId = parsed.activeTabId || this.tabs[0].id;
+          return;
+        }
+      }
+    } catch (e) {}
+
+    const defaultTab = {
+      id: 'tab_' + Date.now(),
+      title: 'Home',
+      icon: '🏠',
+      viewType: 'local',
+      path: '/',
+      providerId: null,
+      providerName: null
+    };
+    this.tabs = [defaultTab];
+    this.activeTabId = defaultTab.id;
+    this.saveTabsToSession();
+  }
+
+  saveTabsToSession() {
+    try {
+      sessionStorage.setItem('fs_ui_tabs', JSON.stringify({
+        tabs: this.tabs,
+        activeTabId: this.activeTabId
+      }));
+    } catch (e) {}
+  }
+
+  getActiveTab() {
+    return this.tabs.find(t => t.id === this.activeTabId) || this.tabs[0];
+  }
+
+  updateActiveTabState(title, icon, viewType, path, providerId = null, providerName = null) {
+    const activeTab = this.getActiveTab();
+    if (!activeTab) return;
+    activeTab.title = title;
+    activeTab.icon = icon;
+    activeTab.viewType = viewType;
+    activeTab.path = path;
+    activeTab.providerId = providerId;
+    activeTab.providerName = providerName;
+    this.saveTabsToSession();
+    this.renderTabBar();
+  }
+
+  createTab(viewType = 'local', path = '/', providerId = null, providerName = null) {
+    const newId = 'tab_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    let title = 'Home';
+    let icon = '🏠';
+    if (viewType === 'provider') {
+      title = providerName || 'Cloud Drive';
+      icon = providerName?.toLowerCase().includes('dropbox') ? '📦' : '☁️';
+    } else if (viewType === 'shared') {
+      title = 'Shared';
+      icon = '🔗';
+    } else if (viewType === 'trash') {
+      title = 'Trash';
+      icon = '🗑️';
+    } else if (viewType === 'activity') {
+      title = 'Activity';
+      icon = '🕒';
+    }
+
+    const newTab = {
+      id: newId,
+      title,
+      icon,
+      viewType,
+      path,
+      providerId,
+      providerName
+    };
+    this.tabs.push(newTab);
+    this.switchTab(newId);
+  }
+
+  switchTab(tabId) {
+    const targetTab = this.tabs.find(t => t.id === tabId);
+    if (!targetTab) return;
+
+    this.activeTabId = tabId;
+    this.saveTabsToSession();
+
+    if (targetTab.viewType === 'provider' && targetTab.providerId) {
+      this.loadProviderDirectory(targetTab.providerId, targetTab.providerName, targetTab.path, false);
+    } else if (targetTab.viewType === 'shared') {
+      this.loadSharedWithMe(false);
+    } else if (targetTab.viewType === 'trash') {
+      this.loadTrash(false);
+    } else if (targetTab.viewType === 'activity') {
+      this.loadActivity(false);
+    } else {
+      this.loadDirectory(targetTab.path || '/', false);
+    }
+
+    this.renderTabBar();
+  }
+
+  closeTab(tabId, e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (this.tabs.length <= 1) {
+      const lastTab = this.tabs[0];
+      lastTab.title = 'Home';
+      lastTab.icon = '🏠';
+      lastTab.viewType = 'local';
+      lastTab.path = '/';
+      lastTab.providerId = null;
+      lastTab.providerName = null;
+      this.switchTab(lastTab.id);
+      return;
+    }
+
+    const index = this.tabs.findIndex(t => t.id === tabId);
+    if (index === -1) return;
+
+    this.tabs.splice(index, 1);
+    if (this.activeTabId === tabId) {
+      const nextTab = this.tabs[Math.max(0, index - 1)];
+      this.activeTabId = nextTab.id;
+      this.switchTab(nextTab.id);
+    } else {
+      this.saveTabsToSession();
+      this.renderTabBar();
+    }
+  }
+
+  renderTabBar() {
+    const barList = document.getElementById('tabBarList');
+    if (!barList) return;
+
+    barList.innerHTML = this.tabs.map(tab => {
+      const isActive = tab.id === this.activeTabId;
+      return `
+        <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${tab.id}">
+          <span class="tab-icon">${tab.icon || '📁'}</span>
+          <span class="tab-title" title="${tab.title}">${tab.title}</span>
+          <button class="tab-close" data-close-tab-id="${tab.id}" title="Tab schließen">&times;</button>
+        </div>
+      `;
+    }).join('');
+
+    barList.querySelectorAll('.tab-item').forEach(el => {
+      const id = el.getAttribute('data-tab-id');
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.tab-close')) return;
+        this.switchTab(id);
+      });
+
+      const closeBtn = el.querySelector('.tab-close');
+      closeBtn?.addEventListener('click', (e) => {
+        this.closeTab(id, e);
+      });
+    });
   }
 
   checkOAuthCallback() {
@@ -183,7 +361,9 @@ class FileBrowser {
     }
   }
 
-  setupEventListeners() {
+    // Multi-Tab New Tab Button (#60)
+    document.getElementById('btnNewTab')?.addEventListener('click', () => this.createTab('local', '/'));
+
     // View Toggle
     document.getElementById('btnGridView')?.addEventListener('click', () => this.setViewMode('grid'));
     document.getElementById('btnListView')?.addEventListener('click', () => this.setViewMode('list'));
@@ -449,11 +629,16 @@ class FileBrowser {
     document.getElementById('btnConfirmEditPublicShare')?.addEventListener('click', () => this.updatePublicShareLink());
   }
 
-  async loadDirectory(dirPath) {
+  async loadDirectory(dirPath, updateTab = true) {
     this.currentViewType = 'local';
     this.currentPath = dirPath;
     this.clearSelection();
     this.renderBreadcrumb();
+
+    if (updateTab) {
+      const folderName = dirPath === '/' ? 'Home' : dirPath.split('/').filter(Boolean).pop() || 'Home';
+      this.updateActiveTabState(folderName, dirPath === '/' ? '🏠' : '📁', 'local', dirPath);
+    }
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById('navHome')?.classList.add('active');
@@ -477,12 +662,19 @@ class FileBrowser {
     }
   }
 
-  async loadProviderDirectory(providerId, providerName, dirPath) {
+  async loadProviderDirectory(providerId, providerName, dirPath, updateTab = true) {
     this.currentViewType = 'provider';
     this.currentProviderId = String(providerId);
     this.currentProviderName = providerName;
     this.currentPath = dirPath;
     this.clearSelection();
+
+    if (updateTab) {
+      const pathParts = dirPath.split('/').filter(Boolean);
+      const subName = pathParts.length > 0 ? pathParts[pathParts.length - 1] : providerName;
+      const icon = providerName?.toLowerCase().includes('dropbox') ? '📦' : '☁️';
+      this.updateActiveTabState(subName, icon, 'provider', dirPath, String(providerId), providerName);
+    }
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById(`navProvider_${providerId}`)?.classList.add('active');
@@ -524,9 +716,12 @@ class FileBrowser {
     }
   }
 
-  async loadSharedWithMe() {
+  async loadSharedWithMe(updateTab = true) {
     this.currentViewType = 'shared';
     this.clearSelection();
+    if (updateTab) {
+      this.updateActiveTabState('Shared with me', '🔗', 'shared', '/');
+    }
     if (this.breadcrumb) {
       this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Shared with me</span>`;
     }
@@ -560,11 +755,14 @@ class FileBrowser {
     }
   }
 
-  async loadTrash(trashId = null, subpath = '/') {
+  async loadTrash(trashId = null, subpath = '/', updateTab = true) {
     this.currentViewType = 'trash';
     this.currentTrashId = trashId;
     this.currentTrashSubpath = subpath;
     this.clearSelection();
+    if (updateTab) {
+      this.updateActiveTabState('Trash', '🗑️', 'trash', '/');
+    }
 
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
     if (emptyTrashBtn) emptyTrashBtn.style.display = 'inline-flex';
@@ -583,12 +781,21 @@ class FileBrowser {
     }
 
     try {
+      let res;
       if (!trashId) {
-        const res = await fetch('/api/trash');
-        if (!res.ok) throw new Error('Failed to load trash items');
-        const data = await res.json();
+        res = await fetch('/api/trash');
+      } else {
+        res = await fetch(`/api/trash/${trashId}/contents?subpath=${encodeURIComponent(subpath)}`);
+      }
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to load trash items');
+      }
 
-        this.items = (data.items || []).map(t => ({
+      const data = await res.json();
+      if (!trashId) {
+        const items = data.items || [];
+        this.items = items.map(t => ({
           id: t.id,
           name: t.original_name,
           path: t.original_path,
@@ -600,17 +807,12 @@ class FileBrowser {
           isTopLevelTrash: true
         }));
       } else {
-        const res = await fetch(`/api/trash/inspect?id=${encodeURIComponent(trashId)}&subpath=${encodeURIComponent(subpath)}`);
-        if (!res.ok) throw new Error('Failed to inspect trash folder');
-        const data = await res.json();
-
-        this.items = (data.items || []).map(item => ({
-          id: trashId,
-          name: item.name,
-          path: item.path,
-          subpath: item.subpath,
-          isDirectory: !!item.isDirectory,
-          size: item.size,
+        const contents = data.contents || [];
+        this.items = contents.map(c => ({
+          name: c.name,
+          path: c.subpath,
+          isDirectory: c.isDirectory,
+          size: c.size,
           isTrashItem: true,
           isTopLevelTrash: false
         }));
@@ -623,9 +825,12 @@ class FileBrowser {
     }
   }
 
-  async loadActivity() {
+  async loadActivity(updateTab = true) {
     this.currentViewType = 'activity';
     this.clearSelection();
+    if (updateTab) {
+      this.updateActiveTabState('Activity', '🕒', 'activity', '/');
+    }
 
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
     if (emptyTrashBtn) emptyTrashBtn.style.display = 'none';
