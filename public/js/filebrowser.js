@@ -1898,6 +1898,10 @@ class FileBrowser {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
+  formatBytes(bytes) {
+    return this.formatSize(bytes);
+  }
+
   async openMediaViewer(item) {
     if (!this.mediaModal || !this.mediaViewerBody) return;
 
