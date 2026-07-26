@@ -217,6 +217,8 @@ class FileBrowser {
 
     barList.querySelectorAll('.tab-item').forEach(el => {
       const id = el.getAttribute('data-tab-id');
+      const tabObj = this.tabs.find(t => t.id === id);
+
       el.addEventListener('click', (e) => {
         if (e.target.closest('.tab-close')) return;
         this.switchTab(id);
@@ -225,6 +227,63 @@ class FileBrowser {
       const closeBtn = el.querySelector('.tab-close');
       closeBtn?.addEventListener('click', (e) => {
         this.closeTab(id, e);
+      });
+
+      // Cross-Tab Drag & Drop Target & Spring-Loading (#60)
+      el.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drag-target-hover');
+
+        if (this.springLoadTarget !== el) {
+          this.clearSpringLoadTimer();
+          this.springLoadTarget = el;
+          el.classList.add('drag-spring-loading');
+          this.springLoadTimer = setTimeout(() => {
+            this.clearSpringLoadTimer();
+            if (this.isInternalDragging || this.activeDragPayload) {
+              this.switchTab(id);
+            }
+          }, 750);
+        }
+      });
+
+      el.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+      });
+
+      el.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+
+        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+        let data = null;
+        if (rawData) {
+          try { data = JSON.parse(rawData); } catch(err){}
+        }
+        if (!data) data = this.activeDragPayload;
+        if (!data || !tabObj) return;
+
+        try {
+          const payload = data;
+          this.activeDragPayload = null;
+          this.isInternalDragging = false;
+          const targetDir = tabObj.path || '/';
+          const targetProvId = tabObj.viewType === 'provider' ? tabObj.providerId : null;
+          await this.handleDragDropMove(payload, targetDir, targetProvId);
+          this.switchTab(id);
+        } catch (err) {
+          console.error('Cross-Tab Drop Error:', err);
+          alert(`Move failed: ${err.message}`);
+        }
       });
     });
   }
@@ -566,9 +625,9 @@ class FileBrowser {
     window.addEventListener('drop', async (e) => {
       if (!this.isInternalDragging && !this.activeDragPayload) return;
 
-      // Ignore if drop target was a subfolder card, breadcrumb link, or sidebar nav item (which have their own specific target handlers)
+      // Ignore if drop target was a subfolder card, breadcrumb link, sidebar nav item, or tab item (which have their own specific target handlers)
       if (e.target && e.target.closest) {
-        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item') || e.target.closest('.nav-item')) {
+        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item') || e.target.closest('.nav-item') || e.target.closest('.tab-item')) {
           return;
         }
       }
