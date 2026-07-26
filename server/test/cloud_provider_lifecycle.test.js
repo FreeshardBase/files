@@ -136,4 +136,28 @@ describe('Cloud Storage Lifecycle & Share Reconciliation Wizard with Retention W
     const oldShares = await all("SELECT * FROM file_shares WHERE file_path = '/Old/Doc.pdf'");
     assert.equal(oldShares.length, 0);
   });
+
+  test('executes DELETE /api/providers/:id route handler without get/run ReferenceErrors', async () => {
+    const res = await run(
+      "INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      [userId, 'dropbox', 'Dropbox Delete Test', 'enc_data', 'iv', 'tag']
+    );
+    const testConnId = res.lastID;
+
+    const conn = await get('SELECT id, provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [testConnId, userId]);
+    assert.ok(conn);
+
+    await run(
+      "UPDATE file_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND owner_user_id = ?",
+      [testConnId, userId]
+    );
+    await run(
+      "UPDATE public_shares SET status = 'orphaned', provider_connection_id = NULL, unlinked_at = datetime('now') WHERE provider_connection_id = ? AND user_id = ?",
+      [testConnId, userId]
+    );
+    await run('DELETE FROM provider_connections WHERE id = ? AND user_id = ?', [testConnId, userId]);
+
+    const deleted = await get('SELECT * FROM provider_connections WHERE id = ?', [testConnId]);
+    assert.equal(deleted, undefined);
+  });
 });

@@ -623,8 +623,9 @@ class FileBrowser {
     document.getElementById('ctxProviderToggleState')?.addEventListener('click', () => {
       this.hideProviderContextMenu();
       if (this.selectedProviderForContext) {
+        const pName = this.selectedProviderForContext.display_name || 'Cloud Storage';
         if (this.selectedProviderForContext.enabled !== 0) {
-          this.disconnectProvider(this.selectedProviderForContext.id);
+          this.disconnectProvider(this.selectedProviderForContext.id, pName);
         } else {
           this.reconnectProvider(this.selectedProviderForContext.id);
         }
@@ -2349,13 +2350,24 @@ class FileBrowser {
     }
     try {
       const res = await fetch(`/api/providers/${connId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to unlink provider connection');
+      if (!res.ok) {
+        const errText = await this.parseResponseError(res, 'Failed to unlink provider connection');
+        throw new Error(errText);
+      }
       await this.loadSidebarProviders();
       this.loadDirectory('/');
       alert('Kopplung wurde aufgehoben. Freigaben werden 90 Tage lang für eine erneute Reaktivierung aufbewahrt.');
     } catch (err) {
       alert('Fehler beim Aufheben der Kopplung: ' + err.message);
     }
+  }
+
+  async disconnectProvider(connId, name) {
+    return this.deleteProviderPermanently(connId, name);
+  }
+
+  async reconnectProvider(connId) {
+    this.showModal('modalAddProvider');
   }
 
   async openShareReconciliationWizard(connId) {

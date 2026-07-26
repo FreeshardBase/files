@@ -5,7 +5,7 @@ const https = require('https');
 const path = require('path');
 const Busboy = require('busboy');
 const { requireAuth } = require('../middleware/auth');
-const { addProviderConnection, getProviderConnections, run } = require('../db');
+const { addProviderConnection, getProviderConnections, run, get, all } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
 const DropboxProvider = require('../providers/dropbox');
 const { decodeUtf8Filename } = require('../utils/utf8');
@@ -408,11 +408,18 @@ async function cleanupExpiredOrphanedShares() {
 router.delete('/:id', async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
-    const connId = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const connId = parseInt(req.params.id, 10);
+    if (isNaN(connId)) {
+      return res.status(400).json({ error: 'Invalid provider connection ID' });
+    }
 
     const conn = await get('SELECT id, provider_type FROM provider_connections WHERE id = ? AND user_id = ?', [connId, userId]);
     if (!conn) {
-      return res.status(404).json({ error: 'Provider connection not found' });
+      return res.status(404).json({ error: `Provider connection #${connId} not found or permission denied` });
     }
 
     // Mark associated shares as orphaned with timestamp so they can be restored upon re-linking within X days (#58)
