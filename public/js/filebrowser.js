@@ -1907,6 +1907,9 @@ class FileBrowser {
       return alert('Please enter a username to share with.');
     }
 
+    const providerType = this.currentViewType === 'provider' ? (this.currentProviderName?.toLowerCase().includes('dropbox') ? 'dropbox' : 'gdrive') : 'local';
+    const providerConnectionId = this.currentViewType === 'provider' ? this.currentProviderId : null;
+
     try {
       const res = await fetch('/api/shares/internal', {
         method: 'POST',
@@ -1915,7 +1918,9 @@ class FileBrowser {
           sharee_username: shareeUsername,
           file_path: this.selectedItem.path,
           is_directory: this.selectedItem.isDirectory ? 1 : 0,
-          read_write: readWrite
+          read_write: readWrite,
+          provider_type: providerType,
+          provider_connection_id: providerConnectionId
         })
       });
 
@@ -1940,6 +1945,9 @@ class FileBrowser {
     const expiresAt = document.getElementById('inputPublicExpiresAt')?.value;
     const maxDownloads = document.getElementById('inputPublicMaxDownloads')?.value;
 
+    const providerType = this.currentViewType === 'provider' ? (this.currentProviderName?.toLowerCase().includes('dropbox') ? 'dropbox' : 'gdrive') : 'local';
+    const providerConnectionId = this.currentViewType === 'provider' ? this.currentProviderId : null;
+
     try {
       const res = await fetch('/api/shares/public', {
         method: 'POST',
@@ -1950,7 +1958,9 @@ class FileBrowser {
           label: label || null,
           password: password ? password.trim() : null,
           expires_at: expiresAt || null,
-          max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null
+          max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null,
+          provider_type: providerType,
+          provider_connection_id: providerConnectionId
         })
       });
 

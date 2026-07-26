@@ -54,7 +54,7 @@ router.post('/internal', async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { sharee_username, file_path, read_write = 0, is_directory = 0 } = req.body;
+    const { sharee_username, file_path, read_write = 0, is_directory = 0, provider_type = 'local', provider_connection_id = null } = req.body;
     if (!sharee_username || !file_path) {
       return res.status(400).json({ error: 'sharee_username and file_path are required' });
     }
@@ -72,8 +72,8 @@ router.post('/internal', async (req, res) => {
       return res.status(400).json({ error: 'Cannot share files with yourself' });
     }
 
-    const share = await createFileShare(ownerUserId, shareeUser.id, file_path, 'local', is_directory, read_write);
-    await logActivity(ownerUserId, 'share_internal', file_path, path.basename(file_path), is_directory, JSON.stringify({ sharee: shareeUser.username }));
+    const share = await createFileShare(ownerUserId, shareeUser.id, file_path, provider_type, is_directory, read_write, provider_connection_id);
+    await logActivity(ownerUserId, 'share_internal', file_path, path.basename(file_path), is_directory, JSON.stringify({ sharee: shareeUser.username, provider_type }));
 
     res.status(201).json({ success: true, share });
   } catch (err) {
@@ -122,7 +122,7 @@ router.post('/public', async (req, res) => {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
-    const { file_path, is_directory = 0, password, expires_at, max_downloads, label } = req.body;
+    const { file_path, is_directory = 0, password, expires_at, max_downloads, label, provider_type = 'local', provider_connection_id = null } = req.body;
     if (!file_path) return res.status(400).json({ error: 'file_path is required' });
 
     const token = crypto.randomBytes(12).toString('hex');
@@ -131,7 +131,7 @@ router.post('/public', async (req, res) => {
       passwordHash = await bcrypt.hash(password.trim(), 10);
     }
 
-    const share = await createPublicShare(userId, token, file_path, is_directory, passwordHash, expires_at || null, max_downloads || null, label || null);
+    const share = await createPublicShare(userId, token, file_path, is_directory, passwordHash, expires_at || null, max_downloads || null, label || null, provider_type, provider_connection_id);
 
     const protocol = req.protocol || 'https';
     const host = req.get('host') || 'fs-files.gryzia.de';

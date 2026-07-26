@@ -316,11 +316,12 @@ async function getProviderConnections(userId) {
 
 // ── Internal Sharing Helpers (#14) ───────────────────────────────────────────
 
-async function createFileShare(ownerUserId, shareeUserId, filePath, providerType = 'local', isDirectory = 0, readWrite = 0) {
+async function createFileShare(ownerUserId, shareeUserId, filePath, providerType = 'local', isDirectory = 0, readWrite = 0, providerConnectionId = null) {
+  const normConnId = providerConnectionId ? parseInt(providerConnectionId, 10) : null;
   const res = await run(`
-    INSERT INTO file_shares (owner_user_id, sharee_user_id, provider_type, file_path, is_directory, read_write)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, [ownerUserId, shareeUserId, providerType, filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0]);
+    INSERT INTO file_shares (owner_user_id, sharee_user_id, provider_type, file_path, is_directory, read_write, provider_connection_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [ownerUserId, shareeUserId, providerType || 'local', filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0, normConnId]);
   return get('SELECT * FROM file_shares WHERE id = ?', [res.lastID]);
 }
 
@@ -361,11 +362,12 @@ async function deleteFileShare(shareId, ownerUserId) {
 
 // ── Public Link Sharing Helpers (#15, #53) ───────────────────────────────────
 
-async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null, label = null) {
+async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null, label = null, providerType = 'local', providerConnectionId = null) {
+  const normConnId = providerConnectionId ? parseInt(providerConnectionId, 10) : null;
   const res = await run(`
-    INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads, label)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads, label]);
+    INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads, label, provider_type, provider_connection_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads, label, providerType || 'local', normConnId]);
   return get('SELECT * FROM public_shares WHERE id = ?', [res.lastID]);
 }
 

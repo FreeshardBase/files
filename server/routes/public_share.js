@@ -222,6 +222,33 @@ router.post('/:token/verify', async (req, res) => {
   }
 });
 
+async function getProviderForShare(share) {
+  if (!share.provider_type || share.provider_type === 'local' || !share.provider_connection_id) {
+    const userRoot = getOwnerUserRoot(share.user_id);
+    return new LocalProvider({ userRoot });
+  }
+
+  const { getProviderConnections } = require('../db');
+  const GoogleDriveProvider = require('../providers/gdrive');
+  const DropboxProvider = require('../providers/dropbox');
+
+  const connections = await getProviderConnections(share.user_id);
+  const conn = connections.find(c => c.id === parseInt(share.provider_connection_id, 10));
+
+  if (!conn) {
+    throw new Error('Associated cloud provider connection was deleted or is unavailable');
+  }
+
+  if (conn.provider_type === 'gdrive') {
+    return new GoogleDriveProvider(conn.credentials);
+  } else if (conn.provider_type === 'dropbox') {
+    return new DropboxProvider(conn.credentials);
+  }
+
+  const userRoot = getOwnerUserRoot(share.user_id);
+  return new LocalProvider({ userRoot });
+}
+
 // GET /s/:token/download — Direct Download Stream or Inline Media Preview
 router.get('/:token/download', async (req, res) => {
   try {
@@ -238,8 +265,7 @@ router.get('/:token/download', async (req, res) => {
       return res.status(401).send('Password required to download this share');
     }
 
-    const userRoot = getOwnerUserRoot(share.user_id);
-    const provider = new LocalProvider({ userRoot });
+    const provider = await getProviderForShare(share);
 
     // Only increment download counter for actual file downloads, not inline previews
     if (!isInline) {
@@ -251,7 +277,15 @@ router.get('/:token/download', async (req, res) => {
     const dispositionType = isInline ? 'inline' : 'attachment';
 
     if (share.is_directory) {
-      const fullDirPath = provider._safe(share.file_path);
+      let fullDirPath;
+      if (typeof provider._safe === 'function') {
+        fullDirPath = provider._safe(share.file_path);
+      } else {
+        const userRoot = getOwnerUserRoot(share.user_id);
+        const local = new LocalProvider({ userRoot });
+        fullDirPath = local._safe(share.file_path);
+      }
+
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `${dispositionType}; filename="${baseName}.zip"; filename*=UTF-8''${encodedName}.zip`);
 
@@ -261,8 +295,12 @@ router.get('/:token/download', async (req, res) => {
       await archive.finalize();
     } else {
       const { stream, size, mimeType } = await provider.read(share.file_path);
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Length', size);
+      const ext = baseName.split('.').pop().toLowerCase();
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext);
+      const fallbackMime = isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream';
+
+      res.setHeader('Content-Type', mimeType || fallbackMime);
+      if (size) res.setHeader('Content-Length', size);
       res.setHeader('Content-Disposition', `${dispositionType}; filename="${baseName}"; filename*=UTF-8''${encodedName}`);
       stream.pipe(res);
     }
