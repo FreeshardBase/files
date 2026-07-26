@@ -1,10 +1,10 @@
 class FileBrowser {
-  constructor() {
+  constructor(initialViewMode = 'grid') {
     this.currentPath = '/';
     this.currentViewType = 'local'; // 'local', 'shared', 'trash', or 'activity'
     this.currentTrashId = null;
     this.currentTrashSubpath = '/';
-    this.viewMode = 'grid'; // 'grid' or 'list'
+    this.viewMode = localStorage.getItem('fs-view-mode') || initialViewMode || 'grid';
     this.items = [];
     this.selectedItem = null;
     this.selectedPaths = new Set(); // Multi-select state (#12)
@@ -1379,11 +1379,22 @@ class FileBrowser {
     }
   }
 
-  setViewMode(mode) {
+  async setViewMode(mode) {
     this.viewMode = mode;
+    localStorage.setItem('fs-view-mode', mode);
     document.getElementById('btnGridView')?.classList.toggle('active', mode === 'grid');
     document.getElementById('btnListView')?.classList.toggle('active', mode === 'list');
     this.render();
+
+    try {
+      await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferredViewMode: mode })
+      });
+    } catch (err) {
+      console.warn('Failed to save preferred view mode:', err.message);
+    }
   }
 
   getFileIcon(filename) {

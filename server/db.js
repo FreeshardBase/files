@@ -87,6 +87,10 @@ async function initDb() {
   if (!hasDisplayName) {
     try { await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL;"); } catch (e) {}
   }
+  const hasViewMode = columns.some(c => c.name === 'preferred_view_mode');
+  if (!hasViewMode) {
+    try { await run("ALTER TABLE users ADD COLUMN preferred_view_mode TEXT DEFAULT 'grid';"); } catch (e) {}
+  }
 
   // App Passwords table (#2, #3, #21)
   await run(`

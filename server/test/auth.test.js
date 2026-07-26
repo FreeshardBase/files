@@ -87,4 +87,18 @@ describe('Authentication & App Passwords (#2, #48)', () => {
     const afterDelete = await db.all('SELECT * FROM app_passwords WHERE user_id = ?', [userId]);
     assert.equal(afterDelete.length, 0);
   });
+
+  test('persists user preferred_view_mode preference in database', async () => {
+    const userId = 'usr-viewmode-test';
+    await db.upsertUser(userId, 'viewmode_user', 'viewmode@example.com', 'local', null, 'ViewMode User');
+
+    // Default view mode should be grid
+    const initialUser = await db.get('SELECT preferred_view_mode FROM users WHERE id = ?', [userId]);
+    assert.equal(initialUser.preferred_view_mode, 'grid');
+
+    // Update view mode to list
+    await db.run('UPDATE users SET preferred_view_mode = ? WHERE id = ?', ['list', userId]);
+    const updatedUser = await db.get('SELECT preferred_view_mode FROM users WHERE id = ?', [userId]);
+    assert.equal(updatedUser.preferred_view_mode, 'list');
+  });
 });

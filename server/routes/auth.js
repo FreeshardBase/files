@@ -65,7 +65,8 @@ router.get('/me', async (req, res) => {
           username,
           displayName,
           email: user?.email || req.session.email || null,
-          preferredLocale: user?.preferred_locale || null
+          preferredLocale: user?.preferred_locale || null,
+          preferredViewMode: user?.preferred_view_mode || 'grid'
         }
       });
     } catch (err) {
@@ -78,7 +79,7 @@ router.get('/me', async (req, res) => {
 // ── PATCH /api/users/me (Update User Profile #25, #48) ───────────────────────
 router.patch('/users/me', requireAuth, async (req, res) => {
   try {
-    const { displayName, preferredLocale } = req.body;
+    const { displayName, preferredLocale, preferredViewMode } = req.body;
     const userId = req.session.userId;
 
     if (displayName !== undefined) {
@@ -91,7 +92,12 @@ router.patch('/users/me', requireAuth, async (req, res) => {
       req.session.preferredLocale = preferredLocale;
     }
 
-    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale FROM users WHERE id = ?', [userId]);
+    if (preferredViewMode !== undefined && ['grid', 'list'].includes(preferredViewMode)) {
+      await db.run('UPDATE users SET preferred_view_mode = ? WHERE id = ?', [preferredViewMode, userId]);
+      req.session.preferredViewMode = preferredViewMode;
+    }
+
+    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale, preferred_view_mode FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
   } catch (err) {
     res.status(500).json({ error: err.message });

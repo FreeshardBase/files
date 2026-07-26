@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Initialize File Browser UI
         if (typeof FileBrowser !== 'undefined' && !window.fileBrowser) {
-          window.fileBrowser = new FileBrowser();
+          window.fileBrowser = new FileBrowser(data.user.preferredViewMode || 'grid');
         }
 
         const shownName = data.user.displayName || data.user.username || 'User';
