@@ -103,11 +103,28 @@ class FileBrowser {
     return this.tabs.find(t => t.id === this.activeTabId) || this.tabs[0];
   }
 
-  updateActiveTabState(title, icon, viewType, path, providerId = null, providerName = null) {
+  getTabIconHtml(tab, size = 14) {
+    if (!tab) return '🏠';
+    if (tab.viewType === 'provider') {
+      const pName = (tab.providerName || '').toLowerCase();
+      if (pName.includes('dropbox')) {
+        return this.getProviderIconSvg('dropbox', size);
+      }
+      if (pName.includes('gdrive') || pName.includes('google')) {
+        return this.getProviderIconSvg('gdrive', size);
+      }
+      return this.getProviderIconSvg('cloud', size);
+    }
+    if (tab.viewType === 'shared') return '🔗';
+    if (tab.viewType === 'trash') return '🗑️';
+    if (tab.viewType === 'activity') return '🕒';
+    return '🏠';
+  }
+
+  updateActiveTabState(title, viewType, path, providerId = null, providerName = null) {
     const activeTab = this.getActiveTab();
     if (!activeTab) return;
     activeTab.title = title;
-    activeTab.icon = icon;
     activeTab.viewType = viewType;
     activeTab.path = path;
     activeTab.providerId = providerId;
@@ -119,25 +136,19 @@ class FileBrowser {
   createTab(viewType = 'local', path = '/', providerId = null, providerName = null) {
     const newId = 'tab_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     let title = 'Home';
-    let icon = '🏠';
     if (viewType === 'provider') {
       title = providerName || 'Cloud Drive';
-      icon = providerName?.toLowerCase().includes('dropbox') ? '📦' : '☁️';
     } else if (viewType === 'shared') {
       title = 'Shared';
-      icon = '🔗';
     } else if (viewType === 'trash') {
       title = 'Trash';
-      icon = '🗑️';
     } else if (viewType === 'activity') {
       title = 'Activity';
-      icon = '🕒';
     }
 
     const newTab = {
       id: newId,
       title,
-      icon,
       viewType,
       path,
       providerId,
@@ -177,7 +188,6 @@ class FileBrowser {
     if (this.tabs.length <= 1) {
       const lastTab = this.tabs[0];
       lastTab.title = 'Home';
-      lastTab.icon = '🏠';
       lastTab.viewType = 'local';
       lastTab.path = '/';
       lastTab.providerId = null;
@@ -206,9 +216,10 @@ class FileBrowser {
 
     barList.innerHTML = this.tabs.map(tab => {
       const isActive = tab.id === this.activeTabId;
+      const iconHtml = this.getTabIconHtml(tab, 14);
       return `
         <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${tab.id}">
-          <span class="tab-icon">${tab.icon || '📁'}</span>
+          <span class="tab-icon">${iconHtml}</span>
           <span class="tab-title" title="${tab.title}">${tab.title}</span>
           <button class="tab-close" data-close-tab-id="${tab.id}" title="Tab schließen">&times;</button>
         </div>
@@ -697,7 +708,7 @@ class FileBrowser {
 
     if (updateTab) {
       const folderName = dirPath === '/' ? 'Home' : dirPath.split('/').filter(Boolean).pop() || 'Home';
-      this.updateActiveTabState(folderName, dirPath === '/' ? '🏠' : '📁', 'local', dirPath);
+      this.updateActiveTabState(folderName, 'local', dirPath);
     }
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -732,8 +743,7 @@ class FileBrowser {
     if (updateTab) {
       const pathParts = dirPath.split('/').filter(Boolean);
       const subName = pathParts.length > 0 ? pathParts[pathParts.length - 1] : providerName;
-      const icon = providerName?.toLowerCase().includes('dropbox') ? '📦' : '☁️';
-      this.updateActiveTabState(subName, icon, 'provider', dirPath, String(providerId), providerName);
+      this.updateActiveTabState(subName, 'provider', dirPath, String(providerId), providerName);
     }
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -761,7 +771,7 @@ class FileBrowser {
     this.currentViewType = 'shared';
     this.clearSelection();
     if (updateTab) {
-      this.updateActiveTabState('Shared with me', '🔗', 'shared', '/');
+      this.updateActiveTabState('Shared with me', 'shared', '/');
     }
     if (this.breadcrumb) {
       this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">Shared with me</span>`;
@@ -802,7 +812,7 @@ class FileBrowser {
     this.currentTrashSubpath = subpath;
     this.clearSelection();
     if (updateTab) {
-      this.updateActiveTabState('Trash', '🗑️', 'trash', '/');
+      this.updateActiveTabState('Trash', 'trash', '/');
     }
 
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
@@ -870,7 +880,7 @@ class FileBrowser {
     this.currentViewType = 'activity';
     this.clearSelection();
     if (updateTab) {
-      this.updateActiveTabState('Activity', '🕒', 'activity', '/');
+      this.updateActiveTabState('Activity', 'activity', '/');
     }
 
     const emptyTrashBtn = document.getElementById('btnEmptyTrash');
