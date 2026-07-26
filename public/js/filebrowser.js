@@ -1087,6 +1087,63 @@ class FileBrowser {
         this.loadDirectory(this.currentPath);
         return;
       }
+
+      // Scenario 4: Provider Internal Move (Within Same Cloud Provider)
+      if (srcViewType === 'provider' && destProviderId && String(srcProviderId) === String(destProviderId)) {
+        for (const item of items) {
+          const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
+          if (item.srcPath === destPath || item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
+            continue;
+          }
+          const res = await fetch(`/api/providers/${srcProviderId}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ src: item.srcPath, dst: destPath })
+          });
+          if (!res.ok) {
+            const errText = await this.parseResponseError(res, 'Failed to move item in cloud');
+            throw new Error(`Cloud Move failed: ${errText}`);
+          }
+        }
+        this.clearSelection();
+        this.loadProviderDirectory(destProviderId, this.currentProviderName, targetDirectory);
+        return;
+      }
+
+      // Scenario 5: Cloud to Cloud Transfer (Cross-Provider Move, e.g. Dropbox -> Google Drive)
+      if (srcViewType === 'provider' && destProviderId && srcProviderId && String(srcProviderId) !== String(destProviderId)) {
+        for (const item of items) {
+          const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
+          if (!readRes.ok) throw new Error(`Failed to read source cloud file ${item.name}`);
+          const blob = await readRes.blob();
+
+          const formData = new FormData();
+          formData.append('path', targetDirectory);
+          formData.append('file', blob, item.name);
+
+          const uploadRes = await fetch(`/api/providers/${destProviderId}/upload?path=${encodeURIComponent(targetDirectory)}`, {
+            method: 'POST',
+            body: formData
+          });
+          if (!uploadRes.ok) {
+            const errText = await this.parseResponseError(uploadRes, 'Cloud-to-Cloud Upload failed');
+            throw new Error(`Cloud-to-Cloud Upload failed: ${errText}`);
+          }
+
+          // Delete source cloud file ONLY after successful upload to destination cloud
+          await fetch(`/api/providers/${srcProviderId}/delete?path=${encodeURIComponent(item.srcPath)}`, {
+            method: 'DELETE'
+          });
+        }
+
+        this.clearSelection();
+        if (this.currentViewType === 'provider') {
+          this.loadProviderDirectory(destProviderId, this.currentProviderName, targetDirectory);
+        } else {
+          this.loadDirectory(this.currentPath);
+        }
+        return;
+      }
     } finally {
       this.isTransferring = false;
     }
