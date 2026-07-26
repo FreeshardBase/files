@@ -432,8 +432,65 @@ class FileBrowser {
   }
 
   setupEventListeners() {
-    // Multi-Tab New Tab Button (#60)
-    document.getElementById('btnNewTab')?.addEventListener('click', () => this.createTab('local', '/'));
+    // Multi-Tab New Tab Button Drag & Drop & Spring Loading (#60)
+    const btnNewTabEl = document.getElementById('btnNewTab');
+    if (btnNewTabEl) {
+      btnNewTabEl.addEventListener('click', () => this.createTab('local', '/'));
+
+      btnNewTabEl.addEventListener('dragover', (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        btnNewTabEl.classList.add('drag-target-hover');
+
+        if (this.springLoadTarget !== btnNewTabEl) {
+          this.clearSpringLoadTimer();
+          this.springLoadTarget = btnNewTabEl;
+          btnNewTabEl.classList.add('drag-spring-loading');
+          this.springLoadTimer = setTimeout(() => {
+            this.clearSpringLoadTimer();
+            if (this.isInternalDragging || this.activeDragPayload) {
+              this.createTab('local', '/');
+            }
+          }, 750);
+        }
+      });
+
+      btnNewTabEl.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        btnNewTabEl.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+      });
+
+      btnNewTabEl.addEventListener('drop', async (e) => {
+        if (!this.isInternalDragging && !this.activeDragPayload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        btnNewTabEl.classList.remove('drag-target-hover');
+        this.clearSpringLoadTimer();
+
+        let rawData = e.dataTransfer ? e.dataTransfer.getData('application/json') : null;
+        let data = null;
+        if (rawData) {
+          try { data = JSON.parse(rawData); } catch(err){}
+        }
+        if (!data) data = this.activeDragPayload;
+        if (!data) return;
+
+        try {
+          const payload = data;
+          this.activeDragPayload = null;
+          this.isInternalDragging = false;
+          this.createTab('local', '/');
+          await this.handleDragDropMove(payload, '/');
+        } catch (err) {
+          console.error('New Tab Drop Error:', err);
+          alert(`Move failed: ${err.message}`);
+        }
+      });
+    }
 
     // View Toggle
     document.getElementById('btnGridView')?.addEventListener('click', () => this.setViewMode('grid'));
@@ -636,9 +693,9 @@ class FileBrowser {
     window.addEventListener('drop', async (e) => {
       if (!this.isInternalDragging && !this.activeDragPayload) return;
 
-      // Ignore if drop target was a subfolder card, breadcrumb link, sidebar nav item, or tab item (which have their own specific target handlers)
+      // Ignore if drop target was a subfolder card, breadcrumb link, sidebar nav item, tab item, or new tab button (which have their own specific target handlers)
       if (e.target && e.target.closest) {
-        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item') || e.target.closest('.nav-item') || e.target.closest('.tab-item')) {
+        if (e.target.closest('.file-card[data-is-dir="true"]') || e.target.closest('.file-card[data-is-cloud-drive="true"]') || e.target.closest('.breadcrumb-item') || e.target.closest('.nav-item') || e.target.closest('.tab-item') || e.target.closest('.btn-new-tab')) {
           return;
         }
       }
