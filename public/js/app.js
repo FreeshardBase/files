@@ -95,6 +95,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
 
       if (data.authenticated && data.user) {
+        // Clear any leftover OIDC redirect flags upon successful login
+        sessionStorage.removeItem('fs_oidc_redirecting');
+
         // Authenticated State: Show App Dashboard, Hide Login Screen
         if (loginScreen) loginScreen.style.display = 'none';
         if (mainApp) mainApp.style.display = 'flex';
@@ -119,6 +122,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           `;
 
           document.getElementById('btnLogout')?.addEventListener('click', async () => {
+            sessionStorage.setItem('fs_manual_logout', 'true');
             await fetch('/api/auth/logout', { method: 'POST' });
             window.location.reload();
           });
@@ -126,11 +130,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else {
         // Unauthenticated State: Check for Auto-OIDC Redirect (#55)
         const config = await loadAuthConfig();
-        if (config && config.enableAutoOidcAuth && !sessionStorage.getItem('fs_oidc_redirecting')) {
-          sessionStorage.setItem('fs_oidc_redirecting', 'true');
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasAuthError = urlParams.has('error');
+        const isManualLogout = sessionStorage.getItem('fs_manual_logout') === 'true';
+
+        if (config && config.enableAutoOidcAuth && !hasAuthError && !isManualLogout) {
           window.location.href = '/api/auth/login';
           return;
         }
+
+        // Clear manual logout flag if shown login screen
+        sessionStorage.removeItem('fs_manual_logout');
 
         if (mainApp) mainApp.style.display = 'none';
         if (loginScreen) loginScreen.style.display = 'flex';
