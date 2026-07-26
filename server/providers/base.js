@@ -100,6 +100,26 @@ class BaseProvider {
   }
 
   /**
+   * Helper to capture a readable stream into a Buffer immediately.
+   * Prevents stream data chunk loss when async preamble calls (OAuth token refresh, path resolution)
+   * occur prior to HTTP request body piping (#7, #56, #0B-TRANSFER-FIX).
+   * @param {import('stream').Readable|Buffer|string} stream
+   * @returns {Promise<Buffer>}
+   */
+  static async streamToBuffer(stream) {
+    if (Buffer.isBuffer(stream)) return stream;
+    if (typeof stream === 'string') return Buffer.from(stream);
+    if (!stream || typeof stream.on !== 'function') return Buffer.alloc(0);
+
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      stream.on('data', chunk => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+  }
+
+  /**
    * Get a temporary direct-download URL (for cloud providers)
    * @param {string} filePath - Path relative to provider root
    * @returns {Promise<string|null>} Direct URL or null if proxied

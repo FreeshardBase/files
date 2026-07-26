@@ -208,6 +208,7 @@ class DropboxProvider extends BaseProvider {
   }
 
   async write(filePath, dataStream, options = {}, retryOn401 = true) {
+    const bufferData = await BaseProvider.streamToBuffer(dataStream);
     const token = await this.getValidAccessToken();
     const argHeader = this._formatApiArg({
       path: filePath,
@@ -223,14 +224,15 @@ class DropboxProvider extends BaseProvider {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Dropbox-API-Arg': argHeader,
-        'Content-Type': 'application/octet-stream'
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': bufferData.length
       }
-    }, dataStream);
+    }, bufferData);
 
     if (uploadRes.statusCode === 401 && retryOn401 && this.refreshToken) {
       this.accessToken = null;
       await this.getValidAccessToken(true);
-      return this.write(filePath, dataStream, options, false);
+      return this.write(filePath, bufferData, options, false);
     }
 
     if (uploadRes.statusCode >= 400) {
@@ -238,7 +240,7 @@ class DropboxProvider extends BaseProvider {
     }
 
     const fileMeta = JSON.parse(uploadRes.body);
-    return { path: fileMeta.path_display, size: fileMeta.size || 0 };
+    return { path: fileMeta.path_display, size: fileMeta.size || bufferData.length };
   }
 
   async mkdir(dirPath) {

@@ -252,6 +252,7 @@ class GoogleDriveProvider extends BaseProvider {
   }
 
   async write(filePath, dataStream, options = {}, retryOn401 = true) {
+    const bufferData = await BaseProvider.streamToBuffer(dataStream);
     const dirPath = path.dirname(filePath);
     const fileName = path.basename(filePath);
     const parentDirInfo = await this.resolvePathToId(dirPath);
@@ -278,7 +279,7 @@ class GoogleDriveProvider extends BaseProvider {
     if (initRes.statusCode === 401 && retryOn401 && this.refreshToken) {
       this.accessToken = null;
       await this.getValidAccessToken(true);
-      return this.write(filePath, dataStream, options, false);
+      return this.write(filePath, bufferData, options, false);
     }
 
     if (initRes.statusCode !== 200) {
@@ -298,18 +299,19 @@ class GoogleDriveProvider extends BaseProvider {
       path: urlObj.pathname + urlObj.search,
       method: 'PUT',
       headers: {
-        'Content-Type': metadata.mimeType
+        'Content-Type': metadata.mimeType,
+        'Content-Length': bufferData.length
       }
-    }, dataStream);
+    }, bufferData);
 
     if (uploadRes.statusCode !== 200 && uploadRes.statusCode !== 201) {
       throw new Error(`Google Drive Upload Stream Failed (${uploadRes.statusCode}): ${uploadRes.body}`);
     }
 
     const fileObj = JSON.parse(uploadRes.body);
-    this.pathCache.set(filePath, { id: fileObj.id, isDirectory: false, mimeType: fileObj.mimeType, size: parseInt(fileObj.size || '0', 10) });
+    this.pathCache.set(filePath, { id: fileObj.id, isDirectory: false, mimeType: fileObj.mimeType, size: parseInt(fileObj.size || bufferData.length, 10) });
 
-    return { path: filePath, size: parseInt(fileObj.size || '0', 10) };
+    return { path: filePath, size: parseInt(fileObj.size || bufferData.length, 10) };
   }
 
   async mkdir(dirPath) {

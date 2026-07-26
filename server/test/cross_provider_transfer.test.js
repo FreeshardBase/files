@@ -130,4 +130,84 @@ describe('Cross-Provider Cloud Storage Transfer & Internal Move (#7, #56)', () =
     assert.equal(deleteResult, true);
     assert.equal(cloudDeleteCalled, true);
   });
+
+  test('buffers stream immediately in BaseProvider.streamToBuffer preventing 0-byte chunk loss (#0B-TRANSFER-FIX)', async () => {
+    const BaseProvider = require('../providers/base');
+    const { Readable } = require('stream');
+
+    const sampleContent = 'Hello Antigravity Freeshard Transfer';
+    const stream = Readable.from([Buffer.from(sampleContent)]);
+
+    // Simulate async delay prior to reading (e.g. OAuth token refresh or path resolution)
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const buffer = await BaseProvider.streamToBuffer(stream);
+    assert.equal(buffer.toString('utf8'), sampleContent);
+    assert.equal(buffer.length, Buffer.from(sampleContent).length);
+  });
+
+  test('verifies DropboxProvider.write captures full stream buffer without 0B truncation (#0B-TRANSFER-FIX)', async () => {
+    const DropboxProvider = require('../providers/dropbox');
+    const provider = new DropboxProvider({ accessToken: 'mock_token' });
+    const sampleData = Buffer.from('Dropbox Non-Zero Byte Content Test');
+
+    provider.getValidAccessToken = async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return 'mock_access_token';
+    };
+
+    provider._httpRequest = async (options, bodyData) => {
+      assert.ok(Buffer.isBuffer(bodyData));
+      assert.equal(bodyData.length, sampleData.length);
+      assert.equal(options.headers['Content-Length'], sampleData.length);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ path_display: '/test.pdf', size: sampleData.length })
+      };
+    };
+
+    const stream = Readable.from([sampleData]);
+    const res = await provider.write('/test.pdf', stream);
+    assert.equal(res.size, sampleData.length);
+    assert.equal(res.path, '/test.pdf');
+  });
+
+  test('verifies GoogleDriveProvider.write captures full stream buffer without 0B truncation (#0B-TRANSFER-FIX)', async () => {
+    const GoogleDriveProvider = require('../providers/gdrive');
+    const provider = new GoogleDriveProvider({ accessToken: 'mock_token' });
+    const sampleData = Buffer.from('Google Drive Non-Zero Byte Content Test');
+
+    provider.resolvePathToId = async () => {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      return { id: 'root_id', isDirectory: true };
+    };
+
+    provider.getValidAccessToken = async () => {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      return 'mock_access_token';
+    };
+
+    provider._httpRequest = async (options, bodyData) => {
+      if (options.method === 'POST') {
+        return {
+          statusCode: 200,
+          headers: { location: 'https://upload.googleapis.com/drive/v3/files?upload_id=mock_session_123' },
+          body: JSON.stringify({})
+        };
+      } else if (options.method === 'PUT') {
+        assert.ok(Buffer.isBuffer(bodyData));
+        assert.equal(bodyData.length, sampleData.length);
+        assert.equal(options.headers['Content-Length'], sampleData.length);
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ id: 'file_id_123', mimeType: 'text/plain', size: String(sampleData.length) })
+        };
+      }
+    };
+
+    const stream = Readable.from([sampleData]);
+    const res = await provider.write('/doc.txt', stream);
+    assert.equal(res.size, sampleData.length);
+    assert.equal(res.path, '/doc.txt');
+  });
 });
