@@ -1399,10 +1399,68 @@ class FileBrowser {
       const srcProviderId = dragData.currentProviderId;
       const destProviderId = targetProviderId || (this.currentViewType === 'provider' ? this.currentProviderId : null);
 
+      // Pre-transfer file collision detection & Conflict Resolution Wizard
+      let destItems = [];
+      try {
+        const listUrl = destProviderId
+          ? `/api/providers/${destProviderId}/list?path=${encodeURIComponent(targetDirectory)}`
+          : `/api/files/local/list?path=${encodeURIComponent(targetDirectory)}`;
+        const listRes = await fetch(listUrl);
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          destItems = listData.items || [];
+        }
+      } catch (err) {}
+
+      const processedItems = [];
+      for (const item of items) {
+        let finalName = item.name;
+        const matchingExisting = destItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+
+        if (matchingExisting) {
+          const srcLocation = srcViewType === 'provider' ? (dragData.providerName || 'Cloud Drive') : 'Local Home';
+          const destLocation = destProviderId ? 'Cloud Drive' : 'Local Home';
+
+          const existingPreviewUrl = destProviderId
+            ? `/api/providers/${destProviderId}/read?path=${encodeURIComponent(matchingExisting.path)}`
+            : `/api/files/local/read?path=${encodeURIComponent(matchingExisting.path)}`;
+
+          const incomingPreviewUrl = srcViewType === 'provider' && srcProviderId
+            ? `/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`
+            : `/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`;
+
+          const choice = await this.promptFileConflict(
+            {
+              name: matchingExisting.name,
+              size: matchingExisting.size,
+              mtime: matchingExisting.updatedAt || matchingExisting.mtime,
+              location: destLocation,
+              previewUrl: existingPreviewUrl
+            },
+            {
+              name: item.name,
+              size: item.size || 0,
+              mtime: Date.now(),
+              location: srcLocation,
+              previewUrl: incomingPreviewUrl
+            }
+          );
+
+          if (choice === 'cancel') {
+            continue;
+          } else if (choice === 'rename') {
+            finalName = this.generateNonConflictingName(item.name, destItems.map(i => i.name));
+          }
+        }
+        processedItems.push({ ...item, name: finalName });
+      }
+
+      if (processedItems.length === 0) return;
+
       // Scenario 1: Local to Local Move
       if (srcViewType === 'local' && !destProviderId) {
-        if (items.length > 1) {
-          const batchItems = items
+        if (processedItems.length > 1) {
+          const batchItems = processedItems
             .filter(i => i.srcPath !== targetDirectory && !targetDirectory.startsWith(i.srcPath + '/'))
             .map(i => {
               const destPath = targetDirectory === '/' ? `/${i.name}` : `${targetDirectory.replace(/\/+$/, '')}/${i.name}`;
@@ -1422,7 +1480,7 @@ class FileBrowser {
             throw new Error(err.error || 'Failed batch move');
           }
         } else {
-          const item = items[0];
+          const item = processedItems[0];
           const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
           if (item.srcPath === destPath || item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
             return;
@@ -1446,7 +1504,7 @@ class FileBrowser {
 
       // Scenario 2: Local to Cloud Upload & Delete Local (Cross-Storage Move)
       if (srcViewType === 'local' && destProviderId) {
-        for (const item of items) {
+        for (const item of processedItems) {
           const readRes = await fetch(`/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`);
           if (!readRes.ok) throw new Error(`Failed to read local file ${item.name}`);
           const blob = await readRes.blob();
@@ -1481,7 +1539,7 @@ class FileBrowser {
 
       // Scenario 3: Cloud to Local Download & Delete Cloud (Cross-Storage Move)
       if (srcViewType === 'provider' && !destProviderId && srcProviderId) {
-        for (const item of items) {
+        for (const item of processedItems) {
           const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
           if (!readRes.ok) throw new Error(`Failed to read cloud file ${item.name}`);
           const blob = await readRes.blob();
@@ -1513,7 +1571,7 @@ class FileBrowser {
 
       // Scenario 4: Provider Internal Move (Within Same Cloud Provider)
       if (srcViewType === 'provider' && destProviderId && String(srcProviderId) === String(destProviderId)) {
-        for (const item of items) {
+        for (const item of processedItems) {
           const destPath = targetDirectory === '/' ? `/${item.name}` : `${targetDirectory.replace(/\/+$/, '')}/${item.name}`;
           if (item.srcPath === destPath || item.srcPath === targetDirectory || targetDirectory.startsWith(item.srcPath + '/')) {
             continue;
@@ -1535,7 +1593,7 @@ class FileBrowser {
 
       // Scenario 5: Cloud to Cloud Transfer (Cross-Provider Move, e.g. Dropbox -> Google Drive)
       if (srcViewType === 'provider' && destProviderId && srcProviderId && String(srcProviderId) !== String(destProviderId)) {
-        for (const item of items) {
+        for (const item of processedItems) {
           const readRes = await fetch(`/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`);
           if (!readRes.ok) throw new Error(`Failed to read source cloud file ${item.name}`);
           const blob = await readRes.blob();
@@ -1899,17 +1957,147 @@ class FileBrowser {
     }
   }
 
+  promptFileConflict(existingFile, incomingFile) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('modalFileConflict');
+      if (!modal) return resolve('overwrite');
+
+      const conflictFileName = document.getElementById('conflictFileName');
+      if (conflictFileName) conflictFileName.textContent = incomingFile.name || 'Datei';
+
+      // Existing File Card
+      const existingNameEl = document.getElementById('existingFileName');
+      const existingSizeEl = document.getElementById('existingFileSize');
+      const existingMtimeEl = document.getElementById('existingFileMtime');
+      const existingLocEl = document.getElementById('existingFileLocation');
+      const existingPreviewEl = document.getElementById('existingFilePreview');
+
+      if (existingNameEl) { existingNameEl.textContent = existingFile.name; existingNameEl.title = existingFile.name; }
+      if (existingSizeEl) existingSizeEl.textContent = existingFile.size ? this.formatBytes(existingFile.size) : 'Unbekannt';
+      if (existingMtimeEl) existingMtimeEl.textContent = existingFile.mtime ? new Date(existingFile.mtime).toLocaleString() : 'Vorhanden';
+      if (existingLocEl) existingLocEl.textContent = existingFile.location || 'Zielort';
+
+      if (existingPreviewEl) {
+        const ext = (existingFile.name || '').split('.').pop().toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) && existingFile.previewUrl) {
+          existingPreviewEl.innerHTML = `<img src="${existingFile.previewUrl}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+        } else {
+          existingPreviewEl.innerHTML = `<span style="font-size: 32px;">📄</span>`;
+        }
+      }
+
+      // Incoming File Card
+      const incomingNameEl = document.getElementById('incomingFileName');
+      const incomingSizeEl = document.getElementById('incomingFileSize');
+      const incomingMtimeEl = document.getElementById('incomingFileMtime');
+      const incomingLocEl = document.getElementById('incomingFileLocation');
+      const incomingPreviewEl = document.getElementById('incomingFilePreview');
+
+      if (incomingNameEl) { incomingNameEl.textContent = incomingFile.name; incomingNameEl.title = incomingFile.name; }
+      if (incomingSizeEl) incomingSizeEl.textContent = incomingFile.size ? this.formatBytes(incomingFile.size) : 'Unbekannt';
+      if (incomingMtimeEl) incomingMtimeEl.textContent = incomingFile.mtime ? new Date(incomingFile.mtime).toLocaleString() : 'Heute';
+      if (incomingLocEl) incomingLocEl.textContent = incomingFile.location || 'Quelle';
+
+      if (incomingPreviewEl) {
+        const ext = (incomingFile.name || '').split('.').pop().toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) && incomingFile.previewUrl) {
+          incomingPreviewEl.innerHTML = `<img src="${incomingFile.previewUrl}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+        } else {
+          incomingPreviewEl.innerHTML = `<span style="font-size: 32px;">📄</span>`;
+        }
+      }
+
+      const btnCancel = document.getElementById('btnConflictCancel');
+      const btnClose = document.getElementById('btnCancelConflictClose');
+      const btnRename = document.getElementById('btnConflictRename');
+      const btnOverwrite = document.getElementById('btnConflictOverwrite');
+
+      const cleanup = () => {
+        this.hideModal('modalFileConflict');
+        btnCancel?.removeEventListener('click', onCancel);
+        btnClose?.removeEventListener('click', onCancel);
+        btnRename?.removeEventListener('click', onRename);
+        btnOverwrite?.removeEventListener('click', onOverwrite);
+      };
+
+      const onCancel = () => { cleanup(); resolve('cancel'); };
+      const onRename = () => { cleanup(); resolve('rename'); };
+      const onOverwrite = () => { cleanup(); resolve('overwrite'); };
+
+      btnCancel?.addEventListener('click', onCancel);
+      btnClose?.addEventListener('click', onCancel);
+      btnRename?.addEventListener('click', onRename);
+      btnOverwrite?.addEventListener('click', onOverwrite);
+
+      this.showModal('modalFileConflict');
+    });
+  }
+
+  generateNonConflictingName(originalName, existingNames) {
+    const extIndex = originalName.lastIndexOf('.');
+    let baseName = originalName;
+    let ext = '';
+    if (extIndex > 0) {
+      baseName = originalName.substring(0, extIndex);
+      ext = originalName.substring(extIndex);
+    }
+
+    let counter = 1;
+    let candidate = `${baseName} (${counter})${ext}`;
+    const nameSet = new Set(existingNames.map(n => n.toLowerCase()));
+    while (nameSet.has(candidate.toLowerCase())) {
+      counter++;
+      candidate = `${baseName} (${counter})${ext}`;
+    }
+    return candidate;
+  }
+
   async handleFileUpload(files) {
     if (!files || !files.length) return;
 
-    const uploadUrl = this.currentViewType === 'provider'
-      ? `/api/providers/${this.currentProviderId}/upload`
-      : '/api/files/local/upload';
+    const existingNames = this.items.map(i => i.name.toLowerCase());
 
     for (const file of files) {
+      let finalFile = file;
+      let finalName = file.name;
+
+      if (existingNames.includes(file.name.toLowerCase())) {
+        const existingItem = this.items.find(i => i.name.toLowerCase() === file.name.toLowerCase());
+        const previewUrl = URL.createObjectURL(file);
+
+        const choice = await this.promptFileConflict(
+          {
+            name: existingItem.name,
+            size: existingItem.size,
+            mtime: existingItem.updatedAt || existingItem.mtime,
+            location: this.currentViewType === 'provider' ? this.currentProviderName : 'Local Home',
+            previewUrl: this.currentViewType === 'provider'
+              ? `/api/providers/${this.currentProviderId}/read?path=${encodeURIComponent(existingItem.path)}`
+              : `/api/files/local/read?path=${encodeURIComponent(existingItem.path)}`
+          },
+          {
+            name: file.name,
+            size: file.size,
+            mtime: file.lastModified,
+            location: 'Browser Upload',
+            previewUrl
+          }
+        );
+
+        if (choice === 'cancel') {
+          continue;
+        } else if (choice === 'rename') {
+          finalName = this.generateNonConflictingName(file.name, this.items.map(i => i.name));
+        }
+      }
+
+      const uploadUrl = this.currentViewType === 'provider'
+        ? `/api/providers/${this.currentProviderId}/upload`
+        : '/api/files/local/upload';
+
       const formData = new FormData();
       formData.append('path', this.currentPath);
-      formData.append('file', file);
+      formData.append('file', finalFile, finalName);
 
       try {
         const res = await fetch(uploadUrl, {
@@ -1919,7 +2107,7 @@ class FileBrowser {
 
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || `Upload failed for ${file.name}`);
+          throw new Error(err.error || `Upload failed for ${finalName}`);
         }
       } catch (err) {
         alert('Upload Error: ' + err.message);

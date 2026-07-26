@@ -358,6 +358,58 @@
   </div>
 
   <script src="/js/i18n.js"></script>
+  <!-- Modal: File Conflict Resolution Wizard (#COLLISION) -->
+  <div class="fs-modal-overlay" id="modalFileConflict" style="display: none;">
+    <div class="fs-modal-content" style="max-width: 580px;">
+      <div class="fs-modal-header">
+        <h3 class="fs-modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>⚠️</span> Datei existiert bereits
+        </h3>
+        <button class="fs-modal-close" id="btnCancelConflictClose">&times;</button>
+      </div>
+      <div class="fs-modal-body">
+        <p style="font-size: 13px; color: var(--ink-muted); margin-bottom: var(--space-4);">
+          Im Zielverzeichnis existiert bereits eine Datei mit dem Namen <strong id="conflictFileName" style="color: var(--ink); word-break: break-all;"></strong>. Wie möchtest du fortfahren?
+        </p>
+
+        <div class="conflict-comparison-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+          <!-- Existing File Card -->
+          <div class="conflict-file-card" style="padding: var(--space-3); background: var(--bg); border: var(--border-w) solid var(--border-cool); border-radius: var(--radius-control);">
+            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-muted); margin-bottom: 6px;">Vorhandene Datei (Ziel)</div>
+            <div id="existingFilePreview" class="conflict-preview-box" style="height: 90px; display: flex; align-items: center; justify-content: center; background: var(--surface); border-radius: var(--radius-control); margin-bottom: 8px; overflow: hidden; border: var(--border-w) solid var(--border-cool);">
+              <span style="font-size: 32px;">📄</span>
+            </div>
+            <div id="existingFileName" style="font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;" title="">-</div>
+            <div style="font-size: 11px; color: var(--ink-muted); font-family: var(--font-mono); display: flex; flex-direction: column; gap: 2px;">
+              <div>Größe: <span id="existingFileSize" style="color: var(--ink);">-</span></div>
+              <div>Geändert: <span id="existingFileMtime" style="color: var(--ink);">-</span></div>
+              <div>Ort: <span id="existingFileLocation" style="color: var(--ink);">-</span></div>
+            </div>
+          </div>
+
+          <!-- Transferred File Card -->
+          <div class="conflict-file-card" style="padding: var(--space-3); background: var(--bg); border: var(--border-w) solid var(--line); border-radius: var(--radius-control);">
+            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--line); margin-bottom: 6px;">Transferierte Datei (Quelle)</div>
+            <div id="incomingFilePreview" class="conflict-preview-box" style="height: 90px; display: flex; align-items: center; justify-content: center; background: var(--surface); border-radius: var(--radius-control); margin-bottom: 8px; overflow: hidden; border: var(--border-w) solid var(--border-cool);">
+              <span style="font-size: 32px;">📄</span>
+            </div>
+            <div id="incomingFileName" style="font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;" title="">-</div>
+            <div style="font-size: 11px; color: var(--ink-muted); font-family: var(--font-mono); display: flex; flex-direction: column; gap: 2px;">
+              <div>Größe: <span id="incomingFileSize" style="color: var(--ink);">-</span></div>
+              <div>Geändert: <span id="incomingFileMtime" style="color: var(--ink);">-</span></div>
+              <div>Ort: <span id="incomingFileLocation" style="color: var(--ink);">-</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fs-modal-footer" style="display: flex; gap: var(--space-2); justify-content: flex-end;">
+        <button class="fs-btn" id="btnConflictCancel">Abbrechen</button>
+        <button class="fs-btn" id="btnConflictRename">Beide behalten (Umbenennen)</button>
+        <button class="fs-btn fs-btn--danger" id="btnConflictOverwrite">Überschreiben</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/filebrowser.js"></script>
   <script src="/js/app.js"></script>
 </body>
