@@ -177,6 +177,7 @@ class LocalProvider extends BaseProvider {
       path: toRelativePath(this.userRoot, fullPath),
       isDirectory: isDir,
       size: isDir ? 0 : stat.size,
+      created: (stat.birthtime && stat.birthtime.getTime() > 0) ? stat.birthtime.toISOString() : (stat.ctime ? stat.ctime.toISOString() : null),
       modified: stat.mtime ? stat.mtime.toISOString() : null,
       mimeType: isDir ? null : (mime.lookup(fileName) || 'application/octet-stream')
     };

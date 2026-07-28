@@ -383,11 +383,11 @@ async function deleteFileShare(shareId, ownerUserId) {
 
 async function createPublicShare(userId, token, filePath, isDirectory = 0, passwordHash = null, expiresAt = null, maxDownloads = null, label = null, providerType = 'local', providerConnectionId = null) {
   const normConnId = providerConnectionId ? parseInt(providerConnectionId, 10) : null;
-  const res = await run(`
+  await run(`
     INSERT INTO public_shares (user_id, token, file_path, is_directory, password_hash, expires_at, max_downloads, label, provider_type, provider_connection_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [userId, token, filePath, isDirectory ? 1 : 0, passwordHash, expiresAt, maxDownloads, label, providerType || 'local', normConnId]);
-  return get('SELECT * FROM public_shares WHERE id = ?', [res.lastID]);
+  return get('SELECT * FROM public_shares WHERE token = ?', [token]);
 }
 
 async function updatePublicShare(shareId, userId, { label, passwordHash, expiresAt, maxDownloads, clearPassword }) {

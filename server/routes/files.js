@@ -62,6 +62,31 @@ router.get('/quota', async (req, res) => {
   }
 });
 
+// GET /api/files/local/metadata?path=/Documents/hello.txt (#52)
+router.get('/metadata', async (req, res) => {
+  try {
+    const { provider } = getLocalProvider(req);
+    const requestedPath = req.query.path;
+    if (!requestedPath) return res.status(400).json({ error: 'path parameter is required' });
+
+    const meta = await provider.metadata(requestedPath);
+    res.json({
+      success: true,
+      metadata: {
+        ...meta,
+        created_at: meta.created || meta.modified,
+        updated_at: meta.modified,
+        provider: 'local'
+      }
+    });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(404).json({ error: err.message });
+  }
+});
+
 // GET /api/files/local/list?path=/
 router.get('/list', async (req, res) => {
   try {

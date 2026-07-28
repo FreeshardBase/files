@@ -9,6 +9,7 @@ describe('Cloud Provider Public Link Sharing & Media Previews (#15, #56, #PUBLIC
   let publicToken;
 
   before(async () => {
+    process.env.DATABASE_PATH = ':memory:';
     await initDb();
     await run("INSERT OR IGNORE INTO users (id, username, email) VALUES (?, ?, ?)", [userId, 'cloud_sharer', 'sharer@test.com']);
     

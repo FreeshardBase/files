@@ -224,7 +224,9 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--bg); padding: 12px; border-radius: var(--radius-tile); border: var(--border-w) solid var(--border-cool); font-size: 12px;">
           <div><span class="fs-label">Size:</span> <span id="detailsFileSize" class="fs-mono">-</span></div>
           <div><span class="fs-label">Type:</span> <span id="detailsFileType" class="fs-mono">-</span></div>
-          <div><span class="fs-label">Modified:</span> <span id="detailsFileMtime" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Created:</span> <span id="detailsFileCreated" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Updated:</span> <span id="detailsFileMtime" class="fs-mono">-</span></div>
+          <div><span class="fs-label">Provider:</span> <span id="detailsFileProvider" class="fs-mono">Local Shard</span></div>
           <div><span class="fs-label">Owner:</span> <span id="detailsFileOwner" class="fs-mono">You</span></div>
         </div>
       </div>
@@ -490,6 +492,23 @@
         <button class="fs-modal-close" id="btnSettingsClose">&times;</button>
       </div>
       <div class="fs-modal-body">
+        <div class="fs-field" style="margin-bottom: 12px;">
+          <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">Display Name</label>
+          <input type="text" id="inputDisplayName" class="fs-input" placeholder="e.g. Alex Morgan">
+        </div>
+        <div class="fs-field" style="margin-bottom: 12px;">
+          <label class="fs-label" for="inputDisplayName" style="font-weight: 600; margin-bottom: 4px;">Display Name</label>
+          <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">The name shown in the UI. Leave blank to use your username.</p>
+          <input type="text" id="inputDisplayName" class="fs-input" placeholder="Your display name" autocomplete="off" />
+        </div>
+        <div class="fs-field" style="margin-bottom: 12px;">
+          <label class="fs-label" for="selectLanguage" style="font-weight: 600; margin-bottom: 4px;">Language</label>
+          <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Interface language preference.</p>
+          <select id="selectLanguage" class="fs-input">
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
         <div class="fs-field">
           <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">Folder Navigation Mode</label>
           <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Choose how folders are opened when clicked in the browser grid or list view.</p>

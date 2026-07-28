@@ -631,12 +631,27 @@ class FileBrowser {
     // Settings Modal Navigation & Preference Persistence (#68)
     const navSettingsEl = document.getElementById('navSettings');
     if (navSettingsEl) {
-      navSettingsEl.addEventListener('click', (e) => {
+      navSettingsEl.addEventListener('click', async (e) => {
         e.preventDefault();
         const selectClickMode = document.getElementById('selectClickMode');
+        const inputDisplayName = document.getElementById('inputDisplayName');
+        const selectLanguage = document.getElementById('selectLanguage');
+
         if (selectClickMode) {
           selectClickMode.value = this.clickNavigationMode || 'double';
         }
+
+        try {
+          const res = await fetch('/api/auth/me');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.authenticated && data.user) {
+              if (inputDisplayName) inputDisplayName.value = data.user.displayName || '';
+              if (selectLanguage) selectLanguage.value = data.user.preferredLocale || 'en';
+            }
+          }
+        } catch (err) {}
+
         this.showModal('modalSettings');
       });
     }
@@ -650,14 +665,25 @@ class FileBrowser {
     if (btnSettingsSave) {
       btnSettingsSave.addEventListener('click', async () => {
         const selectClickMode = document.getElementById('selectClickMode');
+        const inputDisplayName = document.getElementById('inputDisplayName');
+        const selectLanguage = document.getElementById('selectLanguage');
+
         const mode = selectClickMode ? selectClickMode.value : 'double';
+        const displayName = inputDisplayName ? inputDisplayName.value : undefined;
+        const preferredLocale = selectLanguage ? selectLanguage.value : undefined;
+
         this.clickNavigationMode = mode;
         localStorage.setItem('fs-click-mode', mode);
+
         try {
           await fetch('/api/auth/users/me', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preferredClickMode: mode })
+            body: JSON.stringify({
+              preferredClickMode: mode,
+              displayName: displayName,
+              preferredLocale: preferredLocale
+            })
           });
         } catch (e) {}
         this.hideModal('modalSettings');
@@ -3163,8 +3189,14 @@ class FileBrowser {
     document.getElementById('detailsFileIcon').textContent = item.isDirectory ? '📁' : '📄';
     document.getElementById('detailsFileSize').textContent = item.size ? this.formatSize(item.size) : (item.isDirectory ? 'Directory' : '-');
     document.getElementById('detailsFileType').textContent = item.isDirectory ? 'Directory' : (item.mimeType || 'File');
-    document.getElementById('detailsFileMtime').textContent = item.mtime ? new Date(item.mtime).toLocaleString() : '-';
-    document.getElementById('detailsFileOwner').textContent = item.owner || 'You';
+    const createdEl = document.getElementById('detailsFileCreated');
+    if (createdEl) createdEl.textContent = item.created ? new Date(item.created).toLocaleString() : (item.created_at ? new Date(item.created_at).toLocaleString() : '-');
+    const mtimeEl = document.getElementById('detailsFileMtime');
+    if (mtimeEl) mtimeEl.textContent = item.mtime ? new Date(item.mtime).toLocaleString() : (item.updated_at ? new Date(item.updated_at).toLocaleString() : '-');
+    const providerEl = document.getElementById('detailsFileProvider');
+    if (providerEl) providerEl.textContent = item.provider || item.provider_type || 'Local Shard';
+    const ownerEl = document.getElementById('detailsFileOwner');
+    if (ownerEl) ownerEl.textContent = item.owner || 'You';
 
     const internalList = document.getElementById('detailsInternalSharesList');
     const publicList = document.getElementById('detailsPublicSharesList');
@@ -3177,6 +3209,17 @@ class FileBrowser {
       const res = await fetch(`/api/shares/overview?path=${encodeURIComponent(item.path)}`);
       if (!res.ok) throw new Error('Failed to load sharing overview');
       const data = await res.json();
+
+      if (data.file_metadata) {
+        const meta = data.file_metadata;
+        if (createdEl && meta.created_at) createdEl.textContent = new Date(meta.created_at).toLocaleString();
+        if (mtimeEl && meta.updated_at) mtimeEl.textContent = new Date(meta.updated_at).toLocaleString();
+        if (providerEl && meta.provider) providerEl.textContent = meta.provider;
+        const sizeEl = document.getElementById('detailsFileSize');
+        if (sizeEl && meta.size) sizeEl.textContent = this.formatSize(meta.size);
+        const typeEl = document.getElementById('detailsFileType');
+        if (typeEl && meta.mimeType) typeEl.textContent = meta.mimeType;
+      }
 
       if (internalList) {
         if (data.internal_shares && data.internal_shares.length > 0) {

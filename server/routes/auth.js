@@ -89,6 +89,9 @@ router.patch('/users/me', requireAuth, async (req, res) => {
     }
 
     if (preferredLocale !== undefined) {
+      if (!['en', 'de'].includes(preferredLocale)) {
+        return res.status(400).json({ error: `Invalid locale "${preferredLocale}": must be one of "en", "de"` });
+      }
       await db.run('UPDATE users SET preferred_locale = ? WHERE id = ?', [preferredLocale, userId]);
       req.session.preferredLocale = preferredLocale;
     }

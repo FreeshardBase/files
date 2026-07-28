@@ -9,6 +9,7 @@ describe('Public Link Sharing (#15, #45 Invariant)', () => {
   const user = { id: 'user_public_owner_1', username: 'charlie', displayName: 'Charlie' };
 
   before(async () => {
+    process.env.DATABASE_PATH = ':memory:';
     await db.initDb();
     await db.upsertUser(user.id, user.username, 'charlie@example.com', 'local', null, user.displayName);
   });

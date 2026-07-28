@@ -35,10 +35,27 @@ router.get('/overview', async (req, res) => {
       share_url: `${protocol}://${host}/s/${share.token}`
     }));
 
+    let fileMetadata = null;
+    const userRoot = req.userRoot || (process.env.FILES_ROOT ? path.join(process.env.FILES_ROOT, userId) : null);
+    if (userRoot) {
+      try {
+        const LocalProvider = require('../providers/local');
+        const lp = new LocalProvider({ userRoot });
+        const meta = await lp.metadata(filePath);
+        fileMetadata = {
+          ...meta,
+          created_at: meta.created || meta.modified,
+          updated_at: meta.modified,
+          provider: 'local'
+        };
+      } catch (e) {}
+    }
+
     res.json({
       file_path: filePath,
       internal_shares: internalShares,
-      public_shares: formattedPublicShares
+      public_shares: formattedPublicShares,
+      file_metadata: fileMetadata
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
