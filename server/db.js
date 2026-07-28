@@ -329,6 +329,113 @@ async function initDb() {
     )
   `);
 
+  // Public Share Analytics & Access Dashboard (#81)
+  await run(`
+    CREATE TABLE IF NOT EXISTS share_analytics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      share_id INTEGER NOT NULL REFERENCES public_shares(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      referrer TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // E2EE Vaults (#75)
+  await run(`
+    CREATE TABLE IF NOT EXISTS vaults (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      encrypted_metadata TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Custom File Tagging (#77)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      tag_name TEXT NOT NULL,
+      color TEXT DEFAULT '#3B82F6',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, file_path, tag_name)
+    )
+  `);
+
+  // File Versioning (#78)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      version_number INTEGER NOT NULL,
+      storage_path TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      author TEXT NOT NULL,
+      comment TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Collaborative Comments (#79)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      comment TEXT NOT NULL,
+      resolved INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Automated Scheduled Storage Backup & Disaster Recovery Snapshots (#83)
+  await run(`
+    CREATE TABLE IF NOT EXISTS backup_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      schedule TEXT DEFAULT 'daily',
+      target_path TEXT NOT NULL DEFAULT '/',
+      encrypted INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'pending',
+      last_run_at TEXT,
+      next_run_at TEXT,
+      backup_file_path TEXT,
+      file_size INTEGER DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Advanced Office Document Live Collaborative Editing (#85)
+  await run(`
+    CREATE TABLE IF NOT EXISTS wopi_tokens (
+      token TEXT PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      can_write INTEGER DEFAULT 1,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS wopi_locks (
+      file_id TEXT PRIMARY KEY,
+      lock_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Ensure fallback default-user exists for unauthenticated operations (#44)
   await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
@@ -852,12 +959,17 @@ async function reindexUserFiles(userId, userRoot) {
       } else if (entry.isFile()) {
         let content = '';
         const ext = path.extname(entry.name).toLowerCase();
+        const ocrService = require('./utils/ocr_service');
         if (textExts.has(ext)) {
           try {
             const stat = await fs.stat(fullPath);
             if (stat.size < 2 * 1024 * 1024) {
               content = await fs.readFile(fullPath, 'utf8');
             }
+          } catch (e) {}
+        } else if (ocrService.isSupportedFile(fullPath)) {
+          try {
+            content = await ocrService.extractTextFromFile(fullPath);
           } catch (e) {}
         }
         await indexFileInFts(userId, relPath, entry.name, content);
@@ -868,6 +980,228 @@ async function reindexUserFiles(userId, userRoot) {
 
   await walk(userRoot);
   return count;
+}
+
+// E2EE Vaults (#75)
+async function createVault(userId, name, salt, encryptedMetadata) {
+  const res = await run(
+    `INSERT INTO vaults (user_id, name, salt, encrypted_metadata) VALUES (?, ?, ?, ?)`,
+    [userId, name, salt, encryptedMetadata]
+  );
+  return get('SELECT * FROM vaults WHERE id = ?', [res.lastID]);
+}
+
+async function getVaultsByUser(userId) {
+  return all('SELECT * FROM vaults WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getVaultById(id, userId) {
+  return get('SELECT * FROM vaults WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+// File Tags (#77)
+async function assignTag(userId, filePath, tagName, color = '#3B82F6') {
+  await run(`
+    INSERT INTO file_tags (user_id, file_path, tag_name, color)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, file_path, tag_name) DO UPDATE SET color = excluded.color
+  `, [userId, filePath, tagName, color || '#3B82F6']);
+  return get('SELECT * FROM file_tags WHERE user_id = ? AND file_path = ? AND tag_name = ?', [userId, filePath, tagName]);
+}
+
+async function removeTag(userId, filePath, tagName) {
+  const res = await run('DELETE FROM file_tags WHERE user_id = ? AND file_path = ? AND tag_name = ?', [userId, filePath, tagName]);
+  return res.changes > 0;
+}
+
+async function getTagsByUser(userId, filePath = null) {
+  if (filePath) {
+    return all('SELECT * FROM file_tags WHERE user_id = ? AND file_path = ? ORDER BY created_at ASC', [userId, filePath]);
+  }
+  return all('SELECT * FROM file_tags WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+// File Versioning (#78)
+async function getNextVersionNumber(userId, filePath) {
+  const row = await get('SELECT MAX(version_number) as maxVer FROM file_versions WHERE user_id = ? AND file_path = ?', [userId, filePath]);
+  return (row && row.maxVer) ? row.maxVer + 1 : 1;
+}
+
+async function createFileVersion(userId, filePath, versionNumber, storagePath, size, author, comment = null) {
+  const res = await run(`
+    INSERT INTO file_versions (user_id, file_path, version_number, storage_path, size, author, comment)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, filePath, versionNumber, storagePath, size, author, comment]);
+  return get('SELECT * FROM file_versions WHERE id = ?', [res.lastID]);
+}
+
+async function getFileVersions(userId, filePath = null) {
+  if (filePath) {
+    return all('SELECT * FROM file_versions WHERE user_id = ? AND file_path = ? ORDER BY version_number DESC', [userId, filePath]);
+  }
+  return all('SELECT * FROM file_versions WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getFileVersionById(id, userId) {
+  return get('SELECT * FROM file_versions WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+// Collaborative Comments (#79)
+async function createFileComment(userId, filePath, comment) {
+  const res = await run(`
+    INSERT INTO file_comments (user_id, file_path, comment)
+    VALUES (?, ?, ?)
+  `, [userId, filePath, comment]);
+  return get('SELECT * FROM file_comments WHERE id = ?', [res.lastID]);
+}
+
+async function getFileComments(userId, filePath = null) {
+  if (filePath) {
+    return all('SELECT * FROM file_comments WHERE user_id = ? AND file_path = ? ORDER BY created_at ASC', [userId, filePath]);
+  }
+  return all('SELECT * FROM file_comments WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function resolveFileComment(id, userId, resolved = 1) {
+  await run(`
+    UPDATE file_comments
+    SET resolved = ?, updated_at = datetime('now')
+    WHERE id = ? AND user_id = ?
+  `, [resolved ? 1 : 0, id, userId]);
+  return get('SELECT * FROM file_comments WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+async function deleteFileComment(id, userId) {
+  const res = await run('DELETE FROM file_comments WHERE id = ? AND user_id = ?', [id, userId]);
+  return res.changes > 0;
+}
+
+// Public Share Analytics (#81)
+async function logShareAccess({ shareId, eventType, ipAddress, userAgent, referrer }) {
+  return run(
+    `INSERT INTO share_analytics (share_id, event_type, ip_address, user_agent, referrer) VALUES (?, ?, ?, ?, ?)`,
+    [shareId, eventType, ipAddress || null, userAgent || null, referrer || null]
+  );
+}
+
+async function getShareAnalytics(shareId, userId) {
+  const share = await get('SELECT * FROM public_shares WHERE id = ? AND user_id = ?', [shareId, userId]);
+  if (!share) return null;
+
+  const totalViewsRow = await get('SELECT COUNT(*) as count FROM share_analytics WHERE share_id = ? AND event_type = "view"', [shareId]);
+  const totalDownloadsRow = await get('SELECT COUNT(*) as count FROM share_analytics WHERE share_id = ? AND event_type = "download"', [shareId]);
+  const uniqueVisitorsRow = await get('SELECT COUNT(DISTINCT ip_address) as count FROM share_analytics WHERE share_id = ? AND ip_address IS NOT NULL', [shareId]);
+
+  const userAgents = await all('SELECT user_agent, COUNT(*) as count FROM share_analytics WHERE share_id = ? AND user_agent IS NOT NULL GROUP BY user_agent ORDER BY count DESC', [shareId]);
+  const referrers = await all('SELECT referrer, COUNT(*) as count FROM share_analytics WHERE share_id = ? AND referrer IS NOT NULL GROUP BY referrer ORDER BY count DESC', [shareId]);
+  const events = await all('SELECT * FROM share_analytics WHERE share_id = ? ORDER BY created_at DESC, id DESC', [shareId]);
+
+  return {
+    share_id: share.id,
+    token: share.token,
+    file_path: share.file_path,
+    download_count: share.download_count,
+    analytics: {
+      total_views: totalViewsRow ? totalViewsRow.count : 0,
+      total_downloads: totalDownloadsRow ? totalDownloadsRow.count : 0,
+      unique_visitors: uniqueVisitorsRow ? uniqueVisitorsRow.count : 0,
+      user_agents: userAgents,
+      referrers: referrers
+    },
+    events
+  };
+}
+
+// ── Automated Scheduled Storage Backup (#83) ──────────────────────────────────
+
+async function createBackupJob(userIdOrObj, nameParam, scheduleParam, targetPathParam, encryptedParam) {
+  let userId, name, schedule, targetPath, encrypted;
+  if (typeof userIdOrObj === 'object' && userIdOrObj !== null) {
+    userId = userIdOrObj.userId || userIdOrObj.user_id;
+    name = userIdOrObj.name;
+    schedule = userIdOrObj.schedule || 'daily';
+    targetPath = userIdOrObj.targetPath || userIdOrObj.target_path || '/';
+    encrypted = userIdOrObj.encrypted !== undefined ? (userIdOrObj.encrypted ? 1 : 0) : 1;
+  } else if (typeof nameParam === 'object' && nameParam !== null) {
+    userId = userIdOrObj;
+    name = nameParam.name;
+    schedule = nameParam.schedule || 'daily';
+    targetPath = nameParam.targetPath || nameParam.target_path || '/';
+    encrypted = nameParam.encrypted !== undefined ? (nameParam.encrypted ? 1 : 0) : 1;
+  } else {
+    userId = userIdOrObj;
+    name = nameParam;
+    schedule = scheduleParam || 'daily';
+    targetPath = targetPathParam || '/';
+    encrypted = encryptedParam !== undefined ? (encryptedParam ? 1 : 0) : 1;
+  }
+
+  const res = await run(`
+    INSERT INTO backup_jobs (user_id, name, schedule, target_path, encrypted, status)
+    VALUES (?, ?, ?, ?, ?, 'pending')
+  `, [userId, name, schedule, targetPath, encrypted]);
+
+  return get('SELECT * FROM backup_jobs WHERE id = ?', [res.lastID]);
+}
+
+async function getBackupJobsByUser(userId) {
+  return all('SELECT * FROM backup_jobs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getBackupJobById(id, userId = null) {
+  if (userId) {
+    return get('SELECT * FROM backup_jobs WHERE id = ? AND user_id = ?', [id, userId]);
+  }
+  return get('SELECT * FROM backup_jobs WHERE id = ?', [id]);
+}
+
+async function updateBackupJobStatus(id, status, details = {}) {
+  const { lastRunAt, nextRunAt, backupFilePath, fileSize, errorMessage } = details;
+  await run(`
+    UPDATE backup_jobs
+    SET status = ?,
+        last_run_at = COALESCE(?, last_run_at),
+        next_run_at = COALESCE(?, next_run_at),
+        backup_file_path = COALESCE(?, backup_file_path),
+        file_size = COALESCE(?, file_size),
+        error_message = COALESCE(?, error_message),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `, [status, lastRunAt || null, nextRunAt || null, backupFilePath || null, fileSize || null, errorMessage || null, id]);
+  return get('SELECT * FROM backup_jobs WHERE id = ?', [id]);
+}
+
+async function createWopiToken({ token, fileId, userId, canWrite = 1, expiresAt }) {
+  await run(`
+    INSERT INTO wopi_tokens (token, file_id, user_id, can_write, expires_at)
+    VALUES (?, ?, ?, ?, ?)
+  `, [token, fileId, userId, canWrite ? 1 : 0, expiresAt]);
+  return get('SELECT * FROM wopi_tokens WHERE token = ?', [token]);
+}
+
+async function getWopiToken(token) {
+  return get('SELECT * FROM wopi_tokens WHERE token = ?', [token]);
+}
+
+async function deleteWopiToken(token) {
+  return run('DELETE FROM wopi_tokens WHERE token = ?', [token]);
+}
+
+async function getWopiLock(fileId) {
+  return get('SELECT * FROM wopi_locks WHERE file_id = ?', [fileId]);
+}
+
+async function setWopiLock(fileId, lockId, expiresAt) {
+  await run(`
+    INSERT INTO wopi_locks (file_id, lock_id, expires_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(file_id) DO UPDATE SET lock_id = excluded.lock_id, expires_at = excluded.expires_at
+  `, [fileId, lockId, expiresAt]);
+  return get('SELECT * FROM wopi_locks WHERE file_id = ?', [fileId]);
+}
+
+async function deleteWopiLock(fileId) {
+  return run('DELETE FROM wopi_locks WHERE file_id = ?', [fileId]);
 }
 
 module.exports = {
@@ -923,7 +1257,33 @@ module.exports = {
   deleteFileFromFts,
   updateFtsPathOnMove,
   searchFulltext,
-  reindexUserFiles
+  reindexUserFiles,
+  createVault,
+  getVaultsByUser,
+  getVaultById,
+  assignTag,
+  removeTag,
+  getTagsByUser,
+  getNextVersionNumber,
+  createFileVersion,
+  getFileVersions,
+  getFileVersionById,
+  createFileComment,
+  getFileComments,
+  resolveFileComment,
+  deleteFileComment,
+  logShareAccess,
+  getShareAnalytics,
+  createBackupJob,
+  getBackupJobsByUser,
+  getBackupJobById,
+  updateBackupJobStatus,
+  createWopiToken,
+  getWopiToken,
+  deleteWopiToken,
+  getWopiLock,
+  setWopiLock,
+  deleteWopiLock
 };
 
 

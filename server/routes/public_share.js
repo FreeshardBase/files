@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { getPublicShareByToken, incrementPublicShareDownloads } = require('../db');
+const { getPublicShareByToken, incrementPublicShareDownloads, logShareAccess } = require('../db');
 const LocalProvider = require('../providers/local');
 
 function getOwnerUserRoot(ownerUserId) {
@@ -163,6 +163,13 @@ router.get('/:token', async (req, res) => {
     const isProtected = share ? !!share.password_hash : false;
     const unlocked = isProtected ? isShareUnlocked(req, token) : true;
 
+    if (share && validation.valid) {
+      const ipAddress = req.ip || req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress);
+      const userAgent = req.headers['user-agent'];
+      const referrer = req.headers['referer'] || req.headers['referrer'];
+      await logShareAccess({ shareId: share.id, eventType: 'view', ipAddress, userAgent, referrer }).catch(() => {});
+    }
+
     if (acceptsJson) {
       if (!validation.valid) {
         return res.status(validation.status).json({ error: validation.error });
@@ -270,6 +277,12 @@ router.get('/:token/download', async (req, res) => {
     if (!isInline) {
       await incrementPublicShareDownloads(share.id);
     }
+
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress);
+    const userAgent = req.headers['user-agent'];
+    const referrer = req.headers['referer'] || req.headers['referrer'];
+    const eventType = isInline ? 'view' : 'download';
+    await logShareAccess({ shareId: share.id, eventType, ipAddress, userAgent, referrer }).catch(() => {});
 
     const baseName = path.basename(share.file_path);
     const encodedName = encodeURIComponent(baseName).replace(/['()]/g, escape).replace(/\*/g, '%2A');

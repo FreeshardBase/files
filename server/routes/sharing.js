@@ -6,7 +6,8 @@ const path = require('path');
 const { requireAuth } = require('../middleware/auth');
 const {
   createFileShare, getFileSharesByOwner, getFileSharesByPath, getFileSharesForSharee, deleteFileShare,
-  createPublicShare, updatePublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity
+  createPublicShare, updatePublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity,
+  getShareAnalytics
 } = require('../db');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 
@@ -226,6 +227,29 @@ router.delete('/public/:id', async (req, res) => {
     if (!deleted) return res.status(404).json({ error: 'Public link not found' });
     await dispatchWebhookEvent(userId, 'share_revoked', { share_id: shareId, share_type: 'public' }).catch(() => {});
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/analytics', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const shareId = parseInt(req.params.id, 10);
+    if (isNaN(shareId)) {
+      return res.status(400).json({ error: 'Invalid share ID' });
+    }
+
+    const analytics = await getShareAnalytics(shareId, userId);
+    if (!analytics) {
+      return res.status(404).json({ error: 'Public share not found or access denied' });
+    }
+
+    res.json(analytics);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

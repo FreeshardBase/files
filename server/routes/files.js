@@ -6,9 +6,10 @@ const Busboy = require('busboy');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles } = require('../db');
+const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles, indexFileInFts } = require('../db');
 const { decodeUtf8Filename } = require('../utils/utf8');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
+const { scanBuffer, scanFile } = require('../utils/malware_scanner');
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -126,7 +127,7 @@ router.get('/read', async (req, res) => {
   }
 });
 
-// POST /api/files/local/upload (Streaming upload via Busboy with UTF-8 filename decoding)
+// POST /api/files/local/upload (Streaming upload via Busboy with UTF-8 filename decoding and Malware Scanning)
 router.post('/upload', (req, res) => {
   try {
     const { provider, userId } = getLocalProvider(req);
@@ -143,7 +144,24 @@ router.post('/upload', (req, res) => {
       const destinationPath = path.posix.join(targetPath, filename);
 
       try {
-        const result = await provider.write(destinationPath, fileStream);
+        const chunks = [];
+        for await (const chunk of fileStream) {
+          chunks.push(chunk);
+        }
+        const fullBuffer = Buffer.concat(chunks);
+
+        const scanResult = scanBuffer(fullBuffer);
+        if (scanResult.infected) {
+          return res.status(422).json({
+            success: false,
+            error: `Malware detected: ${scanResult.threat}`,
+            threat: scanResult.threat
+          });
+        }
+
+const { Readable } = require('stream');
+        const streamToSave = Readable.from(fullBuffer);
+        const result = await provider.write(destinationPath, streamToSave);
         await logActivity(userId, 'upload', destinationPath, filename, 0);
         await dispatchWebhookEvent(userId, 'file_created', { path: destinationPath, type: 'file' }).catch(() => {});
         res.status(201).json({ success: true, file: result });
@@ -164,6 +182,39 @@ router.post('/upload', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * POST /api/files/scan
+ * Scans content buffer or file path for malware signatures (#84)
+ */
+router.post('/scan', async (req, res) => {
+  try {
+    const { content, path: filePath } = req.body;
+    let result = { infected: false, threat: null };
+
+    if (content !== undefined && content !== null) {
+      result = scanBuffer(content);
+    } else if (filePath) {
+      const { provider } = getLocalProvider(req);
+      const fullDiskPath = provider.resolvePath(filePath);
+      result = await scanFile(fullDiskPath);
+    }
+
+    if (result.infected) {
+      return res.status(422).json({
+        success: false,
+        infected: true,
+        threat: result.threat,
+        error: `Malware detected: ${result.threat}`
+      });
+    }
+
+    res.json({ success: true, infected: false, threat: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // POST /api/files/local/mkdir
 router.post('/mkdir', async (req, res) => {
@@ -479,5 +530,145 @@ router.post('/search/reindex', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/files/ocr/extract (#80)
+ * Optical Character Recognition text extraction from stored images and PDFs
+ */
+router.post('/ocr/extract', async (req, res) => {
+  try {
+    const relPath = req.body.path || req.body.filePath || req.body.file_path;
+    if (!relPath) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+
+    const { resolveSafePath } = require('../utils/duplicate_finder');
+    const ocrService = require('../utils/ocr_service');
+    const fullDiskPath = resolveSafePath(req.userRoot, relPath);
+
+    try {
+      await fs.stat(fullDiskPath);
+    } catch (e) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const text = await ocrService.extractTextFromFile(fullDiskPath);
+    const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+
+    const fileName = path.basename(fullDiskPath);
+    if (text) {
+      await indexFileInFts(req.userId, relPath, fileName, text);
+    }
+
+    res.json({
+      success: true,
+      path: relPath,
+      text,
+      word_count: words
+    });
+  } catch (err) {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/files/duplicates (#76)
+ * Scan user root storage for duplicate files by SHA-256 hash
+ */
+router.get('/duplicates', async (req, res) => {
+  try {
+    const { scanDuplicates } = require('../utils/duplicate_finder');
+    const duplicates = await scanDuplicates(req.userRoot);
+    res.json({
+      success: true,
+      duplicates,
+      count: duplicates.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/deduplicate (#76)
+ * Deduplicate files by deleting target copy or creating hard link
+ */
+router.post('/deduplicate', async (req, res) => {
+  try {
+    const { deduplicateFile } = require('../utils/duplicate_finder');
+    const { action, keepPath, targetPath } = req.body || {};
+    const result = await deduplicateFile(req.userRoot, { action, keepPath, targetPath });
+    res.json(result);
+  } catch (err) {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/files/versions (#78)
+ * Retrieve file revisions for user / specific file
+ */
+router.get('/versions', async (req, res) => {
+  try {
+    const db = require('../db');
+    const requestedPath = req.query.path || null;
+    const versions = await db.getFileVersions(req.userId, requestedPath);
+    res.json({
+      success: true,
+      versions
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/versions/create (#78)
+ * Create a new version snapshot of a file
+ */
+router.post('/versions/create', async (req, res) => {
+  try {
+    const { saveFileVersion } = require('../utils/file_versioning');
+    const { filePath, comment } = req.body || {};
+    if (!filePath) {
+      return res.status(400).json({ error: 'filePath parameter is required' });
+    }
+    const version = await saveFileVersion(req.userRoot, req.userId, filePath, {
+      author: req.userId,
+      comment
+    });
+    res.json({
+      success: true,
+      version
+    });
+  } catch (err) {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/versions/rollback (#78)
+ * Roll back file content to target version
+ */
+router.post('/versions/rollback', async (req, res) => {
+  try {
+    const { rollbackFileVersion } = require('../utils/file_versioning');
+    const { filePath, versionId, versionNumber } = req.body || {};
+    const result = await rollbackFileVersion(req.userRoot, req.userId, {
+      filePath,
+      versionId,
+      versionNumber
+    });
+    res.json(result);
+  } catch (err) {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
+
 

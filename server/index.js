@@ -16,6 +16,12 @@ const transfersRouter = require('./routes/transfers');
 const ecosystemRouter = require('./routes/ecosystem');
 const syncRouter = require('./routes/sync');
 const webhooksRouter = require('./routes/webhooks');
+const vaultsRouter = require('./routes/vaults');
+const tagsRouter = require('./routes/tags');
+const commentsRouter = require('./routes/comments');
+const webdavRouter = require('./routes/webdav');
+const backupsRouter = require('./routes/backups');
+const wopiRouter = require('./routes/wopi');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -59,6 +65,13 @@ app.use('/api/transfers', transfersRouter);
 app.use('/api/ecosystem', ecosystemRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/vaults', vaultsRouter);
+app.use('/api/tags', tagsRouter);
+app.use('/api/comments', commentsRouter);
+app.use('/api/backups', backupsRouter);
+app.use('/wopi', wopiRouter);
+app.use('/api/wopi', wopiRouter);
+app.use('/webdav', webdavRouter);
 app.use('/s', publicShareRouter);
 
 // Health check endpoint
