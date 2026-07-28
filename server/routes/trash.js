@@ -9,6 +9,7 @@ const {
   createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash, logActivity
 } = require('../db');
 const LocalProvider = require('../providers/local');
+const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 
 router.use(requireAuth);
 
@@ -166,6 +167,7 @@ router.post('/move', async (req, res) => {
     );
 
     await logActivity(userId, 'delete', target_path, path.basename(target_path), meta.isDirectory ? 1 : 0);
+    await dispatchWebhookEvent(userId, 'file_deleted', { path: target_path, trashed: true }).catch(() => {});
 
     res.status(201).json({ success: true, item });
   } catch (err) {

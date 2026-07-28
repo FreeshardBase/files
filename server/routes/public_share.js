@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const archiver = require('archiver');
 const { getPublicShareByToken, incrementPublicShareDownloads } = require('../db');
 const LocalProvider = require('../providers/local');
 
@@ -289,6 +288,8 @@ router.get('/:token/download', async (req, res) => {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `${dispositionType}; filename="${baseName}.zip"; filename*=UTF-8''${encodedName}.zip`);
 
+      const archiverModule = await import('archiver');
+      const archiver = archiverModule.default || archiverModule;
       const archive = archiver('zip', { zlib: { level: 6 } });
       archive.pipe(res);
       archive.directory(fullDirPath, baseName);

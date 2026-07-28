@@ -8,6 +8,7 @@ const {
   createFileShare, getFileSharesByOwner, getFileSharesByPath, getFileSharesForSharee, deleteFileShare,
   createPublicShare, updatePublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity
 } = require('../db');
+const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 
 // Require session authentication for all link creation operations
 router.use(requireAuth);
@@ -126,6 +127,7 @@ router.delete('/internal/:id', async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: 'Share not found or permission denied' });
     }
+    await dispatchWebhookEvent(ownerUserId, 'share_revoked', { share_id: shareId, share_type: 'internal' }).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -222,6 +224,7 @@ router.delete('/public/:id', async (req, res) => {
     const shareId = req.params.id;
     const deleted = await deletePublicShare(shareId, userId);
     if (!deleted) return res.status(404).json({ error: 'Public link not found' });
+    await dispatchWebhookEvent(userId, 'share_revoked', { share_id: shareId, share_type: 'public' }).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

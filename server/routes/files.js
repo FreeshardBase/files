@@ -6,8 +6,9 @@ const Busboy = require('busboy');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove, createTrashItem, logActivity } = require('../db');
+const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles } = require('../db');
 const { decodeUtf8Filename } = require('../utils/utf8');
+const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -144,6 +145,7 @@ router.post('/upload', (req, res) => {
       try {
         const result = await provider.write(destinationPath, fileStream);
         await logActivity(userId, 'upload', destinationPath, filename, 0);
+        await dispatchWebhookEvent(userId, 'file_created', { path: destinationPath, type: 'file' }).catch(() => {});
         res.status(201).json({ success: true, file: result });
       } catch (err) {
         if (err.message.includes('Path traversal blocked')) {
@@ -172,6 +174,7 @@ router.post('/mkdir', async (req, res) => {
 
     await provider.mkdir(dirPath);
     await logActivity(userId, 'mkdir', dirPath, path.basename(dirPath), 1);
+    await dispatchWebhookEvent(userId, 'file_created', { path: dirPath, type: 'directory' }).catch(() => {});
     res.status(201).json({ success: true, path: dirPath });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
@@ -192,6 +195,7 @@ router.post('/move', async (req, res) => {
 
     // Invariant: Update internal & public share link target paths on move (#14, #15, #45)
     await updateSharePathsOnMove(userId, src, dst);
+    await updateFtsPathOnMove(userId, src, dst).catch(() => {});
     await logActivity(userId, 'move', src, path.basename(src), 0, JSON.stringify({ dst }));
 
     res.json({ success: true });
@@ -232,7 +236,9 @@ router.delete('/', async (req, res) => {
 
     if (isPermanent) {
       await provider.delete(requestedPath);
+      await deleteFileFromFts(userId, requestedPath).catch(() => {});
       await logActivity(userId, 'delete_permanent', requestedPath, path.basename(requestedPath), 0);
+      await dispatchWebhookEvent(userId, 'file_deleted', { path: requestedPath, permanent: true }).catch(() => {});
       return res.json({ success: true, permanent: true });
     }
 
@@ -249,7 +255,9 @@ router.delete('/', async (req, res) => {
     const sizeBytes = meta.isDirectory ? await getDirectorySize(trashPathOnDisk) : (meta.size || 0);
 
     await createTrashItem(trashId, userId, requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0, sizeBytes, 30);
+    await deleteFileFromFts(userId, requestedPath).catch(() => {});
     await logActivity(userId, 'delete', requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0);
+    await dispatchWebhookEvent(userId, 'file_deleted', { path: requestedPath, permanent: false }).catch(() => {});
 
     res.json({ success: true, trashed: true, trashId });
   } catch (err) {
@@ -370,4 +378,106 @@ router.get('/batch/zip', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/files/image/transform (or /api/files/local/image/transform) (#73)
+ * Save transformed image back to disk/cloud
+ */
+router.post('/image/transform', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { path: itemPath, imageData, operations, rotate, flip, crop } = req.body || {};
+
+    if (!itemPath) {
+      return res.status(400).json({ error: 'path parameter is required' });
+    }
+
+    let existingBuffer = null;
+    try {
+      const { stream } = await provider.read(itemPath);
+      const chunks = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      existingBuffer = Buffer.concat(chunks);
+    } catch (e) {
+      if (e.message && (e.message.includes('Path traversal blocked') || e.message.includes('path escapes user root'))) {
+        return res.status(403).json({ error: 'Path traversal blocked' });
+      }
+      if (!imageData) {
+        return res.status(404).json({ error: `File not found: ${itemPath}` });
+      }
+    }
+
+    const { transformImageBuffer } = require('../utils/image_transform');
+    const transformedBuffer = transformImageBuffer(existingBuffer, {
+      imageData,
+      operations,
+      rotate,
+      flip,
+      crop
+    });
+
+    if (!transformedBuffer) {
+      return res.status(400).json({ error: 'Failed to process image transformation' });
+    }
+
+    const { Readable } = require('stream');
+    await provider.write(itemPath, Readable.from(transformedBuffer));
+
+    await logActivity(userId, 'image_transform', itemPath, path.basename(itemPath), transformedBuffer.length);
+    try {
+      dispatchWebhookEvent(userId, 'file_updated', { path: itemPath, action: 'transform' });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      path: itemPath,
+      size: transformedBuffer.length,
+      message: 'Image transformed and saved successfully'
+    });
+  } catch (err) {
+    if (err.message && (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root'))) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/files/search/fulltext?q=query (#74)
+ */
+router.get('/search/fulltext', async (req, res) => {
+  try {
+    const query = req.query.q;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'q query parameter is required' });
+    }
+
+    const results = await searchFulltext(req.userId, query.trim());
+    res.json({
+      success: true,
+      query: query.trim(),
+      results
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/search/reindex (#74)
+ */
+router.post('/search/reindex', async (req, res) => {
+  try {
+    const indexedCount = await reindexUserFiles(req.userId, req.userRoot);
+    res.json({
+      success: true,
+      indexed_count: indexedCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+

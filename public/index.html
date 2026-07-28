@@ -420,6 +420,12 @@
     <div class="media-viewer-header">
       <span id="mediaTitle" class="media-title fs-mono">File Preview</span>
       <div class="media-controls">
+        <div id="imageEditToolbar" style="display: none; align-items: center; gap: 6px; margin-right: 8px;">
+          <button class="fs-btn text-sm" id="btnRotateImage" title="Rotate 90°">🔄 Rotate 90°</button>
+          <button class="fs-btn text-sm" id="btnFlipImage" title="Flip Horizontal">↔️ Flip</button>
+          <button class="fs-btn text-sm" id="btnCropImage" title="Crop Selection">✂️ Crop</button>
+          <button class="fs-btn text-sm primary" id="btnSaveImageTransform" style="background: var(--accent, #0066cc); color: white;">💾 Save</button>
+        </div>
         <button class="fs-btn text-sm" id="btnMediaDownload">⬇️ Download</button>
         <button class="fs-btn text-sm" id="btnMediaClose">✖ Close</button>
       </div>

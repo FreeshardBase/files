@@ -2306,32 +2306,106 @@ class FileBrowser {
     this.mediaViewerBody.innerHTML = '<div style="color: var(--ink-muted);">Loading preview...</div>';
     this.mediaModal.style.display = 'flex';
 
-    if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext)) {
-      this.mediaViewerBody.innerHTML = `<img src="${fileUrl}" alt="${item.name}" />`;
-    } else if (['mp4', 'webm', 'mov'].includes(ext)) {
-      this.mediaViewerBody.innerHTML = `<video controls autoplay src="${fileUrl}"></video>`;
-    } else if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) {
-      this.mediaViewerBody.innerHTML = `<audio controls autoplay src="${fileUrl}"></audio>`;
-    } else if (['pdf'].includes(ext)) {
-      this.mediaViewerBody.innerHTML = `<iframe src="${fileUrl}"></iframe>`;
-    } else if (['txt', 'json', 'js', 'ts', 'py', 'html', 'css', 'md', 'sh', 'yml', 'yaml'].includes(ext)) {
-      try {
-        const res = await fetch(fileUrl);
-        const text = await res.text();
-        const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        this.mediaViewerBody.innerHTML = `<pre class="media-text-preview">${safeText}</pre>`;
-      } catch (err) {
-        this.mediaViewerBody.innerHTML = `<div style="color: var(--danger);">Failed to load text content</div>`;
-      }
+    const imageToolbar = document.getElementById('imageEditToolbar');
+    if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) {
+      if (imageToolbar) imageToolbar.style.display = 'flex';
+      this.mediaViewerBody.innerHTML = `<img id="previewImage" src="${fileUrl}" alt="${item.name}" style="max-width: 100%; max-height: 80vh; transition: transform 0.2s ease;" />`;
+      this.initImageEditor(item, fileUrl);
     } else {
-      this.mediaViewerBody.innerHTML = `
-        <div class="placeholder-card">
-          <span style="font-size: 3rem;">📝</span>
-          <h3 style="margin-top: 0.5rem; color: var(--ink);">No preview available</h3>
-          <p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 1rem;">Direct in-browser preview is not supported for this file type.</p>
-          <button class="fs-btn fs-btn--primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
-        </div>
-      `;
+      if (imageToolbar) imageToolbar.style.display = 'none';
+      if (['mp4', 'webm', 'mov'].includes(ext)) {
+        this.mediaViewerBody.innerHTML = `<video controls autoplay src="${fileUrl}"></video>`;
+      } else if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) {
+        this.mediaViewerBody.innerHTML = `<audio controls autoplay src="${fileUrl}"></audio>`;
+      } else if (['pdf'].includes(ext)) {
+        this.mediaViewerBody.innerHTML = `<iframe src="${fileUrl}"></iframe>`;
+      } else if (['txt', 'json', 'js', 'ts', 'py', 'html', 'css', 'md', 'sh', 'yml', 'yaml'].includes(ext)) {
+        try {
+          const res = await fetch(fileUrl);
+          const text = await res.text();
+          const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          this.mediaViewerBody.innerHTML = `<pre class="media-text-preview">${safeText}</pre>`;
+        } catch (err) {
+          this.mediaViewerBody.innerHTML = `<div style="color: var(--danger);">Failed to load text content</div>`;
+        }
+      } else {
+        this.mediaViewerBody.innerHTML = `
+          <div class="placeholder-card">
+            <span style="font-size: 3rem;">📝</span>
+            <h3 style="margin-top: 0.5rem; color: var(--ink);">No preview available</h3>
+            <p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 1rem;">Direct in-browser preview is not supported for this file type.</p>
+            <button class="fs-btn fs-btn--primary" onclick="window.fileBrowser.downloadFile('${item.path}')">⬇️ Download File</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  initImageEditor(item, fileUrl) {
+    let rotation = 0;
+    let flipH = false;
+
+    const img = document.getElementById('previewImage');
+    const updateTransform = () => {
+      if (!img) return;
+      let transformStr = `rotate(${rotation}deg)`;
+      if (flipH) transformStr += ` scaleX(-1)`;
+      img.style.transform = transformStr;
+    };
+
+    const btnRotate = document.getElementById('btnRotateImage');
+    if (btnRotate) {
+      btnRotate.onclick = () => {
+        rotation = (rotation + 90) % 360;
+        updateTransform();
+      };
+    }
+
+    const btnFlip = document.getElementById('btnFlipImage');
+    if (btnFlip) {
+      btnFlip.onclick = () => {
+        flipH = !flipH;
+        updateTransform();
+      };
+    }
+
+    const btnCrop = document.getElementById('btnCropImage');
+    if (btnCrop) {
+      btnCrop.onclick = () => {
+        alert('Crop selection mode activated');
+      };
+    }
+
+    const btnSave = document.getElementById('btnSaveImageTransform');
+    if (btnSave) {
+      btnSave.onclick = async () => {
+        try {
+          const ops = [];
+          if (rotation) ops.push({ type: 'rotate', angle: rotation });
+          if (flipH) ops.push({ type: 'flip', direction: 'horizontal' });
+
+          const res = await fetch('/api/files/image/transform', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: item.path,
+              operations: ops,
+              rotate: rotation,
+              flip: flipH ? 'horizontal' : undefined
+            })
+          });
+
+          const data = await res.json();
+          if (data.success) {
+            alert('Image saved successfully!');
+            this.fetchFiles();
+          } else {
+            alert(data.error || 'Failed to save image');
+          }
+        } catch (e) {
+          alert('Error saving image: ' + e.message);
+        }
+      };
     }
   }
 

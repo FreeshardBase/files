@@ -286,6 +286,49 @@ async function initDb() {
     )
   `);
 
+  // Sync Jobs (#71 — Automated File Synchronization Engine)
+  await run(`
+    CREATE TABLE IF NOT EXISTS sync_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider_connection_id INTEGER REFERENCES provider_connections(id),
+      local_path TEXT NOT NULL,
+      remote_path TEXT NOT NULL,
+      sync_mode TEXT DEFAULT 'two_way',
+      conflict_strategy TEXT DEFAULT 'newer_wins',
+      status TEXT DEFAULT 'pending',
+      last_synced_at TEXT,
+      error TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // User Webhooks (#72 — Webhook Event Dispatcher for Real-Time Change Notifications)
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      secret TEXT,
+      events TEXT DEFAULT '["file_created","file_deleted","share_revoked"]',
+      enabled INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // FTS5 Full-Text Search (#74 — Full-Text Search Indexing with SQLite FTS5)
+  await run(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+      user_id UNINDEXED,
+      path,
+      filename,
+      content,
+      updated_at UNINDEXED
+    )
+  `);
+
   // Ensure fallback default-user exists for unauthenticated operations (#44)
   await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
@@ -634,6 +677,199 @@ async function getEcosystemIngestLogs(userId, limit = 100, offset = 0) {
   `, [userId, limit, offset]);
 }
 
+/**
+ * Sync Jobs Helpers (#71)
+ */
+async function createSyncJob({ userId, providerConnectionId = null, localPath, remotePath, conflictStrategy = 'newer_wins', syncMode = 'two_way' }) {
+  const res = await run(`
+    INSERT INTO sync_jobs (user_id, provider_connection_id, local_path, remote_path, sync_mode, conflict_strategy, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+  `, [userId, providerConnectionId, localPath, remotePath, syncMode, conflictStrategy]);
+
+  return getSyncJobById(res.lastID, userId);
+}
+
+async function getSyncJobById(id, userId) {
+  return get(`SELECT * FROM sync_jobs WHERE id = ? AND user_id = ?`, [id, userId]);
+}
+
+async function getSyncJobsByUser(userId) {
+  return all(`SELECT * FROM sync_jobs WHERE user_id = ? ORDER BY id DESC`, [userId]);
+}
+
+async function updateSyncJobStatus(id, { status, lastSyncedAt = null, error = null }) {
+  await run(`
+    UPDATE sync_jobs
+    SET status = ?, last_synced_at = COALESCE(?, last_synced_at), error = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `, [status, lastSyncedAt, error, id]);
+
+  return get(`SELECT * FROM sync_jobs WHERE id = ?`, [id]);
+}
+
+/**
+ * User Webhook Helpers (#72)
+ */
+async function createWebhook({ userId, url, secret = null, events = ['file_created', 'file_deleted', 'share_revoked'], enabled = 1 }) {
+  const eventsStr = Array.isArray(events) ? JSON.stringify(events) : (events || '["file_created","file_deleted","share_revoked"]');
+  const res = await run(`
+    INSERT INTO user_webhooks (user_id, url, secret, events, enabled)
+    VALUES (?, ?, ?, ?, ?)
+  `, [userId, url, secret, eventsStr, enabled ? 1 : 0]);
+  return getWebhookById(res.lastID, userId);
+}
+
+async function getWebhooksByUser(userId) {
+  return all(`SELECT * FROM user_webhooks WHERE user_id = ? ORDER BY id DESC`, [userId]);
+}
+
+async function getWebhookById(id, userId) {
+  return get(`SELECT * FROM user_webhooks WHERE id = ? AND user_id = ?`, [id, userId]);
+}
+
+async function deleteWebhook(id, userId) {
+  const res = await run(`DELETE FROM user_webhooks WHERE id = ? AND user_id = ?`, [id, userId]);
+  return res.changes > 0;
+}
+
+async function updateWebhook(id, userId, { url, secret, events, enabled }) {
+  const updates = [];
+  const params = [];
+  if (url !== undefined) { updates.push('url = ?'); params.push(url); }
+  if (secret !== undefined) { updates.push('secret = ?'); params.push(secret); }
+  if (events !== undefined) {
+    const eventsStr = Array.isArray(events) ? JSON.stringify(events) : events;
+    updates.push('events = ?');
+    params.push(eventsStr);
+  }
+  if (enabled !== undefined) { updates.push('enabled = ?'); params.push(enabled ? 1 : 0); }
+  updates.push("updated_at = datetime('now')");
+
+  params.push(id, userId);
+  await run(`UPDATE user_webhooks SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+  return getWebhookById(id, userId);
+}
+
+/**
+ * FTS5 Full-Text Search Helpers (#74)
+ */
+function sanitizeFtsQuery(q) {
+  if (!q || typeof q !== 'string') return '';
+  const cleaned = q.replace(/['"():*]/g, ' ').trim();
+  if (!cleaned) return '';
+  return cleaned.split(/\s+/).filter(Boolean).map(w => `"${w}"*`).join(' ');
+}
+
+async function indexFileInFts(userId, filePath, fileName, content = '') {
+  const normName = fileName || path.basename(filePath);
+  await run('DELETE FROM files_fts WHERE user_id = ? AND path = ?', [userId, filePath]);
+  await run(`
+    INSERT INTO files_fts (user_id, path, filename, content, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+  `, [userId, filePath, normName, content || '']);
+  return true;
+}
+
+async function deleteFileFromFts(userId, filePath) {
+  const prefix = filePath.endsWith('/') ? filePath : `${filePath}/`;
+  await run(`
+    DELETE FROM files_fts
+    WHERE user_id = ? AND (path = ? OR path LIKE ? || '%')
+  `, [userId, filePath, prefix]);
+  return true;
+}
+
+async function updateFtsPathOnMove(userId, srcPath, dstPath) {
+  const dstName = path.basename(dstPath);
+  await run(`
+    UPDATE files_fts
+    SET path = ?, filename = ?
+    WHERE user_id = ? AND path = ?
+  `, [dstPath, dstName, userId, srcPath]);
+
+  const srcPrefix = srcPath.endsWith('/') ? srcPath : `${srcPath}/`;
+  const dstPrefix = dstPath.endsWith('/') ? dstPath : `${dstPath}/`;
+
+  await run(`
+    UPDATE files_fts
+    SET path = ? || SUBSTR(path, ?)
+    WHERE user_id = ? AND path LIKE ? || '%'
+  `, [dstPrefix, srcPrefix.length + 1, userId, srcPrefix]);
+}
+
+async function searchFulltext(userId, query, limit = 50) {
+  if (!query || typeof query !== 'string') return [];
+  const sanitized = sanitizeFtsQuery(query);
+  if (!sanitized) return [];
+
+  try {
+    const rows = await all(`
+      SELECT
+        path,
+        filename,
+        content,
+        snippet(files_fts, 3, '<b>', '</b>', '...', 10) as snippet,
+        rank
+      FROM files_fts
+      WHERE user_id = ? AND files_fts MATCH ?
+      ORDER BY rank ASC
+      LIMIT ?
+    `, [userId, sanitized, limit]);
+
+    return rows.map(r => ({
+      path: r.path,
+      filename: r.filename,
+      snippet: r.snippet || (r.content ? r.content.slice(0, 100) : ''),
+      rank: r.rank
+    }));
+  } catch (err) {
+    return [];
+  }
+}
+
+async function reindexUserFiles(userId, userRoot) {
+  const fs = require('fs/promises');
+  const textExts = new Set(['.txt', '.md', '.json', '.js', '.ts', '.jsx', '.tsx', '.html', '.css', '.xml', '.csv', '.py', '.c', '.cpp', '.h', '.java', '.sh', '.yaml', '.yml', '.env', '.log']);
+
+  await run('DELETE FROM files_fts WHERE user_id = ?', [userId]);
+  let count = 0;
+
+  async function walk(dir) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (e) {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      const relPath = '/' + path.relative(userRoot, fullPath).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        let content = '';
+        const ext = path.extname(entry.name).toLowerCase();
+        if (textExts.has(ext)) {
+          try {
+            const stat = await fs.stat(fullPath);
+            if (stat.size < 2 * 1024 * 1024) {
+              content = await fs.readFile(fullPath, 'utf8');
+            }
+          } catch (e) {}
+        }
+        await indexFileInFts(userId, relPath, entry.name, content);
+        count++;
+      }
+    }
+  }
+
+  await walk(userRoot);
+  return count;
+}
+
 module.exports = {
   getDb,
   run,
@@ -673,6 +909,21 @@ module.exports = {
   updateTransferProgress,
   cancelTransfer,
   createEcosystemIngestLog,
-  getEcosystemIngestLogs
+  getEcosystemIngestLogs,
+  createSyncJob,
+  getSyncJobById,
+  getSyncJobsByUser,
+  updateSyncJobStatus,
+  createWebhook,
+  getWebhooksByUser,
+  getWebhookById,
+  deleteWebhook,
+  updateWebhook,
+  indexFileInFts,
+  deleteFileFromFts,
+  updateFtsPathOnMove,
+  searchFulltext,
+  reindexUserFiles
 };
+
 

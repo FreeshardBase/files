@@ -14,6 +14,8 @@ const trashRouter = require('./routes/trash');
 const activityRouter = require('./routes/activity');
 const transfersRouter = require('./routes/transfers');
 const ecosystemRouter = require('./routes/ecosystem');
+const syncRouter = require('./routes/sync');
+const webhooksRouter = require('./routes/webhooks');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -47,6 +49,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Mount API routes
 app.use('/api/auth', authRouter);
 app.use('/api/files/local', filesRouter);
+app.use('/api/files', filesRouter);
 app.use('/api/i18n', i18nRouter);
 app.use('/api/shares', sharingRouter);
 app.use('/api/providers', providersRouter);
@@ -54,6 +57,8 @@ app.use('/api/trash', trashRouter);
 app.use('/api/activity', activityRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/ecosystem', ecosystemRouter);
+app.use('/api/sync', syncRouter);
+app.use('/api/webhooks', webhooksRouter);
 app.use('/s', publicShareRouter);
 
 // Health check endpoint
