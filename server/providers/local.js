@@ -220,6 +220,15 @@ class LocalProvider extends BaseProvider {
     await walk(fullBasePath, this.userRoot);
     return results;
   }
+
+  async getQuota(quotaBytes = null) {
+    const { getUserStorageUsage } = require('../middleware/isolation');
+    const used = await getUserStorageUsage(this.userRoot);
+    return {
+      used,
+      total: (quotaBytes !== null && quotaBytes > 0) ? quotaBytes : null
+    };
+  }
 }
 
 module.exports = LocalProvider;

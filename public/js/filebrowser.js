@@ -5,6 +5,7 @@ class FileBrowser {
     this.currentTrashId = null;
     this.currentTrashSubpath = '/';
     this.viewMode = localStorage.getItem('fs-view-mode') || initialViewMode || 'grid';
+    this.clickNavigationMode = localStorage.getItem('fs-click-mode') || 'double';
     this.items = [];
     this.selectedItem = null;
     this.selectedPaths = new Set(); // Multi-select state (#12)
@@ -34,7 +35,59 @@ class FileBrowser {
     this.tabs = [];
     this.activeTabId = null;
 
+    // Mouse Side-Button Folder History Navigation (#65)
+    this.historyStack = [];
+    this.historyIndex = -1;
+
     this.init();
+  }
+
+  pushHistory(state, isNavigatingHistory = false) {
+    if (isNavigatingHistory) return;
+    const current = this.historyStack[this.historyIndex];
+    if (current && JSON.stringify(current) === JSON.stringify(state)) return;
+    this.historyStack = this.historyStack.slice(0, this.historyIndex + 1);
+    this.historyStack.push(state);
+    this.historyIndex = this.historyStack.length - 1;
+  }
+
+  canNavigateBack() {
+    return this.historyIndex > 0;
+  }
+
+  canNavigateForward() {
+    return this.historyIndex >= 0 && this.historyIndex < this.historyStack.length - 1;
+  }
+
+  navigateBack() {
+    if (!this.canNavigateBack()) return false;
+    this.historyIndex--;
+    const state = this.historyStack[this.historyIndex];
+    this.restoreHistoryState(state);
+    return true;
+  }
+
+  navigateForward() {
+    if (!this.canNavigateForward()) return false;
+    this.historyIndex++;
+    const state = this.historyStack[this.historyIndex];
+    this.restoreHistoryState(state);
+    return true;
+  }
+
+  restoreHistoryState(state) {
+    if (!state) return;
+    if (state.viewType === 'provider' && state.providerId) {
+      this.loadProviderDirectory(state.providerId, state.providerName, state.path || '/', false, true);
+    } else if (state.viewType === 'shared') {
+      this.loadSharedWithMe(false, true);
+    } else if (state.viewType === 'trash') {
+      this.loadTrash(state.trashId || null, state.trashSubpath || '/', false, true);
+    } else if (state.viewType === 'activity') {
+      this.loadActivity(false, true);
+    } else {
+      this.loadDirectory(state.path || '/', false, true);
+    }
   }
 
   clearSpringLoadTimer() {
@@ -51,6 +104,7 @@ class FileBrowser {
   init() {
     this.checkOAuthCallback();
     this.setupEventListeners();
+    this.loadUserPreferences();
     this.loadSidebarProviders();
     this.loadTabsFromSession();
 
@@ -60,6 +114,19 @@ class FileBrowser {
     } else {
       this.loadDirectory(this.currentPath);
     }
+  }
+
+  async loadUserPreferences() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.authenticated && data.user && data.user.preferredClickMode) {
+          this.clickNavigationMode = data.user.preferredClickMode;
+          localStorage.setItem('fs-click-mode', data.user.preferredClickMode);
+        }
+      }
+    } catch (e) {}
   }
 
   // ── Multi-Tab Session & State Management (#60) ───────────────────────────
@@ -393,6 +460,41 @@ class FileBrowser {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; flex-shrink: 0;"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
   }
 
+  async updateProviderQuotas() {
+    try {
+      const res = await fetch('/api/providers/quota');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.quotas) return;
+
+      data.quotas.forEach(q => {
+        const container = document.getElementById(`quota_provider_${q.connectionId}`);
+        if (!container) return;
+
+        const fillEl = container.querySelector('.sidebar-quota-fill, .quota-progress-fill');
+        const textEl = container.querySelector('.sidebar-quota-text, .quota-text');
+
+        if (q.error) {
+          if (textEl) textEl.textContent = 'Fehler beim Laden';
+          return;
+        }
+
+        const pct = q.percent !== null ? q.percent : 0;
+        if (fillEl) {
+          fillEl.style.width = `${pct}%`;
+          if (pct >= 90) fillEl.classList.add('high-usage');
+          else fillEl.classList.remove('high-usage');
+        }
+
+        if (textEl) {
+          const usedStr = this.formatSize(q.used || 0);
+          const totalStr = q.total ? this.formatSize(q.total) : 'Unbegrenzt';
+          textEl.textContent = `${usedStr} / ${totalStr} (${pct}%)`;
+        }
+      });
+    } catch (e) {}
+  }
+
   async loadSidebarProviders() {
     const listEl = document.getElementById('sidebarProvidersList');
     const headerEl = document.getElementById('sectionExternalStorageHeader');
@@ -420,13 +522,23 @@ class FileBrowser {
 
         return `
           <li class="nav-item ${isActive ? 'active' : ''} ${!isEnabled ? 'disabled-provider' : ''}" id="navProvider_${conn.id}" data-id="${conn.id}" data-type="${conn.provider_type}" data-name="${name}" style="${!isEnabled ? 'opacity: 0.6;' : ''}">
-            <a href="#/provider/${conn.id}">
-              <span class="nav-icon" style="display: flex; align-items: center; justify-content: center;">${icon}</span>
-              <span class="fs-label" style="text-transform: none; letter-spacing: normal;">${name} ${!isEnabled ? '<small style="font-size: 10px; color: var(--ink-muted);">(Entkoppelt)</small>' : ''}</span>
+            <a href="#/provider/${conn.id}" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                <span class="nav-icon" style="display: flex; align-items: center; justify-content: center;">${icon}</span>
+                <span class="fs-label" style="text-transform: none; letter-spacing: normal; flex: 1;">${name} ${!isEnabled ? '<small style="font-size: 10px; color: var(--ink-muted);">(Entkoppelt)</small>' : ''}</span>
+              </div>
+              <div class="sidebar-quota-container" id="quota_provider_${conn.id}" style="width: 100%;">
+                <div class="sidebar-quota-bar quota-progress-bar">
+                  <div class="sidebar-quota-fill quota-progress-fill" style="width: 0%;"></div>
+                </div>
+                <span class="sidebar-quota-text quota-text">Speicher wird geladen...</span>
+              </div>
             </a>
           </li>
         `;
       }).join('');
+
+      this.updateProviderQuotas();
 
       // Add click, ContextMenu & Drag and Drop event listeners to each sidebar provider item
       connections.forEach(conn => {
@@ -516,6 +628,60 @@ class FileBrowser {
   }
 
   setupEventListeners() {
+    // Settings Modal Navigation & Preference Persistence (#68)
+    const navSettingsEl = document.getElementById('navSettings');
+    if (navSettingsEl) {
+      navSettingsEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        const selectClickMode = document.getElementById('selectClickMode');
+        if (selectClickMode) {
+          selectClickMode.value = this.clickNavigationMode || 'double';
+        }
+        this.showModal('modalSettings');
+      });
+    }
+
+    const btnSettingsClose = document.getElementById('btnSettingsClose');
+    const btnSettingsCancel = document.getElementById('btnSettingsCancel');
+    const btnSettingsSave = document.getElementById('btnSettingsSave');
+
+    if (btnSettingsClose) btnSettingsClose.addEventListener('click', () => this.hideModal('modalSettings'));
+    if (btnSettingsCancel) btnSettingsCancel.addEventListener('click', () => this.hideModal('modalSettings'));
+    if (btnSettingsSave) {
+      btnSettingsSave.addEventListener('click', async () => {
+        const selectClickMode = document.getElementById('selectClickMode');
+        const mode = selectClickMode ? selectClickMode.value : 'double';
+        this.clickNavigationMode = mode;
+        localStorage.setItem('fs-click-mode', mode);
+        try {
+          await fetch('/api/auth/users/me', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferredClickMode: mode })
+          });
+        } catch (e) {}
+        this.hideModal('modalSettings');
+        this.render();
+      });
+    }
+
+    // Mouse Side-Button Folder History Navigation (#65)
+    const handleMouseNav = (e) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        this.navigateBack();
+      } else if (e.button === 4) {
+        e.preventDefault();
+        this.navigateForward();
+      }
+    };
+    window.addEventListener('mouseup', handleMouseNav);
+    window.addEventListener('pointerup', (e) => {
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault();
+      }
+    });
+
     // Multi-Tab New Tab Button Drag & Drop & Spring Loading (#60)
     const btnNewTabEl = document.getElementById('btnNewTab');
     if (btnNewTabEl) {
@@ -887,6 +1053,8 @@ class FileBrowser {
     document.getElementById('ctxDownload')?.addEventListener('click', () => this.downloadSelectedItem());
     document.getElementById('ctxRename')?.addEventListener('click', () => this.showRenameModal());
     document.getElementById('ctxDelete')?.addEventListener('click', () => this.deleteSelectedItem());
+    document.getElementById('ctxIngestPaperless')?.addEventListener('click', () => this.ingestPaperless());
+    document.getElementById('ctxIngestImmich')?.addEventListener('click', () => this.ingestImmich());
 
     // File Details Modal Controls (#52)
     document.getElementById('btnFileDetails')?.addEventListener('click', () => this.showFileDetailsModalFromToolbar());
@@ -906,9 +1074,10 @@ class FileBrowser {
     document.getElementById('btnConfirmEditPublicShare')?.addEventListener('click', () => this.updatePublicShareLink());
   }
 
-  async loadDirectory(dirPath, updateTab = true) {
+  async loadDirectory(dirPath, updateTab = true, isNavigatingHistory = false) {
     this.currentViewType = 'local';
     this.currentPath = dirPath;
+    this.pushHistory({ viewType: 'local', path: dirPath }, isNavigatingHistory);
     this.clearSelection();
     this.renderBreadcrumb();
 
@@ -939,11 +1108,12 @@ class FileBrowser {
     }
   }
 
-  async loadProviderDirectory(providerId, providerName, dirPath, updateTab = true) {
+  async loadProviderDirectory(providerId, providerName, dirPath, updateTab = true, isNavigatingHistory = false) {
     this.currentViewType = 'provider';
     this.currentProviderId = String(providerId);
     this.currentProviderName = providerName;
     this.currentPath = dirPath;
+    this.pushHistory({ viewType: 'provider', providerId: String(providerId), providerName, path: dirPath }, isNavigatingHistory);
     this.clearSelection();
 
     if (updateTab) {
@@ -973,8 +1143,9 @@ class FileBrowser {
     }
   }
 
-  async loadSharedWithMe(updateTab = true) {
+  async loadSharedWithMe(updateTab = true, isNavigatingHistory = false) {
     this.currentViewType = 'shared';
+    this.pushHistory({ viewType: 'shared', path: '/' }, isNavigatingHistory);
     this.clearSelection();
     if (updateTab) {
       this.updateActiveTabState('Shared with me', 'shared', '/');
@@ -1012,10 +1183,11 @@ class FileBrowser {
     }
   }
 
-  async loadTrash(trashId = null, subpath = '/', updateTab = true) {
+  async loadTrash(trashId = null, subpath = '/', updateTab = true, isNavigatingHistory = false) {
     this.currentViewType = 'trash';
     this.currentTrashId = trashId;
     this.currentTrashSubpath = subpath;
+    this.pushHistory({ viewType: 'trash', trashId, trashSubpath: subpath }, isNavigatingHistory);
     this.clearSelection();
     if (updateTab) {
       this.updateActiveTabState('Trash', 'trash', '/');
@@ -1082,8 +1254,9 @@ class FileBrowser {
     }
   }
 
-  async loadActivity(updateTab = true) {
+  async loadActivity(updateTab = true, isNavigatingHistory = false) {
     this.currentViewType = 'activity';
+    this.pushHistory({ viewType: 'activity', path: '/' }, isNavigatingHistory);
     this.clearSelection();
     if (updateTab) {
       this.updateActiveTabState('Activity', 'activity', '/');
@@ -1382,17 +1555,7 @@ class FileBrowser {
         });
       }
 
-      card.addEventListener('click', (e) => {
-        if (checkbox && e.target !== checkbox) {
-          if (this.selectedPaths.size > 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
-            const newState = !this.selectedPaths.has(itemPath);
-            checkbox.checked = newState;
-            this.toggleItemSelection(itemPath, newState, card);
-          }
-        }
-      });
-
-      card.addEventListener('dblclick', () => {
+      const activateItem = () => {
         if (this.currentViewType === 'trash') {
           if (isDir && trashId) {
             if (isTopLevel) {
@@ -1417,6 +1580,24 @@ class FileBrowser {
         } else {
           const item = this.items.find(i => i.path === itemPath || i.name === name);
           this.openMediaViewer(item || { name, path: itemPath });
+        }
+      };
+
+      card.addEventListener('click', (e) => {
+        if (checkbox && e.target !== checkbox) {
+          if (this.selectedPaths.size > 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
+            const newState = !this.selectedPaths.has(itemPath);
+            checkbox.checked = newState;
+            this.toggleItemSelection(itemPath, newState, card);
+          } else if (this.clickNavigationMode === 'single') {
+            activateItem();
+          }
+        }
+      });
+
+      card.addEventListener('dblclick', () => {
+        if (this.clickNavigationMode !== 'single') {
+          activateItem();
         }
       });
 
@@ -1561,44 +1742,54 @@ class FileBrowser {
         }
       } catch (err) {}
 
+      let rememberedChoice = null;
       const processedItems = [];
       for (const item of items) {
         let finalName = item.name;
         const matchingExisting = destItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
 
         if (matchingExisting) {
-          const srcLocation = srcViewType === 'provider' ? (dragData.providerName || 'Cloud Drive') : 'Local Home';
-          const destLocation = destProviderId ? 'Cloud Drive' : 'Local Home';
+          let choice = rememberedChoice;
+          if (!choice) {
+            const srcLocation = srcViewType === 'provider' ? (dragData.providerName || 'Cloud Drive') : 'Local Home';
+            const destLocation = destProviderId ? 'Cloud Drive' : 'Local Home';
 
-          const existingPreviewUrl = destProviderId
-            ? `/api/providers/${destProviderId}/read?path=${encodeURIComponent(matchingExisting.path)}`
-            : `/api/files/local/read?path=${encodeURIComponent(matchingExisting.path)}`;
+            const existingPreviewUrl = destProviderId
+              ? `/api/providers/${destProviderId}/read?path=${encodeURIComponent(matchingExisting.path)}`
+              : `/api/files/local/read?path=${encodeURIComponent(matchingExisting.path)}`;
 
-          const incomingPreviewUrl = srcViewType === 'provider' && srcProviderId
-            ? `/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`
-            : `/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`;
+            const incomingPreviewUrl = srcViewType === 'provider' && srcProviderId
+              ? `/api/providers/${srcProviderId}/read?path=${encodeURIComponent(item.srcPath)}`
+              : `/api/files/local/read?path=${encodeURIComponent(item.srcPath)}`;
 
-          const choice = await this.promptFileConflict(
-            {
-              name: matchingExisting.name,
-              size: matchingExisting.size,
-              mtime: matchingExisting.updatedAt || matchingExisting.mtime,
-              location: destLocation,
-              previewUrl: existingPreviewUrl
-            },
-            {
-              name: item.name,
-              size: item.size || 0,
-              mtime: Date.now(),
-              location: srcLocation,
-              previewUrl: incomingPreviewUrl
+            const res = await this.promptFileConflict(
+              {
+                name: matchingExisting.name,
+                size: matchingExisting.size,
+                mtime: matchingExisting.updatedAt || matchingExisting.mtime,
+                location: destLocation,
+                previewUrl: existingPreviewUrl
+              },
+              {
+                name: item.name,
+                size: item.size || 0,
+                mtime: Date.now(),
+                location: srcLocation,
+                previewUrl: incomingPreviewUrl
+              }
+            );
+
+            choice = typeof res === 'string' ? res : res.choice;
+            if (typeof res === 'object' && res.applyToAll) {
+              rememberedChoice = choice;
             }
-          );
+          }
 
           if (choice === 'cancel') {
             continue;
           } else if (choice === 'rename') {
             finalName = this.generateNonConflictingName(item.name, destItems.map(i => i.name));
+            destItems.push({ name: finalName, path: `${targetDirectory}/${finalName}` });
           }
         }
         processedItems.push({ ...item, name: finalName });
@@ -2133,10 +2324,94 @@ class FileBrowser {
     }
   }
 
+  /**
+   * Ingest selected file into Paperless-ngx (#62)
+   */
+  async ingestPaperless() {
+    this.hideContextMenu();
+    if (!this.selectedItem || this.selectedItem.isDirectory) {
+      return alert('Please select a file (not a folder) to import into Paperless-ngx.');
+    }
+    const filePath = this.selectedItem.path;
+    try {
+      const res = await fetch('/api/ecosystem/ingest/paperless', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath })
+      });
+      const body = await res.json();
+      if (res.status === 503) {
+        alert('Paperless-ngx ist nicht konfiguriert. Bitte PAPERLESS_URL in der Serverkonfiguration setzen.');
+        return;
+      }
+      if (!res.ok || !body.success) {
+        alert(`Fehler beim Import in Paperless-ngx: ${body.error || 'Unbekannter Fehler'}`);
+        return;
+      }
+      const msg = body.remoteId
+        ? `✅ "${body.fileName}" wurde in Paperless-ngx importiert (ID: ${body.remoteId}).`
+        : `✅ "${body.fileName}" wurde in Paperless-ngx übertragen.`;
+      this._showToast(msg, 'success');
+    } catch (err) {
+      alert(`Netzwerkfehler beim Import in Paperless-ngx: ${err.message}`);
+    }
+  }
+
+  /**
+   * Ingest selected file into Immich (#62)
+   */
+  async ingestImmich() {
+    this.hideContextMenu();
+    if (!this.selectedItem || this.selectedItem.isDirectory) {
+      return alert('Please select a file (not a folder) to import into Immich.');
+    }
+    const filePath = this.selectedItem.path;
+    try {
+      const res = await fetch('/api/ecosystem/ingest/immich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath })
+      });
+      const body = await res.json();
+      if (res.status === 503) {
+        alert('Immich ist nicht konfiguriert. Bitte IMMICH_URL in der Serverkonfiguration setzen.');
+        return;
+      }
+      if (!res.ok || !body.success) {
+        alert(`Fehler beim Import in Immich: ${body.error || 'Unbekannter Fehler'}`);
+        return;
+      }
+      const msg = body.remoteId
+        ? `✅ "${body.fileName}" wurde in Immich importiert (Asset-ID: ${body.remoteId}).`
+        : `✅ "${body.fileName}" wurde in Immich übertragen.`;
+      this._showToast(msg, 'success');
+    } catch (err) {
+      alert(`Netzwerkfehler beim Import in Immich: ${err.message}`);
+    }
+  }
+
+  /**
+   * Show a transient toast notification.
+   * Falls back gracefully if toast infrastructure is unavailable.
+   */
+  _showToast(message, type = 'info') {
+    // Use existing toast if available, else console-log
+    if (typeof this.showToast === 'function') {
+      this.showToast(message, type);
+    } else if (typeof window._showToast === 'function') {
+      window._showToast(message, type);
+    } else {
+      console.info(`[Toast][${type}] ${message}`);
+    }
+  }
+
   promptFileConflict(existingFile, incomingFile) {
     return new Promise((resolve) => {
       const modal = document.getElementById('modalFileConflict');
-      if (!modal) return resolve('overwrite');
+      const chkApplyToAll = document.getElementById('chkConflictApplyToAll');
+      if (chkApplyToAll) chkApplyToAll.checked = false;
+
+      if (!modal) return resolve({ choice: 'overwrite', applyToAll: false });
 
       const conflictFileName = document.getElementById('conflictFileName');
       if (conflictFileName) conflictFileName.textContent = incomingFile.name || 'Datei';
@@ -2149,7 +2424,7 @@ class FileBrowser {
       const existingPreviewEl = document.getElementById('existingFilePreview');
 
       if (existingNameEl) { existingNameEl.textContent = existingFile.name; existingNameEl.title = existingFile.name; }
-      if (existingSizeEl) existingSizeEl.textContent = existingFile.size ? this.formatBytes(existingFile.size) : 'Unbekannt';
+      if (existingSizeEl) existingSizeEl.textContent = existingFile.size ? (this.formatBytes ? this.formatBytes(existingFile.size) : this.formatSize(existingFile.size)) : 'Unbekannt';
       if (existingMtimeEl) existingMtimeEl.textContent = existingFile.mtime ? new Date(existingFile.mtime).toLocaleString() : 'Vorhanden';
       if (existingLocEl) existingLocEl.textContent = existingFile.location || 'Zielort';
 
@@ -2170,7 +2445,7 @@ class FileBrowser {
       const incomingPreviewEl = document.getElementById('incomingFilePreview');
 
       if (incomingNameEl) { incomingNameEl.textContent = incomingFile.name; incomingNameEl.title = incomingFile.name; }
-      if (incomingSizeEl) incomingSizeEl.textContent = incomingFile.size ? this.formatBytes(incomingFile.size) : 'Unbekannt';
+      if (incomingSizeEl) incomingSizeEl.textContent = incomingFile.size ? (this.formatBytes ? this.formatBytes(incomingFile.size) : this.formatSize(incomingFile.size)) : 'Unbekannt';
       if (incomingMtimeEl) incomingMtimeEl.textContent = incomingFile.mtime ? new Date(incomingFile.mtime).toLocaleString() : 'Heute';
       if (incomingLocEl) incomingLocEl.textContent = incomingFile.location || 'Quelle';
 
@@ -2196,9 +2471,11 @@ class FileBrowser {
         btnOverwrite?.removeEventListener('click', onOverwrite);
       };
 
-      const onCancel = () => { cleanup(); resolve('cancel'); };
-      const onRename = () => { cleanup(); resolve('rename'); };
-      const onOverwrite = () => { cleanup(); resolve('overwrite'); };
+      const getApplyToAll = () => (document.getElementById('chkConflictApplyToAll')?.checked || false);
+
+      const onCancel = () => { cleanup(); resolve({ choice: 'cancel', applyToAll: getApplyToAll() }); };
+      const onRename = () => { cleanup(); resolve({ choice: 'rename', applyToAll: getApplyToAll() }); };
+      const onOverwrite = () => { cleanup(); resolve({ choice: 'overwrite', applyToAll: getApplyToAll() }); };
 
       btnCancel?.addEventListener('click', onCancel);
       btnClose?.addEventListener('click', onCancel);
@@ -2232,6 +2509,7 @@ class FileBrowser {
     if (!files || !files.length) return;
 
     const existingNames = this.items.map(i => i.name.toLowerCase());
+    let rememberedChoice = null;
 
     for (const file of files) {
       let finalFile = file;
@@ -2241,29 +2519,37 @@ class FileBrowser {
         const existingItem = this.items.find(i => i.name.toLowerCase() === file.name.toLowerCase());
         const previewUrl = URL.createObjectURL(file);
 
-        const choice = await this.promptFileConflict(
-          {
-            name: existingItem.name,
-            size: existingItem.size,
-            mtime: existingItem.updatedAt || existingItem.mtime,
-            location: this.currentViewType === 'provider' ? this.currentProviderName : 'Local Home',
-            previewUrl: this.currentViewType === 'provider'
-              ? `/api/providers/${this.currentProviderId}/read?path=${encodeURIComponent(existingItem.path)}`
-              : `/api/files/local/read?path=${encodeURIComponent(existingItem.path)}`
-          },
-          {
-            name: file.name,
-            size: file.size,
-            mtime: file.lastModified,
-            location: 'Browser Upload',
-            previewUrl
+        let choice = rememberedChoice;
+        if (!choice) {
+          const res = await this.promptFileConflict(
+            {
+              name: existingItem.name,
+              size: existingItem.size,
+              mtime: existingItem.updatedAt || existingItem.mtime,
+              location: this.currentViewType === 'provider' ? this.currentProviderName : 'Local Home',
+              previewUrl: this.currentViewType === 'provider'
+                ? `/api/providers/${this.currentProviderId}/read?path=${encodeURIComponent(existingItem.path)}`
+                : `/api/files/local/read?path=${encodeURIComponent(existingItem.path)}`
+            },
+            {
+              name: file.name,
+              size: file.size,
+              mtime: file.lastModified,
+              location: 'Browser Upload',
+              previewUrl
+            }
+          );
+          choice = typeof res === 'string' ? res : res.choice;
+          if (typeof res === 'object' && res.applyToAll) {
+            rememberedChoice = choice;
           }
-        );
+        }
 
         if (choice === 'cancel') {
           continue;
         } else if (choice === 'rename') {
           finalName = this.generateNonConflictingName(file.name, this.items.map(i => i.name));
+          existingNames.push(finalName.toLowerCase());
         }
       }
 
@@ -2612,19 +2898,28 @@ class FileBrowser {
         const itemPath = card.getAttribute('data-path');
         const itemName = card.getAttribute('data-name');
 
-        card.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.setActivePane('secondary');
-        });
-
-        card.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          this.setActivePane('secondary');
+        const activateSecItem = () => {
           if (isDir) {
             this.loadSecondaryDirectory(itemPath, viewType, normProviderId, providerName);
           } else {
             const item = items.find(i => i.path === itemPath || i.name === itemName);
             this.openMediaViewer(item || { name: itemName, path: itemPath });
+          }
+        };
+
+        card.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+          if (this.clickNavigationMode === 'single') {
+            activateSecItem();
+          }
+        });
+
+        card.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          this.setActivePane('secondary');
+          if (this.clickNavigationMode !== 'single') {
+            activateSecItem();
           }
         });
       });

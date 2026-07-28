@@ -418,6 +418,16 @@ class GoogleDriveProvider extends BaseProvider {
       };
     });
   }
+
+  async getQuota() {
+    const res = await this._driveApi('/about?fields=storageQuota');
+    const data = JSON.parse(res.body);
+    const sq = data.storageQuota || {};
+    return {
+      used: parseInt(sq.usage || '0', 10),
+      total: sq.limit ? parseInt(sq.limit, 10) : null
+    };
+  }
 }
 
 module.exports = GoogleDriveProvider;

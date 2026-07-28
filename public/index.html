@@ -149,6 +149,18 @@
         </div>
       </div>
 
+      <!-- Transfer Engine Status Bar (#64) -->
+      <div id="transferStatusBar" class="transfer-status-bar" style="display: none;">
+        <div class="transfer-status-info">
+          <span class="transfer-spinner">⏳</span>
+          <span id="transferStatusText" class="transfer-status-text fs-mono">Transfer in progress...</span>
+        </div>
+        <div class="transfer-progress-track">
+          <div id="transferProgressBar" class="transfer-progress-fill" style="width: 0%;"></div>
+        </div>
+        <button id="btnCancelTransfer" class="fs-btn text-sm fs-btn--danger" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
+      </div>
+
       <!-- Multi-Select Floating Action Bar (#12) -->
       <div id="selectionActionBar" class="selection-action-bar" style="display: none;">
         <span id="selectedCountText" class="selected-count fs-mono">0 items selected</span>
@@ -169,6 +181,9 @@
     <div class="context-menu-item" id="ctxSharePublic">🔗 Create Public Link</div>
     <div class="context-menu-item" id="ctxDownload">⬇️ Download</div>
     <div class="context-menu-item" id="ctxRename">✏️ Rename</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="ctxIngestPaperless">📄 In Paperless-ngx importieren</div>
+    <div class="context-menu-item" id="ctxIngestImmich">📸 In Immich importieren</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" id="ctxDelete">🗑️ Move to Trash</div>
   </div>
@@ -454,11 +469,39 @@
             </div>
           </div>
         </div>
+        <div style="margin-top: var(--space-3); font-size: 13px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="chkConflictApplyToAll" style="cursor: pointer; width: 16px; height: 16px;">
+          <label for="chkConflictApplyToAll" style="cursor: pointer; color: var(--ink-muted);">Für alle weiteren Konflikte anwenden (Apply to all)</label>
+        </div>
       </div>
       <div class="fs-modal-footer" style="display: flex; gap: var(--space-2); justify-content: flex-end;">
         <button class="fs-btn" id="btnConflictCancel">Abbrechen</button>
         <button class="fs-btn" id="btnConflictRename">Beide behalten (Umbenennen)</button>
         <button class="fs-btn fs-btn--danger" id="btnConflictOverwrite">Überschreiben</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings Modal (#68) -->
+  <div class="fs-modal-overlay" id="modalSettings" style="display: none;">
+    <div class="fs-modal-content" style="max-width: 500px;">
+      <div class="fs-modal-header">
+        <h3 class="fs-modal-title">⚙️ Settings</h3>
+        <button class="fs-modal-close" id="btnSettingsClose">&times;</button>
+      </div>
+      <div class="fs-modal-body">
+        <div class="fs-field">
+          <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">Folder Navigation Mode</label>
+          <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Choose how folders are opened when clicked in the browser grid or list view.</p>
+          <select id="selectClickMode" class="fs-input">
+            <option value="double">Double-Click (Default)</option>
+            <option value="single">Single-Click</option>
+          </select>
+        </div>
+      </div>
+      <div class="fs-modal-footer" style="display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: 1rem;">
+        <button class="fs-btn" id="btnSettingsCancel">Cancel</button>
+        <button class="fs-btn fs-btn--primary" id="btnSettingsSave">Save Preference</button>
       </div>
     </div>
   </div>

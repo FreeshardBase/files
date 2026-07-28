@@ -3,7 +3,6 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs/promises');
 const Busboy = require('busboy');
-const archiver = require('archiver');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
@@ -38,6 +37,30 @@ async function getDirectorySize(dirOnDisk) {
 
 // Apply user isolation middleware to all file operation routes
 router.use(validateUserIsolation);
+
+/**
+ * GET /api/files/quota
+ * Fetch local shard storage quota & usage for current user (#63)
+ */
+router.get('/quota', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const db = require('../db');
+    const user = await db.get('SELECT quota_bytes FROM users WHERE id = ?', [userId]);
+    const quotaBytes = user ? user.quota_bytes : null;
+    const q = await provider.getQuota(quotaBytes);
+    res.json({
+      success: true,
+      provider_type: 'local',
+      display_name: 'Local Shard',
+      used: q.used,
+      total: q.total,
+      percent: q.total ? Math.min(100, Math.round((q.used / q.total) * 100)) : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/files/local/list?path=/
 router.get('/list', async (req, res) => {
@@ -295,6 +318,8 @@ router.get('/batch/zip', async (req, res) => {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="freeshard-files.zip"');
 
+    const archiverModule = await import('archiver');
+    const archiver = archiverModule.default || archiverModule;
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.pipe(res);
 

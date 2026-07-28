@@ -127,6 +127,14 @@ class BaseProvider {
   async getDirectUrl(filePath) {
     return null;
   }
+
+  /**
+   * Get storage usage/capacity quota for this provider
+   * @returns {Promise<{ used: number, total: number|null }>}
+   */
+  async getQuota() {
+    throw new Error('BaseProvider.getQuota() must be implemented by subclass');
+  }
 }
 
 module.exports = BaseProvider;

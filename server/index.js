@@ -12,6 +12,8 @@ const publicShareRouter = require('./routes/public_share');
 const providersRouter = require('./routes/providers');
 const trashRouter = require('./routes/trash');
 const activityRouter = require('./routes/activity');
+const transfersRouter = require('./routes/transfers');
+const ecosystemRouter = require('./routes/ecosystem');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -50,6 +52,8 @@ app.use('/api/shares', sharingRouter);
 app.use('/api/providers', providersRouter);
 app.use('/api/trash', trashRouter);
 app.use('/api/activity', activityRouter);
+app.use('/api/transfers', transfersRouter);
+app.use('/api/ecosystem', ecosystemRouter);
 app.use('/s', publicShareRouter);
 
 // Health check endpoint

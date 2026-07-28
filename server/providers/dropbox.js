@@ -316,6 +316,21 @@ class DropboxProvider extends BaseProvider {
       };
     });
   }
+
+  async getQuota() {
+    const res = await this._dropboxRpcApi('/users/get_space_usage', null);
+    const data = JSON.parse(res.body);
+    const used = data.used || 0;
+    let total = null;
+    if (data.allocation) {
+      if (typeof data.allocation.allocated === 'number') {
+        total = data.allocation.allocated;
+      } else if (data.allocation.allocated) {
+        total = parseInt(data.allocation.allocated, 10);
+      }
+    }
+    return { used, total };
+  }
 }
 
 module.exports = DropboxProvider;

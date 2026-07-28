@@ -66,7 +66,8 @@ router.get('/me', async (req, res) => {
           displayName,
           email: user?.email || req.session.email || null,
           preferredLocale: user?.preferred_locale || null,
-          preferredViewMode: user?.preferred_view_mode || 'grid'
+          preferredViewMode: user?.preferred_view_mode || 'grid',
+          preferredClickMode: user?.preferred_click_mode || 'double'
         }
       });
     } catch (err) {
@@ -76,10 +77,10 @@ router.get('/me', async (req, res) => {
   res.json({ authenticated: false });
 });
 
-// ── PATCH /api/users/me (Update User Profile #25, #48) ───────────────────────
+// ── PATCH /api/users/me (Update User Profile #25, #48, #68) ───────────────────────
 router.patch('/users/me', requireAuth, async (req, res) => {
   try {
-    const { displayName, preferredLocale, preferredViewMode } = req.body;
+    const { displayName, preferredLocale, preferredViewMode, preferredClickMode } = req.body;
     const userId = req.session.userId;
 
     if (displayName !== undefined) {
@@ -97,7 +98,12 @@ router.patch('/users/me', requireAuth, async (req, res) => {
       req.session.preferredViewMode = preferredViewMode;
     }
 
-    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale, preferred_view_mode FROM users WHERE id = ?', [userId]);
+    if (preferredClickMode !== undefined && ['double', 'single'].includes(preferredClickMode)) {
+      await db.updateUserClickMode(userId, preferredClickMode);
+      req.session.preferredClickMode = preferredClickMode;
+    }
+
+    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale, preferred_view_mode, preferred_click_mode FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
   } catch (err) {
     res.status(500).json({ error: err.message });

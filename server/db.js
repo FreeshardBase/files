@@ -91,6 +91,10 @@ async function initDb() {
   if (!hasViewMode) {
     try { await run("ALTER TABLE users ADD COLUMN preferred_view_mode TEXT DEFAULT 'grid';"); } catch (e) {}
   }
+  const hasClickMode = columns.some(c => c.name === 'preferred_click_mode');
+  if (!hasClickMode) {
+    try { await run("ALTER TABLE users ADD COLUMN preferred_click_mode TEXT DEFAULT 'double';"); } catch (e) {}
+  }
 
   // App Passwords table (#2, #3, #21)
   await run(`
@@ -262,6 +266,21 @@ async function initDb() {
       event_type TEXT NOT NULL,
       ip_address TEXT NOT NULL,
       user_agent TEXT,
+      details TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Ecosystem Ingest Log (#62 — Paperless-ngx & Immich)
+  await run(`
+    CREATE TABLE IF NOT EXISTS ecosystem_ingest_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      target TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'success',
+      remote_id TEXT,
       details TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     )
@@ -516,6 +535,105 @@ async function getActivityLogByUser(userId, limit = 50, offset = 0) {
   `, [userId, limit, offset]);
 }
 
+async function getUserById(id) {
+  return await get('SELECT * FROM users WHERE id = ?', [id]);
+}
+
+async function updateUserClickMode(id, mode) {
+  if (!['double', 'single'].includes(mode)) {
+    throw new Error('Invalid click mode: must be "double" or "single"');
+  }
+  return await run('UPDATE users SET preferred_click_mode = ? WHERE id = ?', [mode, id]);
+}
+
+// ── Background Transfer Helpers (#64) ─────────────────────────────────────────
+
+async function createTransfer({ id, userId, srcProviderType, srcProviderConnectionId = null, srcPath, dstProviderType, dstProviderConnectionId = null, dstPath, operation = 'copy', isDirectory = 0, totalBytes = 0, totalFiles = 1 }) {
+  const normSrcConn = srcProviderConnectionId ? parseInt(srcProviderConnectionId, 10) : null;
+  const normDstConn = dstProviderConnectionId ? parseInt(dstProviderConnectionId, 10) : null;
+  await run(`
+    INSERT INTO transfers (
+      id, user_id, src_provider_type, src_provider_connection_id, src_path,
+      dst_provider_type, dst_provider_connection_id, dst_path, operation,
+      is_directory, total_bytes, total_files, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', datetime('now'))
+  `, [
+    id, userId, srcProviderType || 'local', normSrcConn, srcPath,
+    dstProviderType || 'local', normDstConn, dstPath, operation || 'copy',
+    isDirectory ? 1 : 0, totalBytes || 0, totalFiles || 1
+  ]);
+  return get('SELECT * FROM transfers WHERE id = ?', [id]);
+}
+
+async function getTransfersByUser(userId) {
+  return all('SELECT * FROM transfers WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getTransferById(id, userId) {
+  return get('SELECT * FROM transfers WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+async function updateTransferProgress(id, { status, transferredBytes, completedFiles, currentFile, errorMessage, startedAt, finishedAt }) {
+  const updates = [];
+  const params = [];
+
+  if (status !== undefined) { updates.push('status = ?'); params.push(status); }
+  if (transferredBytes !== undefined) { updates.push('transferred_bytes = ?'); params.push(transferredBytes); }
+  if (completedFiles !== undefined) { updates.push('completed_files = ?'); params.push(completedFiles); }
+  if (currentFile !== undefined) { updates.push('current_file = ?'); params.push(currentFile); }
+  if (errorMessage !== undefined) { updates.push('error_message = ?'); params.push(errorMessage); }
+  if (startedAt !== undefined) { updates.push('started_at = ?'); params.push(startedAt); }
+  if (finishedAt !== undefined) { updates.push('finished_at = ?'); params.push(finishedAt); }
+
+  if (updates.length === 0) return get('SELECT * FROM transfers WHERE id = ?', [id]);
+
+  params.push(id);
+  await run(`UPDATE transfers SET ${updates.join(', ')} WHERE id = ?`, params);
+  return get('SELECT * FROM transfers WHERE id = ?', [id]);
+}
+
+async function cancelTransfer(id, userId) {
+  const res = await run(`
+    UPDATE transfers
+    SET status = 'cancelled', finished_at = datetime('now')
+    WHERE id = ? AND user_id = ? AND status IN ('queued', 'in_progress')
+  `, [id, userId]);
+  return res.changes > 0;
+}
+
+// ── Ecosystem Ingest Log Helpers (#62) ────────────────────────────────────────
+
+/**
+ * Record a Paperless-ngx or Immich ingest event.
+ * @param {Object} opts
+ * @param {string} opts.userId
+ * @param {string} opts.filePath
+ * @param {string} opts.fileName
+ * @param {'paperless'|'immich'} opts.target
+ * @param {'success'|'error'} opts.status
+ * @param {string|null} opts.remoteId  - ID returned by the remote service
+ * @param {string|null} opts.details
+ */
+async function createEcosystemIngestLog({ userId, filePath, fileName, target, status = 'success', remoteId = null, details = null }) {
+  const res = await run(`
+    INSERT INTO ecosystem_ingest_log (user_id, file_path, file_name, target, status, remote_id, details)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, filePath, fileName, target, status, remoteId, details]);
+  return get('SELECT * FROM ecosystem_ingest_log WHERE id = ?', [res.lastID]);
+}
+
+/**
+ * Fetch all ecosystem ingest log entries for a user, newest first.
+ */
+async function getEcosystemIngestLogs(userId, limit = 100, offset = 0) {
+  return all(`
+    SELECT * FROM ecosystem_ingest_log
+    WHERE user_id = ?
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+  `, [userId, limit, offset]);
+}
+
 module.exports = {
   getDb,
   run,
@@ -524,6 +642,8 @@ module.exports = {
   closeDb,
   initDb,
   upsertUser,
+  getUserById,
+  updateUserClickMode,
   addProviderConnection,
   getProviderConnections,
   createFileShare,
@@ -546,5 +666,13 @@ module.exports = {
   emptyTrash,
   cleanupExpiredTrashItems,
   logActivity,
-  getActivityLogByUser
+  getActivityLogByUser,
+  createTransfer,
+  getTransfersByUser,
+  getTransferById,
+  updateTransferProgress,
+  cancelTransfer,
+  createEcosystemIngestLog,
+  getEcosystemIngestLogs
 };
+

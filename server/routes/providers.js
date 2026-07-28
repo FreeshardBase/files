@@ -389,6 +389,71 @@ router.get('/connections', async (req, res) => {
 });
 
 /**
+ * GET /api/providers/quota
+ * Fetch storage usage & quota for all active cloud providers (#63)
+ */
+router.get('/quota', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connections = await getProviderConnections(userId);
+
+    const quotas = await Promise.all(connections.map(async (conn) => {
+      try {
+        const { provider } = await getProviderInstanceForUser(conn.id, userId);
+        const q = await provider.getQuota();
+        return {
+          connectionId: conn.id,
+          provider_type: conn.provider_type,
+          display_name: conn.display_name,
+          used: q.used,
+          total: q.total,
+          percent: q.total ? Math.min(100, Math.round((q.used / q.total) * 100)) : null
+        };
+      } catch (e) {
+        return {
+          connectionId: conn.id,
+          provider_type: conn.provider_type,
+          display_name: conn.display_name,
+          error: e.message,
+          used: 0,
+          total: null,
+          percent: null
+        };
+      }
+    }));
+
+    res.json({ success: true, quotas });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/providers/:id/quota
+ * Fetch storage usage & quota for specific provider connection ID (#63)
+ */
+router.get('/:id/quota', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const connId = req.params.id;
+    const { provider, connection } = await getProviderInstanceForUser(connId, userId);
+    const q = await provider.getQuota();
+
+    res.json({
+      success: true,
+      connectionId: connection.id,
+      provider_type: connection.provider_type,
+      display_name: connection.display_name,
+      used: q.used,
+      total: q.total,
+      percent: q.total ? Math.min(100, Math.round((q.used / q.total) * 100)) : null
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
  * Helper to purge expired orphaned shares older than PROVIDER_SHARE_RETENTION_DAYS (#58)
  */
 async function cleanupExpiredOrphanedShares() {

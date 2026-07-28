@@ -12,7 +12,7 @@ services:
       DATABASE_PATH: /app/data/files.db
       FILES_ROOT: /app/data/users
     volumes:
-      - shared-data:/app/data
+      - ./data:/app/data
       - ./server:/app/server
       - ./public:/app/public
       - ./locales:/app/locales
@@ -28,7 +28,7 @@ services:
       DATABASE_PATH: /app/data/files.db
       FILES_ROOT: /app/data/users
     volumes:
-      - shared-data:/app/data
+      - ./data:/app/data
       - ./server:/app/server
       - ./locales:/app/locales
 
