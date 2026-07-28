@@ -21,6 +21,7 @@ describe('Detailed File & Sharing Metadata Overview Modal (#52)', () => {
   const sharee = { id: 'user_details_sharee_52', username: 'details_sharee_52', displayName: 'Sharee User 52' };
 
   before(async () => {
+    process.env.DATABASE_PATH = ':memory:';
     process.env.FILES_ROOT = TEST_ROOT;
     try { await fs.rm(TEST_ROOT, { recursive: true, force: true }); } catch {}
 
