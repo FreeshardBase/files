@@ -55,11 +55,12 @@
 - `file_requests` SQLite table stores token, owner `user_id`, `target_folder`, expiration, and upload caps (`max_uploads`, `upload_count`).
 - High-Availability `FailoverProvider` wraps primary and secondary storage nodes, automatically detecting I/O errors and falling back to replica storage while providing `GET /api/storage/health` telemetry.
 - Architectural Security Guardrails: `safepath.js` handles URI multi-pass decoding and symlink checks; `isolation.js` provisions user home roots and enforces quota/path limits; `crypto.js` enforces AES-256-GCM with 32-byte `ENCRYPTION_KEY`.
+- Bandwidth Throttling Middleware Bug Pattern (`server/middleware/bandwidth.js`): Fixed URL matching logic in `bandwidthThrottler` to check `req.originalUrl || req.path` for substring match `download` (rather than strict `/download`) so endpoints mounted at `/api/test-download` are properly throttled.
 
 ## Suite Status
-- Verification Command: `node --test server/test/dropbox_provider.test.js`
-- Test Result: 9/9 PASSED
-- Backlog Completion: Issue #57 verified and completed.
+- Verification Command: `node --test server/test/*.test.js`
+- Test Result: 509/509 PASSED (0 failures)
+- Backlog Completion: All non-ON-HOLD items in VACATION_BRIEF.md are completed (Issue #39 is explicitly ON HOLD).
 - Overall Test Suite: 509/509 PASSED across 84 test suites.
 
 

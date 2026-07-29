@@ -45,6 +45,12 @@ const PORT = process.env.PORT || 3005;
 // Trust reverse proxy (Nginx / SSH Tunnel) so secure session cookies are set correctly (#2)
 app.set('trust proxy', 1);
 
+// HTTP Request Logger
+app.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.url} (Host: ${req.headers.host}, Proto: ${req.headers['x-forwarded-proto'] || req.protocol})`);
+  next();
+});
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
