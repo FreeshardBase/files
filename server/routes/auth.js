@@ -169,7 +169,10 @@ router.get('/login', async (req, res) => {
       code_challenge_method: 'S256'
     });
 
-    res.redirect(authUrl);
+    req.session.save((saveErr) => {
+      if (saveErr) console.error('[OIDC Login Session Save Error]', saveErr);
+      res.redirect(authUrl);
+    });
   } catch (err) {
     console.error('[OIDC Login Error]', err);
     res.status(500).json({ error: 'OIDC redirect failed: ' + err.message });
@@ -239,7 +242,7 @@ router.get('/callback', async (req, res) => {
     });
   } catch (err) {
     console.error('[OIDC Callback Error]', err);
-    res.status(401).send(`Authentication failed: ${err.message}`);
+    res.redirect(`/#/login?error=${encodeURIComponent(err.message)}`);
   }
 });
 
