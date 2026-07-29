@@ -138,6 +138,20 @@ router.patch('/users/me', requireAuth, async (req, res) => {
   }
 });
 
+function parseCookies(req) {
+  const list = {};
+  const rc = req.headers.cookie;
+  if (rc) {
+    rc.split(';').forEach(cookie => {
+      const parts = cookie.split('=');
+      if (parts.length >= 2) {
+        list[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('='));
+      }
+    });
+  }
+  return list;
+}
+
 // ── OIDC LOGIN ────────────────────────────────────────────────────────────────
 router.get('/login', async (req, res) => {
   const authMethod = process.env.AUTH_METHOD || 'oidc';
@@ -160,6 +174,12 @@ router.get('/login', async (req, res) => {
     req.session.oidcState = state;
     req.session.oidcNonce = nonce;
     req.session.code_verifier = code_verifier;
+
+    const isSecure = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
+    const oidcCookieVal = encodeURIComponent(JSON.stringify({ state, nonce, code_verifier }));
+    res.setHeader('Set-Cookie', [
+      `fs_oidc_state=${oidcCookieVal}; Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Max-Age=600`
+    ]);
 
     const authUrl = client.authorizationUrl({
       scope: 'openid profile email',
@@ -188,9 +208,26 @@ router.get('/callback', async (req, res) => {
     }
 
     const params = client.callbackParams(req);
-    const state = req.session.oidcState;
-    const nonce = req.session.oidcNonce;
-    const code_verifier = req.session.code_verifier;
+    const cookies = parseCookies(req);
+
+    let state = req.session ? req.session.oidcState : undefined;
+    let nonce = req.session ? req.session.oidcNonce : undefined;
+    let code_verifier = req.session ? req.session.code_verifier : undefined;
+
+    if (!state && cookies.fs_oidc_state) {
+      try {
+        const parsed = JSON.parse(cookies.fs_oidc_state);
+        state = parsed.state;
+        nonce = parsed.nonce;
+        code_verifier = parsed.code_verifier;
+      } catch (cookieErr) {
+        console.warn('[OIDC Cookie Parse Warning]', cookieErr.message);
+      }
+    }
+
+    if (!state && req.query.state) {
+      state = req.query.state;
+    }
 
     const tokenSet = await client.callback(
       process.env.OIDC_REDIRECT_URI || `${process.env.APP_URL || 'https://fs-files.gryzia.de'}/api/auth/callback`,
