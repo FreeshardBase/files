@@ -3,15 +3,20 @@ const router = express.Router();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { Issuer, generators } = require('openid-client');
+const { Issuer, generators, custom } = require('openid-client');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { ensureUserHome } = require('../middleware/isolation');
 
+// Increase HTTP timeout for OIDC discovery / metadata requests (default 3500ms is too strict)
+custom.setHttpOptionsDefaults({ timeout: 15000 });
+
 let oidcClient = null;
+let oidcDiscoveryPromise = null;
 
 async function getOidcClient() {
   if (oidcClient) return oidcClient;
+  if (oidcDiscoveryPromise) return oidcDiscoveryPromise;
 
   const issuerUrl = process.env.OIDC_ISSUER_URL || 'https://auth.gryzia.de';
   const clientId = process.env.OIDC_CLIENT_ID || 'freeshard-files';
@@ -19,20 +24,25 @@ async function getOidcClient() {
   const redirectUri = process.env.OIDC_REDIRECT_URI || `${process.env.APP_URL || 'https://fs-files.gryzia.de'}/api/auth/callback`;
   const tokenAuthMethod = process.env.OIDC_TOKEN_AUTH_METHOD || 'client_secret_basic';
 
-  try {
-    const issuer = await Issuer.discover(issuerUrl);
-    oidcClient = new issuer.Client({
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uris: [redirectUri],
-      response_types: ['code'],
-      token_endpoint_auth_method: tokenAuthMethod
-    });
-    return oidcClient;
-  } catch (err) {
-    console.warn('[OIDC] Discovery warning:', err.message);
-    return null;
-  }
+  oidcDiscoveryPromise = (async () => {
+    try {
+      const issuer = await Issuer.discover(issuerUrl);
+      oidcClient = new issuer.Client({
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uris: [redirectUri],
+        response_types: ['code'],
+        token_endpoint_auth_method: tokenAuthMethod
+      });
+      return oidcClient;
+    } catch (err) {
+      console.warn('[OIDC] Discovery error:', err.message);
+      oidcDiscoveryPromise = null;
+      return null;
+    }
+  })();
+
+  return oidcDiscoveryPromise;
 }
 
 // ── GET /api/auth/config (Public auth UI config #2, #54, #55) ─────────────────
