@@ -30,6 +30,11 @@ class TokenBucket {
 }
 
 async function bandwidthThrottler(req, res, next) {
+  // Only throttle actual file download/stream endpoints, never static UI assets or metadata APIs (#86)
+  if (!req.path.includes('/download') && !req.path.includes('/stream') && !req.path.includes('/raw')) {
+    return next();
+  }
+
   const userId = req.session?.userId || req.userId || req.session?.user?.id;
   if (!userId) {
     return next();

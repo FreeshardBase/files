@@ -141,8 +141,8 @@ function startTrashAutoCleanup() {
 // Initialize SQLite DB and start HTTP Server
 db.initDb().then(() => {
   startTrashAutoCleanup();
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[FilesApp] Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`[FilesApp] Server running on port ${PORT}`);
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);
