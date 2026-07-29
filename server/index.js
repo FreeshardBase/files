@@ -22,6 +22,11 @@ const commentsRouter = require('./routes/comments');
 const webdavRouter = require('./routes/webdav');
 const backupsRouter = require('./routes/backups');
 const wopiRouter = require('./routes/wopi');
+const settingsRouter = require('./routes/settings');
+const archiveRouter = require('./routes/archive');
+const mediaRouter   = require('./routes/media');
+const { bitrotScannerRouter } = require('./utils/bitrot_scanner');
+const { bandwidthThrottler } = require('./middleware/bandwidth');
 const { i18nMiddleware } = require('./utils/i18n');
 
 const app = express();
@@ -49,6 +54,9 @@ app.use(session({
 // Internationalization Middleware (#25)
 app.use(i18nMiddleware);
 
+// Bandwidth Throttling Middleware (#86)
+app.use(bandwidthThrottler);
+
 // Serve static frontend assets
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -69,6 +77,10 @@ app.use('/api/vaults', vaultsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/backups', backupsRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/archive', archiveRouter);
+app.use('/api/media',   mediaRouter);
+app.use('/api/integrity', bitrotScannerRouter);
 app.use('/wopi', wopiRouter);
 app.use('/api/wopi', wopiRouter);
 app.use('/webdav', webdavRouter);

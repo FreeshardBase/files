@@ -436,6 +436,46 @@ async function initDb() {
     )
   `);
 
+  // Bandwidth Throttling Settings (#86)
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_bandwidth_settings (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      upload_limit_kbps INTEGER DEFAULT 0,
+      download_limit_kbps INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // File Checksums & Bit-Rot Scanner (#87)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_checksums (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL UNIQUE,
+      checksum TEXT NOT NULL,
+      algorithm TEXT DEFAULT 'sha256',
+      file_size INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'ok',
+      last_scanned_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Media Transcriptions (#89)
+  await run(`
+    CREATE TABLE IF NOT EXISTS media_transcriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      language TEXT DEFAULT 'en',
+      transcript TEXT,
+      vtt TEXT,
+      duration REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Ensure fallback default-user exists for unauthenticated operations (#44)
   await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
@@ -1283,7 +1323,127 @@ module.exports = {
   deleteWopiToken,
   getWopiLock,
   setWopiLock,
-  deleteWopiLock
+  deleteWopiLock,
+  getBandwidthSettings,
+  setBandwidthSettings,
+  saveFileChecksum,
+  getFileChecksum,
+  getAllChecksums,
+  updateChecksumStatus,
+  getCorruptedFiles,
+  deleteFileChecksum,
+  saveTranscription,
+  getTranscriptionsByUser,
+  getTranscriptionByFile,
+  deleteTranscription
 };
 
+async function getBandwidthSettings(userId) {
+  const row = await get('SELECT upload_limit_kbps, download_limit_kbps FROM user_bandwidth_settings WHERE user_id = ?', [userId]);
+  if (!row) {
+    return { upload_limit_kbps: 0, download_limit_kbps: 0 };
+  }
+  return {
+    upload_limit_kbps: row.upload_limit_kbps || 0,
+    download_limit_kbps: row.download_limit_kbps || 0
+  };
+}
 
+async function setBandwidthSettings(userId, { upload_limit_kbps = 0, download_limit_kbps = 0 }) {
+  const up = Math.max(0, parseInt(upload_limit_kbps, 10) || 0);
+  const down = Math.max(0, parseInt(download_limit_kbps, 10) || 0);
+  await run(`
+    INSERT INTO user_bandwidth_settings (user_id, upload_limit_kbps, download_limit_kbps, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET
+      upload_limit_kbps = excluded.upload_limit_kbps,
+      download_limit_kbps = excluded.download_limit_kbps,
+      updated_at = datetime('now')
+  `, [userId, up, down]);
+  return { upload_limit_kbps: up, download_limit_kbps: down };
+}
+
+async function saveFileChecksum(filePath, checksum, fileSize = 0, algorithm = 'sha256') {
+  await run(`
+    INSERT INTO file_checksums (file_path, checksum, algorithm, file_size, status, last_scanned_at, updated_at)
+    VALUES (?, ?, ?, ?, 'ok', datetime('now'), datetime('now'))
+    ON CONFLICT(file_path) DO UPDATE SET
+      checksum = excluded.checksum,
+      algorithm = excluded.algorithm,
+      file_size = excluded.file_size,
+      status = 'ok',
+      last_scanned_at = datetime('now'),
+      updated_at = datetime('now')
+  `, [filePath, checksum, algorithm, fileSize]);
+  return getFileChecksum(filePath);
+}
+
+async function getFileChecksum(filePath) {
+  return get('SELECT * FROM file_checksums WHERE file_path = ?', [filePath]);
+}
+
+async function getAllChecksums() {
+  return all('SELECT * FROM file_checksums ORDER BY file_path ASC');
+}
+
+async function updateChecksumStatus(filePath, status, extra = {}) {
+  const params = [status];
+  let extraSql = '';
+  if (extra.checksum) {
+    extraSql += ', checksum = ?';
+    params.push(extra.checksum);
+  }
+  params.push(filePath);
+  await run(`
+    UPDATE file_checksums
+    SET status = ?, last_scanned_at = datetime('now'), updated_at = datetime('now')${extraSql}
+    WHERE file_path = ?
+  `, params);
+  return getFileChecksum(filePath);
+}
+
+async function getCorruptedFiles() {
+  return all("SELECT * FROM file_checksums WHERE status = 'corrupted' ORDER BY updated_at DESC");
+}
+
+async function deleteFileChecksum(filePath) {
+  return run('DELETE FROM file_checksums WHERE file_path = ?', [filePath]);
+}
+
+// ── Media Transcription Helpers (#89) ─────────────────────────────────────────
+
+async function saveTranscription({ userId, filePath, language = 'en', transcript = '', vtt = '', duration = 0 }) {
+  const existing = await get(
+    'SELECT id FROM media_transcriptions WHERE user_id = ? AND file_path = ?',
+    [userId, filePath]
+  );
+  if (existing) {
+    await run(`
+      UPDATE media_transcriptions
+      SET language = ?, transcript = ?, vtt = ?, duration = ?, updated_at = datetime('now')
+      WHERE user_id = ? AND file_path = ?
+    `, [language, transcript, vtt, duration, userId, filePath]);
+    return get('SELECT * FROM media_transcriptions WHERE user_id = ? AND file_path = ?', [userId, filePath]);
+  }
+  const res = await run(`
+    INSERT INTO media_transcriptions (user_id, file_path, language, transcript, vtt, duration)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [userId, filePath, language, transcript, vtt, duration]);
+  return get('SELECT * FROM media_transcriptions WHERE id = ?', [res.lastID]);
+}
+
+async function getTranscriptionsByUser(userId) {
+  return all('SELECT * FROM media_transcriptions WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getTranscriptionByFile(userId, filePath) {
+  return get('SELECT * FROM media_transcriptions WHERE user_id = ? AND file_path = ?', [userId, filePath]);
+}
+
+async function deleteTranscription(userId, filePath) {
+  const res = await run(
+    'DELETE FROM media_transcriptions WHERE user_id = ? AND file_path = ?',
+    [userId, filePath]
+  );
+  return res.changes > 0;
+}
