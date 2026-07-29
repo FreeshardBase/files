@@ -3,7 +3,11 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs/promises');
 const { Readable } = require('stream');
+const express = require('express');
+const http = require('http');
+const filesRouter = require('../routes/files');
 const LocalProvider = require('../providers/local');
+const { buildGalleryItems, IMAGE_MIME_TYPES } = require('../utils/gallery');
 
 const TEST_ROOT = path.resolve(__dirname, 'test_viewer_home');
 
@@ -58,3 +62,115 @@ describe('File Viewer & Media Previews (#11)', () => {
     assert.equal(jsonMeta.mimeType, 'application/json');
   });
 });
+
+describe('Photo Gallery Mode (#23)', () => {
+  const GALLERY_ROOT = path.resolve(__dirname, 'test_gallery_home');
+  const USER_HOME = path.join(GALLERY_ROOT, 'gallery_user');
+  let provider;
+
+  let server;
+  let baseUrl;
+  const originalFilesRoot = process.env.FILES_ROOT;
+
+  before(async () => {
+    process.env.FILES_ROOT = GALLERY_ROOT;
+    try { await fs.rm(GALLERY_ROOT, { recursive: true, force: true }); } catch {}
+    provider = new LocalProvider({ userRoot: USER_HOME });
+    await provider.ensureUserHome();
+
+    // Seed: 3 images + 1 non-image in /Photos
+    await provider.write('/Photos/beach.jpg',  Readable.from([Buffer.from('jpegsig')]));
+    await provider.write('/Photos/sunset.png',  Readable.from([Buffer.from('pngsig')]));
+    await provider.write('/Photos/avatar.gif',  Readable.from([Buffer.from('gifsig')]));
+    await provider.write('/Photos/notes.txt',   Readable.from([Buffer.from('not an image')]));
+    // Seed: /Documents has no images
+    await provider.write('/Documents/report.pdf', Readable.from([Buffer.from('%PDF')]));
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      req.userId = 'gallery_user';
+      next();
+    });
+    app.use('/api/files', filesRouter);
+
+    await new Promise((resolve) => {
+      server = http.createServer(app).listen(0, '127.0.0.1', () => {
+        const addr = server.address();
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+        resolve();
+      });
+    });
+  });
+
+  after(async () => {
+    process.env.FILES_ROOT = originalFilesRoot;
+    if (server) await new Promise((res) => server.close(res));
+    try { await fs.rm(GALLERY_ROOT, { recursive: true, force: true }); } catch {}
+  });
+
+  test('IMAGE_MIME_TYPES includes common web image types', () => {
+    const expected = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff', 'image/avif', 'image/heic'];
+    for (const mime of expected) {
+      assert.ok(IMAGE_MIME_TYPES.has(mime), `Expected IMAGE_MIME_TYPES to contain ${mime}`);
+    }
+  });
+
+  test('buildGalleryItems returns only image files, filtering non-images', async () => {
+    const items = await buildGalleryItems(provider, '/Photos');
+
+    const names = items.map(i => i.name);
+    assert.ok(names.includes('beach.jpg'),  'beach.jpg should be in gallery');
+    assert.ok(names.includes('sunset.png'), 'sunset.png should be in gallery');
+    assert.ok(names.includes('avatar.gif'), 'avatar.gif should be in gallery');
+    assert.ok(!names.includes('notes.txt'), 'notes.txt must be excluded from gallery');
+    assert.equal(items.length, 3, 'exactly 3 image files expected');
+  });
+
+  test('buildGalleryItems items contain lightbox-ready metadata fields', async () => {
+    const items = await buildGalleryItems(provider, '/Photos');
+    for (const item of items) {
+      assert.ok(typeof item.name       === 'string', 'name must be string');
+      assert.ok(typeof item.path       === 'string', 'path must be string');
+      assert.ok(typeof item.mimeType   === 'string', 'mimeType must be string');
+      assert.ok(typeof item.size       === 'number', 'size must be number');
+      assert.ok(typeof item.modified   === 'string', 'modified must be ISO string');
+      assert.ok(typeof item.thumbnailUrl === 'string', 'thumbnailUrl must be string');
+      assert.ok(item.thumbnailUrl.startsWith('/api/files/read?path='), `thumbnailUrl must be a valid read URL, got: ${item.thumbnailUrl}`);
+    }
+  });
+
+  test('buildGalleryItems sorts images alphabetically by name', async () => {
+    const items = await buildGalleryItems(provider, '/Photos');
+    const names = items.map(i => i.name);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    assert.deepEqual(names, sorted, 'gallery items must be sorted alphabetically');
+  });
+
+  test('buildGalleryItems returns empty array for folder containing no images', async () => {
+    const items = await buildGalleryItems(provider, '/Documents');
+    assert.equal(items.length, 0, 'no images in /Documents — should return empty array');
+  });
+
+  test('buildGalleryItems throws on path traversal attempt', async () => {
+    await assert.rejects(
+      () => buildGalleryItems(provider, '/Photos/../../../etc'),
+      (err) => {
+        assert.ok(err.message.includes('traversal') || err.message.includes('blocked') || err.code === 'ENOENT' || err.message.includes('outside'),
+          `Expected traversal error, got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  test('GET /api/files/gallery endpoint returns gallery payload for image folder', async () => {
+    const res = await fetch(`${baseUrl}/api/files/gallery?path=/Photos`);
+    const data = await res.json();
+    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(data)}`);
+    assert.equal(data.success, true);
+    assert.equal(data.total, 3);
+    assert.equal(data.items.length, 3);
+    assert.ok(data.items.some(i => i.name === 'beach.jpg'));
+  });
+});
+

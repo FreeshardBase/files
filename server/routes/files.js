@@ -12,6 +12,7 @@ const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 const { emitSSEEvent } = require('../utils/sse_events');
 const { scanBuffer, scanFile } = require('../utils/malware_scanner');
 const { extractExifFromFile } = require('../utils/exif_extractor');
+const { buildGalleryItems } = require('../utils/gallery');
 
 
 function getLocalProvider(req) {
@@ -122,6 +123,25 @@ router.get('/list', async (req, res) => {
     const requestedPath = req.query.path || '/';
     const items = await provider.list(requestedPath);
     res.json({ path: requestedPath, items });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/files/gallery?path=/Photos
+ * Photo Gallery Mode (#23): returns only image files in the requested folder,
+ * sorted alphabetically, with thumbnailUrl for grid/lightbox consumption.
+ */
+router.get('/gallery', async (req, res) => {
+  try {
+    const { provider } = getLocalProvider(req);
+    const requestedPath = req.query.path || '/';
+    const items = await buildGalleryItems(provider, requestedPath);
+    res.json({ success: true, path: requestedPath, items, total: items.length });
   } catch (err) {
     if (err.message.includes('Path traversal blocked')) {
       return res.status(403).json({ error: err.message });
