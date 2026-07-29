@@ -15,10 +15,10 @@ describe('Internal File & Folder Sharing (#14, #45 Invariant)', () => {
   });
 
   after(async () => {
-    await db.run('DELETE FROM file_shares');
-    await db.run('DELETE FROM federated_shares');
-    await db.run('DELETE FROM inbound_federated_shares');
-    await db.run('DELETE FROM public_shares');
+    await db.run('DELETE FROM file_shares WHERE owner_user_id IN (?, ?) OR sharee_user_id IN (?, ?)', [userA.id, userB.id, userA.id, userB.id]);
+    await db.run('DELETE FROM federated_shares WHERE owner_user_id IN (?, ?)', [userA.id, userB.id]);
+    await db.run('DELETE FROM inbound_federated_shares WHERE recipient_user_id IN (?, ?)', [userA.id, userB.id]);
+    await db.run('DELETE FROM public_shares WHERE user_id IN (?, ?)', [userA.id, userB.id]);
     await db.run('DELETE FROM users WHERE id IN (?, ?)', [userA.id, userB.id]);
   });
 

@@ -15,7 +15,7 @@ describe('Public Link Sharing (#15, #45 Invariant)', () => {
   });
 
   after(async () => {
-    await db.run('DELETE FROM public_shares');
+    await db.run('DELETE FROM public_shares WHERE user_id = ?', [user.id]);
     await db.run('DELETE FROM users WHERE id = ?', [user.id]);
   });
 
