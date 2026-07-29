@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { getPublicShareByToken, incrementPublicShareDownloads, logShareAccess } = require('../db');
+const { getPublicShareByToken, incrementPublicShareDownloads, logShareAccess, getUserBranding } = require('../db');
 const LocalProvider = require('../providers/local');
 
 function getOwnerUserRoot(ownerUserId) {
@@ -33,7 +33,7 @@ function isShareUnlocked(req, token) {
   return req.session && req.session.unlockedShares && req.session.unlockedShares[token] === true;
 }
 
-function renderPublicSharePage(token, share, validation, isProtected, unlocked) {
+function renderPublicSharePage(token, share, validation, isProtected, unlocked, branding = null) {
   const baseName = share ? path.basename(share.file_path) : 'Shared Item';
   const owner = share ? (share.owner_display_name || share.owner_username) : 'FreeShard User';
   const ext = share ? baseName.split('.').pop().toLowerCase() : '';
@@ -43,6 +43,18 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
   const isPdf = ext === 'pdf';
 
   let bodyContent = '';
+
+  const logoMarkup = (branding && branding.logo_url)
+    ? `<img src="${branding.logo_url}" alt="Custom Logo" class="custom-branding-logo" style="max-height: 48px; margin-bottom: 0.5rem; object-fit: contain;" />`
+    : '';
+
+  const welcomeMarkup = (branding && branding.welcome_message)
+    ? `<p class="custom-branding-welcome" style="margin-top: 0.5rem; color: var(--ink-muted); font-size: 13px;">${branding.welcome_message}</p>`
+    : '';
+
+  const primaryColorCss = (branding && branding.primary_color)
+    ? `<style>:root { --primary: ${branding.primary_color}; --brand-color: ${branding.primary_color}; } .fs-btn--primary { background-color: ${branding.primary_color} !important; border-color: ${branding.primary_color} !important; }</style>`
+    : '';
 
   if (!validation.valid) {
     bodyContent = `
@@ -56,9 +68,11 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
     bodyContent = `
       <div class="fs-sheet" style="max-width: 400px; margin: 40px auto;">
         <div style="text-align: center; margin-bottom: 1.5rem;">
+          ${logoMarkup}
           <span style="font-size: 2.5rem;">🔒</span>
           <h2 style="margin-top: 0.5rem; font-size: 18px;">Password Protected</h2>
           <p class="fs-mono" style="color: var(--ink-muted); font-size: 12px; margin-top: 4px;">Shared by ${owner}</p>
+          ${welcomeMarkup}
         </div>
         <form id="pwdForm" onsubmit="unlockShare(event, '${token}')">
           <div class="fs-field" style="max-width: 100%;">
@@ -87,11 +101,13 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
 
     bodyContent = `
       <div class="fs-sheet" style="text-align: center; max-width: 520px; margin: 40px auto;">
+        ${logoMarkup}
         ${previewElement}
         <h2 class="fs-mono" style="margin-top: 0.5rem; font-size: 18px; word-break: break-all;">${baseName}</h2>
-        <p class="fs-mono" style="color: var(--ink-muted); font-size: 12px; margin-top: 4px; margin-bottom: 1.5rem;">Shared by ${owner}</p>
+        <p class="fs-mono" style="color: var(--ink-muted); font-size: 12px; margin-top: 4px; margin-bottom: 1rem;">Shared by ${owner}</p>
+        ${welcomeMarkup}
         
-        <a href="/s/${token}/download" class="fs-btn fs-btn--primary" style="padding: 12px 24px; font-size: 14px; text-decoration: none; display: inline-flex;">
+        <a href="/s/${token}/download" class="fs-btn fs-btn--primary" style="padding: 12px 24px; font-size: 14px; text-decoration: none; display: inline-flex; margin-top: 1rem;">
           ⬇️ Download ${share.is_directory ? 'Directory (.zip)' : 'File'}
         </a>
       </div>
@@ -108,6 +124,7 @@ function renderPublicSharePage(token, share, validation, isProtected, unlocked) 
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css">
+  ${primaryColorCss}
   <style>
     body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); padding: 1.5rem; }
   </style>
@@ -163,6 +180,8 @@ router.get('/:token', async (req, res) => {
     const isProtected = share ? !!share.password_hash : false;
     const unlocked = isProtected ? isShareUnlocked(req, token) : true;
 
+    const branding = (share && share.user_id) ? await getUserBranding(share.user_id) : null;
+
     if (share && validation.valid) {
       const ipAddress = req.ip || req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress);
       const userAgent = req.headers['user-agent'];
@@ -183,11 +202,12 @@ router.get('/:token', async (req, res) => {
         unlocked,
         expiresAt: share.expires_at,
         maxDownloads: share.max_downloads,
-        downloadCount: share.download_count
+        downloadCount: share.download_count,
+        branding
       });
     }
 
-    const html = renderPublicSharePage(token, share, validation, isProtected, unlocked);
+    const html = renderPublicSharePage(token, share, validation, isProtected, unlocked, branding);
     res.status(validation.valid ? 200 : validation.status).send(html);
   } catch (err) {
     res.status(500).send('Server Error');

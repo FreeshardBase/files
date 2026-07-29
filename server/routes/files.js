@@ -6,10 +6,13 @@ const Busboy = require('busboy');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles, indexFileInFts } = require('../db');
+const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles, indexFileInFts, checkActiveLegalHold } = require('../db');
 const { decodeUtf8Filename } = require('../utils/utf8');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
+const { emitSSEEvent } = require('../utils/sse_events');
 const { scanBuffer, scanFile } = require('../utils/malware_scanner');
+const { extractExifFromFile } = require('../utils/exif_extractor');
+
 
 function getLocalProvider(req) {
   const userRoot = req.userRoot;
@@ -89,6 +92,29 @@ router.get('/metadata', async (req, res) => {
   }
 });
 
+// GET /api/files/metadata/exif?path=/Photos/sample.jpg (#96)
+router.get('/metadata/exif', async (req, res) => {
+  try {
+    const requestedPath = req.query.path;
+    if (!requestedPath) return res.status(400).json({ error: 'path parameter is required' });
+
+    const { provider } = getLocalProvider(req);
+    const fullPath = provider._resolve(requestedPath);
+    const metadata = await extractExifFromFile(fullPath);
+    res.json({
+      success: true,
+      path: requestedPath,
+      metadata
+    });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(404).json({ error: err.message });
+  }
+});
+
+
 // GET /api/files/local/list?path=/
 router.get('/list', async (req, res) => {
   try {
@@ -159,11 +185,17 @@ router.post('/upload', (req, res) => {
           });
         }
 
-const { Readable } = require('stream');
+        const activeHold = await checkActiveLegalHold(userId, destinationPath);
+        if (activeHold) {
+          return res.status(403).json({ error: `File '${destinationPath}' is under active legal hold and cannot be modified or overwritten` });
+        }
+
+        const { Readable } = require('stream');
         const streamToSave = Readable.from(fullBuffer);
         const result = await provider.write(destinationPath, streamToSave);
         await logActivity(userId, 'upload', destinationPath, filename, 0);
         await dispatchWebhookEvent(userId, 'file_created', { path: destinationPath, type: 'file' }).catch(() => {});
+        emitSSEEvent(userId, 'file_uploaded', { path: destinationPath, filename });
         res.status(201).json({ success: true, file: result });
       } catch (err) {
         if (err.message.includes('Path traversal blocked')) {
@@ -248,6 +280,7 @@ router.post('/move', async (req, res) => {
     await updateSharePathsOnMove(userId, src, dst);
     await updateFtsPathOnMove(userId, src, dst).catch(() => {});
     await logActivity(userId, 'move', src, path.basename(src), 0, JSON.stringify({ dst }));
+    emitSSEEvent(userId, 'file_renamed', { src, dst });
 
     res.json({ success: true });
   } catch (err) {
@@ -285,11 +318,17 @@ router.delete('/', async (req, res) => {
 
     if (!requestedPath) return res.status(400).json({ error: 'path is required' });
 
+    const activeHold = await checkActiveLegalHold(userId, requestedPath);
+    if (activeHold) {
+      return res.status(403).json({ error: `File '${requestedPath}' is under active legal hold and cannot be deleted` });
+    }
+
     if (isPermanent) {
       await provider.delete(requestedPath);
       await deleteFileFromFts(userId, requestedPath).catch(() => {});
       await logActivity(userId, 'delete_permanent', requestedPath, path.basename(requestedPath), 0);
       await dispatchWebhookEvent(userId, 'file_deleted', { path: requestedPath, permanent: true }).catch(() => {});
+      emitSSEEvent(userId, 'file_deleted', { path: requestedPath, permanent: true });
       return res.json({ success: true, permanent: true });
     }
 
@@ -309,6 +348,7 @@ router.delete('/', async (req, res) => {
     await deleteFileFromFts(userId, requestedPath).catch(() => {});
     await logActivity(userId, 'delete', requestedPath, path.basename(requestedPath), meta.isDirectory ? 1 : 0);
     await dispatchWebhookEvent(userId, 'file_deleted', { path: requestedPath, permanent: false }).catch(() => {});
+    emitSSEEvent(userId, 'file_deleted', { path: requestedPath, permanent: false });
 
     res.json({ success: true, trashed: true, trashId });
   } catch (err) {
@@ -335,6 +375,10 @@ router.post('/batch/delete', async (req, res) => {
     if (!permanent) await fs.mkdir(trashDir, { recursive: true });
 
     for (const p of paths) {
+      const activeHold = await checkActiveLegalHold(userId, p);
+      if (activeHold) {
+        return res.status(403).json({ error: `File '${p}' is under active legal hold and cannot be deleted` });
+      }
       if (permanent) {
         await provider.delete(p);
         await logActivity(userId, 'delete_permanent', p, path.basename(p), 0);

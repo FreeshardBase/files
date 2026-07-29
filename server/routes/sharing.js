@@ -10,6 +10,7 @@ const {
   getShareAnalytics
 } = require('../db');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
+const { emitSSEEvent } = require('../utils/sse_events');
 
 // Require session authentication for all link creation operations
 router.use(requireAuth);
@@ -93,6 +94,7 @@ router.post('/internal', async (req, res) => {
 
     const share = await createFileShare(ownerUserId, shareeUser.id, file_path, provider_type, is_directory, read_write, provider_connection_id);
     await logActivity(ownerUserId, 'share_internal', file_path, path.basename(file_path), is_directory, JSON.stringify({ sharee: shareeUser.username, provider_type }));
+    emitSSEEvent(ownerUserId, 'file_shared', { file_path, sharee: shareeUser.username, type: 'internal' });
 
     res.status(201).json({ success: true, share });
   } catch (err) {
@@ -158,6 +160,7 @@ router.post('/public', async (req, res) => {
     const shareUrl = `${protocol}://${host}/s/${token}`;
 
     await logActivity(userId, 'share_public', file_path, path.basename(file_path), is_directory, JSON.stringify({ token, label }));
+    emitSSEEvent(userId, 'file_shared', { file_path, token, type: 'public' });
 
     res.status(201).json({
       success: true,

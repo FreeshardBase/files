@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { encrypt, decrypt } = require('./utils/crypto');
 
 let dbInstance = null;
@@ -200,6 +201,22 @@ async function initDb() {
       size_bytes INTEGER DEFAULT 0,
       deleted_at TEXT DEFAULT (datetime('now')),
       expires_at TEXT NOT NULL
+    )
+  `);
+
+  // Filing Rules (#90)
+  await run(`
+    CREATE TABLE IF NOT EXISTS filing_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT,
+      condition_type TEXT NOT NULL,
+      condition_value TEXT NOT NULL,
+      target_folder TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
@@ -471,6 +488,100 @@ async function initDb() {
       transcript TEXT,
       vtt TEXT,
       duration REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Security Sessions (#91)
+  await run(`
+    CREATE TABLE IF NOT EXISTS security_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_type TEXT DEFAULT 'Desktop',
+      ip_address TEXT DEFAULT '127.0.0.1',
+      user_agent TEXT DEFAULT '',
+      last_active_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // User Custom Branding (#92)
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_branding (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      logo_url TEXT DEFAULT NULL,
+      primary_color TEXT DEFAULT NULL,
+      welcome_message TEXT DEFAULT NULL,
+      custom_domain TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Cloud-to-Cloud Sync Jobs (#93)
+  await run(`
+    CREATE TABLE IF NOT EXISTS cloud_sync_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT,
+      src_connection_id INTEGER NOT NULL REFERENCES provider_connections(id) ON DELETE CASCADE,
+      src_path TEXT NOT NULL DEFAULT '/',
+      dst_connection_id INTEGER NOT NULL REFERENCES provider_connections(id) ON DELETE CASCADE,
+      dst_path TEXT NOT NULL DEFAULT '/',
+      schedule TEXT DEFAULT 'manual',
+      status TEXT DEFAULT 'pending',
+      transferred_files INTEGER DEFAULT 0,
+      transferred_bytes INTEGER DEFAULT 0,
+      error_message TEXT DEFAULT NULL,
+      last_run_at TEXT DEFAULT NULL,
+      next_run_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Real-Time Presence (#94)
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_presence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      username TEXT,
+      folder_path TEXT NOT NULL,
+      file_name TEXT DEFAULT NULL,
+      action TEXT DEFAULT 'viewing',
+      last_heartbeat TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Secure Temporary Dropboxes / File Request Portals (#95)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      target_folder TEXT NOT NULL DEFAULT '/',
+      title TEXT DEFAULT NULL,
+      description TEXT DEFAULT NULL,
+      expires_at TEXT DEFAULT NULL,
+      max_uploads INTEGER DEFAULT NULL,
+      upload_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Compliance Retention & Legal Hold Policies (#99)
+  await run(`
+    CREATE TABLE IF NOT EXISTS legal_holds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      policy_name TEXT DEFAULT 'retention_policy',
+      reason TEXT DEFAULT NULL,
+      lock_until TEXT DEFAULT NULL,
+      status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -1335,7 +1446,39 @@ module.exports = {
   saveTranscription,
   getTranscriptionsByUser,
   getTranscriptionByFile,
-  deleteTranscription
+  deleteTranscription,
+  createFilingRule,
+  getFilingRulesByUser,
+  getFilingRuleById,
+  updateFilingRule,
+  deleteFilingRule,
+  createSecuritySession,
+  getSecuritySessionsByUser,
+  getSecuritySessionById,
+  deleteSecuritySession,
+  revokeAllOtherSessions,
+  getUserBranding,
+  setUserBranding,
+  deleteUserBranding,
+  createCloudSyncJob,
+  getCloudSyncJobsByUser,
+  getCloudSyncJobById,
+  updateCloudSyncJob,
+  deleteCloudSyncJob,
+  recordPresenceHeartbeat,
+  getActiveFolderPresence,
+  removeUserPresence,
+  createFileRequest,
+  getFileRequestByToken,
+  getFileRequestsByUser,
+  deleteFileRequest,
+  incrementFileRequestUploads,
+  createLegalHold,
+  getLegalHoldsByUser,
+  getLegalHoldById,
+  releaseLegalHold,
+  checkActiveLegalHold,
+  searchUniversal
 };
 
 async function getBandwidthSettings(userId) {
@@ -1447,3 +1590,448 @@ async function deleteTranscription(userId, filePath) {
   );
   return res.changes > 0;
 }
+
+// ── Intelligent Document Classification & Auto-Filing Helpers (#90) ───────────
+
+async function createFilingRule(userId, { name = '', condition_type, condition_value, target_folder, is_active = 1, priority = 0 }) {
+  const res = await run(`
+    INSERT INTO filing_rules (user_id, name, condition_type, condition_value, target_folder, is_active, priority)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [userId, name, condition_type, condition_value, target_folder, is_active ? 1 : 0, priority || 0]);
+  return get('SELECT * FROM filing_rules WHERE id = ?', [res.lastID]);
+}
+
+async function getFilingRulesByUser(userId) {
+  return all('SELECT * FROM filing_rules WHERE user_id = ? ORDER BY priority DESC, id ASC', [userId]);
+}
+
+async function getFilingRuleById(userId, ruleId) {
+  return get('SELECT * FROM filing_rules WHERE user_id = ? AND id = ?', [userId, ruleId]);
+}
+
+async function updateFilingRule(userId, ruleId, updates = {}) {
+  const existing = await getFilingRuleById(userId, ruleId);
+  if (!existing) return null;
+
+  const name = updates.name !== undefined ? updates.name : existing.name;
+  const condition_type = updates.condition_type !== undefined ? updates.condition_type : existing.condition_type;
+  const condition_value = updates.condition_value !== undefined ? updates.condition_value : existing.condition_value;
+  const target_folder = updates.target_folder !== undefined ? updates.target_folder : existing.target_folder;
+  const is_active = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
+  const priority = updates.priority !== undefined ? updates.priority : existing.priority;
+
+  await run(`
+    UPDATE filing_rules
+    SET name = ?, condition_type = ?, condition_value = ?, target_folder = ?, is_active = ?, priority = ?, updated_at = datetime('now')
+    WHERE user_id = ? AND id = ?
+  `, [name, condition_type, condition_value, target_folder, is_active, priority, userId, ruleId]);
+
+  return getFilingRuleById(userId, ruleId);
+}
+
+async function deleteFilingRule(userId, ruleId) {
+  const res = await run('DELETE FROM filing_rules WHERE user_id = ? AND id = ?', [userId, ruleId]);
+  return res.changes > 0;
+}
+
+// ── Session & Device Security Helpers (#91) ───────────────────────────────────
+
+async function createSecuritySession({ id, userId, deviceType = 'Desktop', ipAddress = '127.0.0.1', userAgent = '' }) {
+  await run(`
+    INSERT INTO security_sessions (id, user_id, device_type, ip_address, user_agent, last_active_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      device_type = excluded.device_type,
+      ip_address = excluded.ip_address,
+      user_agent = excluded.user_agent,
+      last_active_at = datetime('now'),
+      updated_at = datetime('now')
+  `, [id, userId, deviceType, ipAddress, userAgent]);
+  return getSecuritySessionById(userId, id);
+}
+
+async function getSecuritySessionsByUser(userId) {
+  return all('SELECT * FROM security_sessions WHERE user_id = ? ORDER BY last_active_at DESC', [userId]);
+}
+
+async function getSecuritySessionById(userId, sessionId) {
+  return get('SELECT * FROM security_sessions WHERE user_id = ? AND id = ?', [userId, sessionId]);
+}
+
+async function deleteSecuritySession(userId, sessionId) {
+  const res = await run('DELETE FROM security_sessions WHERE user_id = ? AND id = ?', [userId, sessionId]);
+  return res.changes > 0;
+}
+
+async function revokeAllOtherSessions(userId, currentSessionId) {
+  const res = await run('DELETE FROM security_sessions WHERE user_id = ? AND id != ?', [userId, currentSessionId]);
+  return res.changes;
+}
+
+// ── User Custom Branding Helpers (#92) ────────────────────────────────────────
+
+async function getUserBranding(userId) {
+  const row = await get('SELECT * FROM user_branding WHERE user_id = ?', [userId]);
+  if (!row) {
+    return {
+      user_id: userId,
+      logo_url: null,
+      primary_color: null,
+      welcome_message: null,
+      custom_domain: null
+    };
+  }
+  return row;
+}
+
+async function setUserBranding(userId, { logo_url = null, primary_color = null, welcome_message = null, custom_domain = null }) {
+  await run(`
+    INSERT INTO user_branding (user_id, logo_url, primary_color, welcome_message, custom_domain, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET
+      logo_url = excluded.logo_url,
+      primary_color = excluded.primary_color,
+      welcome_message = excluded.welcome_message,
+      custom_domain = excluded.custom_domain,
+      updated_at = datetime('now')
+  `, [userId, logo_url, primary_color, welcome_message, custom_domain]);
+  return getUserBranding(userId);
+}
+
+async function deleteUserBranding(userId) {
+  const res = await run('DELETE FROM user_branding WHERE user_id = ?', [userId]);
+  return res.changes > 0;
+}
+
+// ── Bulk Direct Cloud-to-Cloud Backup Sync Helpers (#93) ──────────────────────
+
+async function createCloudSyncJob(userId, { name = '', src_connection_id, src_path = '/', dst_connection_id, dst_path = '/', schedule = 'manual' }) {
+  const res = await run(`
+    INSERT INTO cloud_sync_jobs (user_id, name, src_connection_id, src_path, dst_connection_id, dst_path, schedule, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+  `, [userId, name, src_connection_id, src_path, dst_connection_id, dst_path, schedule]);
+  return getCloudSyncJobById(userId, res.lastID);
+}
+
+async function getCloudSyncJobsByUser(userId) {
+  return all('SELECT * FROM cloud_sync_jobs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function getCloudSyncJobById(userId, jobId) {
+  return get('SELECT * FROM cloud_sync_jobs WHERE user_id = ? AND id = ?', [userId, jobId]);
+}
+
+async function updateCloudSyncJob(userId, jobId, updates = {}) {
+  const existing = await getCloudSyncJobById(userId, jobId);
+  if (!existing) return null;
+
+  const status = updates.status !== undefined ? updates.status : existing.status;
+  const transferred_files = updates.transferred_files !== undefined ? updates.transferred_files : existing.transferred_files;
+  const transferred_bytes = updates.transferred_bytes !== undefined ? updates.transferred_bytes : existing.transferred_bytes;
+  const error_message = updates.error_message !== undefined ? updates.error_message : existing.error_message;
+  const last_run_at = updates.last_run_at !== undefined ? updates.last_run_at : existing.last_run_at;
+  const next_run_at = updates.next_run_at !== undefined ? updates.next_run_at : existing.next_run_at;
+
+  await run(`
+    UPDATE cloud_sync_jobs
+    SET status = ?, transferred_files = ?, transferred_bytes = ?, error_message = ?, last_run_at = ?, next_run_at = ?, updated_at = datetime('now')
+    WHERE user_id = ? AND id = ?
+  `, [status, transferred_files, transferred_bytes, error_message, last_run_at, next_run_at, userId, jobId]);
+
+  return getCloudSyncJobById(userId, jobId);
+}
+
+async function deleteCloudSyncJob(userId, jobId) {
+  const res = await run('DELETE FROM cloud_sync_jobs WHERE user_id = ? AND id = ?', [userId, jobId]);
+  return res.changes > 0;
+}
+
+// ── Real-Time Presence Helpers (#94) ──────────────────────────────────────────
+
+async function recordPresenceHeartbeat(userId, { username = null, folder_path = '/', file_name = null, action = 'viewing' } = {}) {
+  const normFolder = folder_path || '/';
+  const normFile = file_name || null;
+  const act = action || 'viewing';
+
+  let name = username;
+  if (!name) {
+    const userRow = await get('SELECT username, email, name FROM users WHERE id = ?', [userId]);
+    if (userRow) name = userRow.username || userRow.name || userRow.email || userId;
+    else name = userId;
+  }
+
+  const existing = await get(
+    'SELECT id FROM user_presence WHERE user_id = ? AND folder_path = ? AND (file_name = ? OR (file_name IS NULL AND ? IS NULL))',
+    [userId, normFolder, normFile, normFile]
+  );
+
+  if (existing) {
+    await run(
+      `UPDATE user_presence 
+       SET username = ?, action = ?, last_heartbeat = datetime('now') 
+       WHERE id = ?`,
+      [name, act, existing.id]
+    );
+  } else {
+    await run(
+      `INSERT INTO user_presence (user_id, username, folder_path, file_name, action, last_heartbeat)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [userId, name, normFolder, normFile, act]
+    );
+  }
+
+  return getActiveFolderPresence(normFolder);
+}
+
+async function getActiveFolderPresence(folderPath, ttlSeconds = 60) {
+  const normFolder = folderPath || '/';
+  const rows = await all(
+    `SELECT id, user_id, username, folder_path, file_name, action, last_heartbeat, created_at
+     FROM user_presence
+     WHERE folder_path = ? AND last_heartbeat >= datetime('now', '-' || ? || ' seconds')
+     ORDER BY last_heartbeat DESC`,
+    [normFolder, ttlSeconds]
+  );
+  return rows;
+}
+
+async function removeUserPresence(userId, folderPath = null) {
+  if (folderPath) {
+    const res = await run('DELETE FROM user_presence WHERE user_id = ? AND folder_path = ?', [userId, folderPath]);
+    return res.changes > 0;
+  } else {
+    const res = await run('DELETE FROM user_presence WHERE user_id = ?', [userId]);
+    return res.changes > 0;
+  }
+}
+
+// ── File Request Portal Helpers (#95) ───────────────────────────────────────
+
+async function createFileRequest(userId, { target_folder = '/', title = null, description = null, expires_at = null, max_uploads = null, token = null } = {}) {
+  const reqToken = token || ('req_' + crypto.randomBytes(12).toString('hex'));
+  const normFolder = target_folder || '/';
+
+  await run(`
+    INSERT INTO file_requests (token, user_id, target_folder, title, description, expires_at, max_uploads, upload_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+  `, [reqToken, userId, normFolder, title, description, expires_at, max_uploads]);
+
+  return getFileRequestByToken(reqToken);
+}
+
+async function getFileRequestByToken(token) {
+  const row = await get(`
+    SELECT fr.*, u.username as owner_username, u.display_name as owner_display_name
+    FROM file_requests fr
+    LEFT JOIN users u ON fr.user_id = u.id
+    WHERE fr.token = ?
+  `, [token]);
+  return row || null;
+}
+
+async function getFileRequestsByUser(userId) {
+  const rows = await all(`
+    SELECT * FROM file_requests
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `, [userId]);
+  return rows;
+}
+
+async function deleteFileRequest(userId, idOrToken) {
+  const res = await run(`
+    DELETE FROM file_requests
+    WHERE user_id = ? AND (id = ? OR token = ?)
+  `, [userId, idOrToken, idOrToken]);
+  return res.changes > 0;
+}
+
+async function incrementFileRequestUploads(id) {
+  await run(`
+    UPDATE file_requests
+    SET upload_count = upload_count + 1
+    WHERE id = ?
+  `, [id]);
+  return get('SELECT * FROM file_requests WHERE id = ?', [id]);
+}
+
+// ── Compliance Retention & Legal Hold Helpers (#99) ─────────────────────────
+
+async function createLegalHold(userId, { file_path, policy_name = 'compliance_retention', reason = null, lock_until = null } = {}) {
+  const normPath = file_path ? (file_path.startsWith('/') ? file_path : '/' + file_path) : '/';
+  const res = await run(`
+    INSERT INTO legal_holds (user_id, file_path, policy_name, reason, lock_until, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+  `, [userId, normPath, policy_name, reason, lock_until]);
+
+  return getLegalHoldById(res.lastID, userId);
+}
+
+async function getLegalHoldsByUser(userId) {
+  const rows = await all(`
+    SELECT * FROM legal_holds
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `, [userId]);
+  return rows;
+}
+
+async function getLegalHoldById(id, userId) {
+  const row = await get(`
+    SELECT * FROM legal_holds
+    WHERE id = ? AND user_id = ?
+  `, [id, userId]);
+  return row || null;
+}
+
+async function releaseLegalHold(id, userId) {
+  const res = await run(`
+    UPDATE legal_holds
+    SET status = 'released', updated_at = datetime('now')
+    WHERE id = ? AND user_id = ?
+  `, [id, userId]);
+  return res.changes > 0;
+}
+
+async function checkActiveLegalHold(userId, filePath) {
+  if (!filePath) return null;
+  const normPath = filePath.startsWith('/') ? filePath : '/' + filePath;
+  
+  const holds = await all(`
+    SELECT * FROM legal_holds
+    WHERE user_id = ? AND status = 'active'
+  `, [userId]);
+
+  for (const hold of holds) {
+    if (hold.lock_until) {
+      const lockDate = new Date(hold.lock_until);
+      if (!isNaN(lockDate.getTime()) && lockDate.getTime() <= Date.now()) {
+        continue; // Expired
+      }
+    }
+
+    const holdPath = hold.file_path.startsWith('/') ? hold.file_path : '/' + hold.file_path;
+    if (normPath === holdPath || normPath.startsWith(holdPath.endsWith('/') ? holdPath : holdPath + '/')) {
+      return hold;
+    }
+  }
+
+  return null;
+}
+
+async function searchUniversal(userId, query, limit = 50) {
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return { files: [], shares: [], tags: [], ecosystem: [] };
+  }
+  const q = query.trim();
+  const pattern = `%${q}%`;
+
+  let files = await searchFulltext(userId, q, limit);
+  if (!files || files.length === 0) {
+    const rows = await all(`
+      SELECT path, filename, content FROM files_fts
+      WHERE user_id = ? AND (filename LIKE ? OR path LIKE ? OR content LIKE ?)
+      LIMIT ?
+    `, [userId, pattern, pattern, pattern, limit]);
+    files = rows.map(r => ({
+      path: r.path,
+      filename: r.filename,
+      snippet: r.content ? r.content.slice(0, 100) : '',
+      rank: 0
+    }));
+  }
+
+  const formattedFiles = files.map(f => ({
+    ...f,
+    type: 'file',
+    title: f.filename || path.basename(f.path),
+    deepLink: `/api/files/download?path=${encodeURIComponent(f.path)}`
+  }));
+
+  const publicShares = await all(`
+    SELECT * FROM public_shares
+    WHERE user_id = ? AND (label LIKE ? OR file_path LIKE ? OR token LIKE ?)
+    LIMIT ?
+  `, [userId, pattern, pattern, pattern, limit]);
+
+  const fileShares = await all(`
+    SELECT * FROM file_shares
+    WHERE (owner_user_id = ? OR sharee_user_id = ?) AND file_path LIKE ?
+    LIMIT ?
+  `, [userId, userId, pattern, limit]);
+
+  const formattedPublicShares = publicShares.map(s => ({
+    id: s.id,
+    type: 'public_share',
+    title: s.label || s.file_path,
+    token: s.token,
+    filePath: s.file_path,
+    deepLink: `/s/${s.token}`
+  }));
+
+  const formattedFileShares = fileShares.map(s => ({
+    id: s.id,
+    type: 'internal_share',
+    title: s.file_path,
+    filePath: s.file_path,
+    readWrite: s.read_write,
+    deepLink: `/shares/${s.id}`
+  }));
+
+  const shares = [...formattedPublicShares, ...formattedFileShares];
+
+  const tagRows = await all(`
+    SELECT * FROM file_tags
+    WHERE user_id = ? AND (tag_name LIKE ? OR file_path LIKE ?)
+    LIMIT ?
+  `, [userId, pattern, pattern, limit]);
+
+  const tags = tagRows.map(t => ({
+    id: t.id,
+    type: 'tag',
+    tagName: t.tag_name,
+    filePath: t.file_path,
+    color: t.color,
+    deepLink: `/api/tags?tag=${encodeURIComponent(t.tag_name)}`
+  }));
+
+  const ecoRows = await all(`
+    SELECT * FROM ecosystem_ingest_log
+    WHERE user_id = ? AND (file_name LIKE ? OR file_path LIKE ? OR target LIKE ? OR details LIKE ? OR remote_id LIKE ?)
+    LIMIT ?
+  `, [userId, pattern, pattern, pattern, pattern, pattern, limit]);
+
+  const paperlessBase = (process.env.PAPERLESS_URL || 'http://paperless.freeshard.local').replace(/\/$/, '');
+  const immichBase = (process.env.IMMICH_URL || 'http://immich.freeshard.local').replace(/\/$/, '');
+
+  const ecosystem = ecoRows.map(e => {
+    let deepLink = `/${e.target}?remoteId=${e.remote_id || ''}`;
+    if (e.target === 'paperless' && e.remote_id) {
+      deepLink = `${paperlessBase}/documents/${e.remote_id}`;
+    } else if (e.target === 'immich' && e.remote_id) {
+      deepLink = `${immichBase}/photos/${e.remote_id}`;
+    }
+    return {
+      id: e.id,
+      type: e.target,
+      target: e.target,
+      fileName: e.file_name,
+      filePath: e.file_path,
+      remoteId: e.remote_id,
+      status: e.status,
+      details: e.details,
+      deepLink
+    };
+  });
+
+  return {
+    files: formattedFiles,
+    shares,
+    tags,
+    ecosystem
+  };
+}
+
+
+
+

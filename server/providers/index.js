@@ -3,12 +3,14 @@ const LocalProvider = require('./local');
 const GoogleDriveProvider = require('./gdrive');
 const DropboxProvider = require('./dropbox');
 const MOVEitProvider = require('./MOVEitProvider');
+const FailoverProvider = require('./failover');
 
 const providers = {
   local: LocalProvider,
   gdrive: GoogleDriveProvider,
   dropbox: DropboxProvider,
-  moveit: MOVEitProvider
+  moveit: MOVEitProvider,
+  failover: FailoverProvider
 };
 
 /**
@@ -31,6 +33,8 @@ module.exports = {
   GoogleDriveProvider,
   DropboxProvider,
   MOVEitProvider,
+  FailoverProvider,
   providers,
   getProvider
 };
+

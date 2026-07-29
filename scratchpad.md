@@ -1,18 +1,24 @@
 # Freeshard Files Repository Working Memory
 
 ## Active Work & Verification Summary
-- **Issue #75:** Zero-Knowledge End-to-End Encryption Vaults (E2EE) (`server/db.js`, `server/routes/vaults.js`, `server/test/e2e_vaults.test.js`) - PASSED (7/7)
-- **Issue #76:** Intelligent Duplicate File Finder & Storage Cleanup Wizard (`server/utils/duplicate_finder.js`, `server/routes/files.js`, `server/test/duplicate_finder.test.js`) - PASSED (6/6)
-- **Issue #77:** Custom File Tagging, Taxonomy & Color Label System (`server/db.js`, `server/routes/tags.js`, `server/test/file_tagging.test.js`) - PASSED (6/6)
-- **Issue #78:** File Versioning, Revision History & Rollback System (`server/db.js`, `server/utils/file_versioning.js`, `server/routes/files.js`, `server/test/file_versioning.test.js`) - PASSED (5/5)
-- **Issue #79:** Collaborative File Comments & Annotation System (`server/db.js`, `server/routes/comments.js`, `server/test/file_comments.test.js`) - PASSED (6/6)
-- **Issue #80:** Optical Character Recognition (OCR) Text Parsing Service (`server/utils/ocr_service.js`, `server/routes/files.js`, `server/test/ocr_service.test.js`) - PASSED (6/6)
-- **Issue #81:** Public Share Analytics & Access Dashboard (`server/db.js`, `server/routes/public_share.js`, `server/test/share_analytics.test.js`) - PASSED (5/5)
-- **Issue #82:** SFTP / WebDAV Server Proxy Gateway Protocol Support (`server/routes/webdav.js`, `server/index.js`, `server/test/webdav_gateway.test.js`) - PASSED (11/11)
-- **Issue #83:** Automated Scheduled Storage Backup & Disaster Recovery Snapshots (`server/db.js`, `server/routes/backups.js`, `server/test/backup_snapshots.test.js`) - PASSED (5/5)
-- **Issue #84:** Antivirus & Stream Malware Scanner Integration (`server/utils/malware_scanner.js`, `server/routes/files.js`, `server/test/malware_scanner.test.js`) - PASSED (8/8)
-- **Issue #85:** Advanced Office Document Live Collaborative Editing (`server/db.js`, `server/routes/wopi.js`, `server/index.js`, `server/test/wopi_collaborative_editing.test.js`) - PASSED (7/7)
+- **Issue #93:** Bulk Direct Cloud-to-Cloud Backup Sync (`server/utils/cloud_to_cloud_sync.js`, `server/routes/cloud_sync.js`, `server/test/cloud_to_cloud_sync.test.js`) - PASSED (3/3)
+- **Issue #94:** Collaborative Real-Time Presence & Folder Activity Indicators (`server/routes/presence.js`, `server/test/presence_tracking.test.js`) - PASSED (3/3)
+- **Issue #95:** Secure Temporary Dropboxes / File Request Portals (`server/routes/file_requests.js`, `server/test/file_request_portal.test.js`) - PASSED (4/4)
+- **Issue #96:** Automated Photo Metadata & EXIF Geolocation Extractor (`server/utils/exif_extractor.js`, `server/test/exif_extractor.test.js`) - PASSED (6/6)
+- **Issue #97:** WebSockets Real-Time File System Change Push Notifications (`server/utils/sse_events.js`, `server/routes/events.js`, `server/test/sse_events.test.js`) - PASSED (3/3)
+- **Issue #98:** High-Availability Storage Node Failover & Redundancy Gateway (`server/providers/failover.js`, `server/routes/storage.js`, `server/test/storage_failover.test.js`) - PASSED (4/4)
+- **Issue #99:** Automated Compliance Retention & Legal Hold Policies (`server/routes/legal_hold.js`, `server/test/legal_hold.test.js`) - PASSED (5/5)
+- **Issue #100:** Freeshard Ecosystem Universal Search & Cross-App Deep Links (`server/routes/search.js`, `server/test/universal_search.test.js`) - PASSED (4/4)
+
+## Key Architectural Decisions & Patterns
+- `searchUniversal(userId, query)` queries full-text file search (`files_fts`), public & internal file shares (`public_shares`, `file_shares`), user file tags (`file_tags`), and ecosystem ingest records (`ecosystem_ingest_log`).
+- `GET /api/search/universal` returns categorized search results and formats cross-app deep links for Paperless, Immich, public shares, and files.
+- `legal_holds` SQLite table tracks file retention policies, lock expiration dates, reasons, and active/released statuses.
+- `checkActiveLegalHold(userId, path)` intercepts deletion (soft/trash/permanent) and file overwrites in `files.js` and `trash.js` returning HTTP 403 when active hold is present.
+- `file_requests` SQLite table stores token, owner `user_id`, `target_folder`, expiration, and upload caps (`max_uploads`, `upload_count`).
+- High-Availability `FailoverProvider` wraps primary and secondary storage nodes, automatically detecting I/O errors and falling back to replica storage while providing `GET /api/storage/health` telemetry.
 
 ## Suite Status
-- Total Tests: 304 / 304 passing across 63 test suites.
-- Backlog Completion: Issues #1–#85 completely implemented, tested, and verified.
+- Total Tests: 394 / 394 passing across 69 test suites.
+- Backlog Completion: Issues #1–#100 implemented, tested, and verified.
+

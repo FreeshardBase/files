@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const mime = require('mime-types');
 const { requireAuth } = require('../middleware/auth');
 const {
-  createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash, logActivity
+  createTrashItem, getTrashItemsByUser, getTrashItemById, deleteTrashItem, emptyTrash, logActivity, checkActiveLegalHold
 } = require('../db');
 const LocalProvider = require('../providers/local');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
@@ -140,6 +140,11 @@ router.post('/move', async (req, res) => {
       return res.status(400).json({ error: 'target_path is required' });
     }
 
+    const activeHold = await checkActiveLegalHold(userId, target_path);
+    if (activeHold) {
+      return res.status(403).json({ error: `File '${target_path}' is under active legal hold and cannot be deleted` });
+    }
+
     const provider = new LocalProvider({ userRoot: getUserRoot(userId) });
     const meta = await provider.metadata(target_path);
 
@@ -219,6 +224,11 @@ router.delete('/:id', async (req, res) => {
     const item = await getTrashItemById(trashId, userId);
     if (!item) {
       return res.status(404).json({ error: 'Trash item not found' });
+    }
+
+    const activeHold = await checkActiveLegalHold(userId, item.original_path);
+    if (activeHold) {
+      return res.status(403).json({ error: `File '${item.original_path}' is under active legal hold and cannot be deleted` });
     }
 
     const trashPathOnDisk = path.join(getUserTrashDir(userId), item.id);
