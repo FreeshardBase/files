@@ -6,6 +6,13 @@ const { encrypt, decrypt } = require('./utils/crypto');
 
 let dbInstance = null;
 
+function _resetForTest() {
+  if (dbInstance) {
+    try { dbInstance.close(); } catch (e) {}
+    dbInstance = null;
+  }
+}
+
 function getDb() {
   if (!dbInstance) {
     const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'files.db');
@@ -96,6 +103,14 @@ async function initDb() {
   if (!hasClickMode) {
     try { await run("ALTER TABLE users ADD COLUMN preferred_click_mode TEXT DEFAULT 'double';"); } catch (e) {}
   }
+  const hasTheme = columns.some(c => c.name === 'preferred_theme');
+  if (!hasTheme) {
+    try { await run("ALTER TABLE users ADD COLUMN preferred_theme TEXT DEFAULT 'dark';"); } catch (e) {}
+  }
+  const hasRole = columns.some(c => c.name === 'role');
+  if (!hasRole) {
+    try { await run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';"); } catch (e) {}
+  }
 
   // App Passwords table (#2, #3, #21)
   await run(`
@@ -108,7 +123,7 @@ async function initDb() {
     )
   `);
 
-  // Provider Connections table (#3, #5-#9)
+  // Provider Connections table (#3, #5-#9, #41)
   await run(`
     CREATE TABLE IF NOT EXISTS provider_connections (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,10 +137,24 @@ async function initDb() {
       sync_folder TEXT,
       root_path TEXT DEFAULT '/',
       enabled INTEGER DEFAULT 1,
+      health_status TEXT DEFAULT 'unknown',
+      last_health_check TEXT DEFAULT NULL,
+      error_message TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  const providerCols = await all("PRAGMA table_info(provider_connections);");
+  if (!providerCols.some(c => c.name === 'health_status')) {
+    try { await run("ALTER TABLE provider_connections ADD COLUMN health_status TEXT DEFAULT 'unknown';"); } catch (e) {}
+  }
+  if (!providerCols.some(c => c.name === 'last_health_check')) {
+    try { await run("ALTER TABLE provider_connections ADD COLUMN last_health_check TEXT DEFAULT NULL;"); } catch (e) {}
+  }
+  if (!providerCols.some(c => c.name === 'error_message')) {
+    try { await run("ALTER TABLE provider_connections ADD COLUMN error_message TEXT DEFAULT NULL;"); } catch (e) {}
+  }
 
   // Internal File Shares (#3, #14)
   await run(`
@@ -162,6 +191,36 @@ async function initDb() {
       download_count INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
       unlinked_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Cross-Shard Federated File Sharing (#31)
+  await run(`
+    CREATE TABLE IF NOT EXISTS federated_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      target_shard_id TEXT NOT NULL,
+      sharee_handle TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      is_directory INTEGER DEFAULT 0,
+      read_write INTEGER DEFAULT 0,
+      federated_token TEXT NOT NULL UNIQUE,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS inbound_federated_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sender_shard_id TEXT NOT NULL,
+      sender_handle TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      federated_token TEXT NOT NULL,
+      read_write INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -220,6 +279,24 @@ async function initDb() {
     )
   `);
 
+  // Event-Driven File Automation Rules (#37)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_automation_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT,
+      trigger_event TEXT NOT NULL DEFAULT 'file_created',
+      condition_type TEXT NOT NULL,
+      condition_value TEXT NOT NULL,
+      action_type TEXT NOT NULL DEFAULT 'move',
+      action_target TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Activity Log (#22)
   await run(`
     CREATE TABLE IF NOT EXISTS activity_log (
@@ -230,6 +307,33 @@ async function initDb() {
       file_path TEXT NOT NULL,
       file_name TEXT NOT NULL,
       is_directory INTEGER DEFAULT 0,
+      details TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Administrative Audit Log (#44)
+  await run(`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Role-Based File Access Logs (#44)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_access_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'user',
+      action TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'granted',
       details TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     )
@@ -332,6 +436,19 @@ async function initDb() {
       enabled INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Personal Access Tokens (#40 — Webhooks & PATs)
+  await run(`
+    CREATE TABLE IF NOT EXISTS personal_access_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT DEFAULT NULL,
+      last_used_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
@@ -587,23 +704,95 @@ async function initDb() {
     )
   `);
 
+  // Favorites / Quick Access (#28)
+  await run(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      item_type TEXT DEFAULT 'file',
+      title TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, file_path)
+    )
+  `);
+
+  // File Automation Rules (#37)
+  await run(`
+    CREATE TABLE IF NOT EXISTS file_automation_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT,
+      trigger_event TEXT NOT NULL DEFAULT 'file_created',
+      condition_type TEXT NOT NULL,
+      condition_value TEXT NOT NULL,
+      action_type TEXT NOT NULL DEFAULT 'move',
+      action_target TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // TUS Resumable Upload Sessions (#43)
+  await run(`
+    CREATE TABLE IF NOT EXISTS tus_upload_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      filename TEXT,
+      destination_path TEXT NOT NULL,
+      total_bytes INTEGER NOT NULL,
+      offset INTEGER DEFAULT 0,
+      temp_file_path TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Migration Plans (#45) — Bidirectional Cloud Migration Wizard
+  await run(`
+    CREATE TABLE IF NOT EXISTS migration_plans (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      direction TEXT NOT NULL DEFAULT 'local_to_cloud',
+      src_provider_type TEXT NOT NULL DEFAULT 'local',
+      dst_provider_type TEXT NOT NULL DEFAULT 's3',
+      src_path TEXT NOT NULL,
+      dst_path TEXT NOT NULL,
+      total_files INTEGER DEFAULT 0,
+      total_bytes INTEGER DEFAULT 0,
+      completed_files INTEGER DEFAULT 0,
+      failed_files INTEGER DEFAULT 0,
+      is_dry_run INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_log TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      finished_at TEXT DEFAULT NULL
+    )
+  `);
+
   // Ensure fallback default-user exists for unauthenticated operations (#44)
   await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
 
 // ── CRUD Helpers ─────────────────────────────────────────────────────────────
 
-async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null, displayName = null) {
+async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null, displayName = null, preferredLocale = null, role = null) {
+  const userRole = role || 'user';
   await run(`
-    INSERT INTO users (id, username, email, display_name, auth_type, quota_bytes, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO users (id, username, email, display_name, auth_type, quota_bytes, preferred_locale, role, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       username = excluded.username,
       email = excluded.email,
       display_name = COALESCE(excluded.display_name, users.display_name),
       quota_bytes = excluded.quota_bytes,
+      preferred_locale = COALESCE(excluded.preferred_locale, users.preferred_locale),
+      role = COALESCE(excluded.role, users.role),
       updated_at = datetime('now')
-  `, [id, username, email, displayName, authType, quotaBytes]);
+  `, [id, username, email, displayName, authType, quotaBytes, preferredLocale, userRole]);
   return get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
@@ -678,6 +867,50 @@ async function getFileSharesForSharee(shareeUserId) {
 async function deleteFileShare(shareId, ownerUserId) {
   const res = await run('DELETE FROM file_shares WHERE id = ? AND owner_user_id = ?', [shareId, ownerUserId]);
   return res.changes > 0;
+}
+
+// ── Cross-Shard Federated Sharing Helpers (#31) ───────────────────────────
+
+async function createFederatedShare(ownerUserId, targetShardId, shareeHandle, filePath, isDirectory = 0, readWrite = 0, federatedToken = null) {
+  const token = federatedToken || require('crypto').randomBytes(16).toString('hex');
+  const res = await run(`
+    INSERT INTO federated_shares (owner_user_id, target_shard_id, sharee_handle, file_path, is_directory, read_write, federated_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [ownerUserId, targetShardId, shareeHandle, filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0, token]);
+  return get('SELECT * FROM federated_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getFederatedSharesByOwner(ownerUserId) {
+  return all(`
+    SELECT * FROM federated_shares
+    WHERE owner_user_id = ? AND status = 'active'
+    ORDER BY created_at DESC
+  `, [ownerUserId]);
+}
+
+async function getFederatedShareByToken(token) {
+  return get('SELECT * FROM federated_shares WHERE federated_token = ? AND status = \'active\'', [token]);
+}
+
+async function deleteFederatedShare(shareId, ownerUserId) {
+  const res = await run('DELETE FROM federated_shares WHERE id = ? AND owner_user_id = ?', [shareId, ownerUserId]);
+  return res.changes > 0;
+}
+
+async function createInboundFederatedShare(recipientUserId, senderShardId, senderHandle, fileName, federatedToken, readWrite = 0) {
+  const res = await run(`
+    INSERT INTO inbound_federated_shares (recipient_user_id, sender_shard_id, sender_handle, file_name, federated_token, read_write)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [recipientUserId, senderShardId, senderHandle, fileName, federatedToken, readWrite ? 1 : 0]);
+  return get('SELECT * FROM inbound_federated_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getInboundFederatedShares(recipientUserId) {
+  return all(`
+    SELECT * FROM inbound_federated_shares
+    WHERE recipient_user_id = ? AND status = 'active'
+    ORDER BY created_at DESC
+  `, [recipientUserId]);
 }
 
 // ── Public Link Sharing Helpers (#15, #53) ───────────────────────────────────
@@ -762,6 +995,7 @@ async function updateSharePathsOnMove(userId, srcPath, dstPath) {
   // Single file move update
   await run(`UPDATE file_shares SET file_path = ? WHERE file_path = ? AND owner_user_id = ?`, [dstPath, srcPath, userId]);
   await run(`UPDATE public_shares SET file_path = ? WHERE file_path = ? AND user_id = ?`, [dstPath, srcPath, userId]);
+  await run(`UPDATE federated_shares SET file_path = ? WHERE file_path = ? AND owner_user_id = ?`, [dstPath, srcPath, userId]);
 
   // Subfolder prefix cascading update
   const srcPrefix = srcPath.endsWith('/') ? srcPath : `${srcPath}/`;
@@ -778,7 +1012,47 @@ async function updateSharePathsOnMove(userId, srcPath, dstPath) {
     SET file_path = ? || SUBSTR(file_path, ?)
     WHERE file_path LIKE ? || '%' AND user_id = ?
   `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
+
+  await run(`
+    UPDATE federated_shares
+    SET file_path = ? || SUBSTR(file_path, ?)
+    WHERE file_path LIKE ? || '%' AND owner_user_id = ?
+  `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
 }
+
+// ── Federated Sharing Helpers (#31) ──────────────────────────────────────────
+
+async function createFederatedShare(ownerUserId, targetShardId, shareeHandle, filePath, isDirectory = 0, readWrite = 0, federatedToken = null) {
+  const token = federatedToken || ('fed_' + crypto.randomBytes(16).toString('hex'));
+  const res = await run(`
+    INSERT INTO federated_shares (owner_user_id, target_shard_id, sharee_handle, file_path, is_directory, read_write, federated_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [ownerUserId, targetShardId, shareeHandle, filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0, token]);
+  return get('SELECT * FROM federated_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getFederatedSharesByOwner(ownerUserId) {
+  return all('SELECT * FROM federated_shares WHERE owner_user_id = ? ORDER BY created_at DESC', [ownerUserId]);
+}
+
+async function createInboundFederatedShare(userId, senderShardId, senderHandle, fileName, inboundToken = null, readWrite = 0) {
+  const token = inboundToken || ('inbound_' + crypto.randomBytes(16).toString('hex'));
+  const res = await run(`
+    INSERT INTO inbound_federated_shares (recipient_user_id, sender_shard_id, sender_handle, file_name, federated_token, read_write)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [userId, senderShardId, senderHandle, fileName, token, readWrite ? 1 : 0]);
+  return get('SELECT * FROM inbound_federated_shares WHERE id = ?', [res.lastID]);
+}
+
+async function getInboundFederatedShares(userId) {
+  return all('SELECT * FROM inbound_federated_shares WHERE recipient_user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function deleteFederatedShare(shareId, ownerUserId) {
+  const res = await run('DELETE FROM federated_shares WHERE id = ? AND owner_user_id = ?', [shareId, ownerUserId]);
+  return res.changes > 0;
+}
+
 
 // ── Trash & Soft-Delete Helpers (#18) ────────────────────────────────────────
 
@@ -834,6 +1108,69 @@ async function getActivityLogByUser(userId, limit = 50, offset = 0) {
     ORDER BY id DESC
     LIMIT ? OFFSET ?
   `, [userId, limit, offset]);
+}
+
+async function getUserRole(userId) {
+  const u = await get('SELECT role FROM users WHERE id = ?', [userId]);
+  return u ? (u.role || 'user') : 'user';
+}
+
+const VALID_ROLES = ['admin', 'user', 'viewer', 'editor'];
+async function updateUserRole(userId, role) {
+  if (!VALID_ROLES.includes(role)) {
+    throw new Error(`Invalid role: ${role}. Allowed roles: ${VALID_ROLES.join(', ')}`);
+  }
+  await run('UPDATE users SET role = ?, updated_at = datetime("now") WHERE id = ?', [role, userId]);
+  return getUserById(userId);
+}
+
+async function getAllUsers() {
+  return all('SELECT id, username, email, display_name, role, created_at, updated_at FROM users ORDER BY username ASC');
+}
+
+async function logAdminAction(adminId, action, targetUserId = null, details = null, ipAddress = null) {
+  const res = await run(
+    'INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address) VALUES (?, ?, ?, ?, ?)',
+    [adminId, action, targetUserId, details, ipAddress]
+  );
+  return get('SELECT * FROM admin_audit_log WHERE id = ?', [res.lastID]);
+}
+
+async function getAdminAuditLogs(limit = 50, offset = 0) {
+  return all(
+    'SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT ? OFFSET ?',
+    [limit, offset]
+  );
+}
+
+async function logFileAccess(userId, role, action, filePath, status = 'granted', details = null) {
+  const userRole = role || await getUserRole(userId);
+  const res = await run(
+    'INSERT INTO file_access_logs (user_id, role, action, file_path, status, details) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, userRole, action, filePath, status, details]
+  );
+  return get('SELECT * FROM file_access_logs WHERE id = ?', [res.lastID]);
+}
+
+async function getFileAccessLogs(options = {}) {
+  const { userId, status, filePath, limit = 50, offset = 0 } = options;
+  let query = 'SELECT * FROM file_access_logs WHERE 1=1';
+  const params = [];
+  if (userId) {
+    query += ' AND user_id = ?';
+    params.push(userId);
+  }
+  if (status) {
+    query += ' AND status = ?';
+    params.push(status);
+  }
+  if (filePath) {
+    query += ' AND file_path = ?';
+    params.push(filePath);
+  }
+  query += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+  return all(query, params);
 }
 
 async function getUserById(id) {
@@ -1006,6 +1343,38 @@ async function updateWebhook(id, userId, { url, secret, events, enabled }) {
   params.push(id, userId);
   await run(`UPDATE user_webhooks SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
   return getWebhookById(id, userId);
+}
+
+/**
+ * Personal Access Token Helpers (#40)
+ */
+async function createPersonalAccessToken({ userId, name, expiresAt = null }) {
+  const token = 'fs_pat_' + crypto.randomBytes(24).toString('hex');
+  const res = await run(`
+    INSERT INTO personal_access_tokens (user_id, name, token, expires_at)
+    VALUES (?, ?, ?, ?)
+  `, [userId, name, token, expiresAt || null]);
+  return get(`SELECT * FROM personal_access_tokens WHERE id = ? AND user_id = ?`, [res.lastID, userId]);
+}
+
+async function getPersonalAccessTokensByUser(userId) {
+  return all(`SELECT id, user_id, name, token, expires_at, last_used_at, created_at FROM personal_access_tokens WHERE user_id = ? ORDER BY id DESC`, [userId]);
+}
+
+async function getPersonalAccessTokenByToken(token) {
+  if (!token) return null;
+  const pat = await get(`SELECT * FROM personal_access_tokens WHERE token = ?`, [token]);
+  if (!pat) return null;
+  if (pat.expires_at && new Date(pat.expires_at) < new Date()) {
+    return null;
+  }
+  await run(`UPDATE personal_access_tokens SET last_used_at = datetime('now') WHERE id = ?`, [pat.id]);
+  return pat;
+}
+
+async function deletePersonalAccessToken(userId, id) {
+  const res = await run(`DELETE FROM personal_access_tokens WHERE id = ? AND user_id = ?`, [id, userId]);
+  return res.changes > 0;
 }
 
 /**
@@ -1355,132 +1724,6 @@ async function deleteWopiLock(fileId) {
   return run('DELETE FROM wopi_locks WHERE file_id = ?', [fileId]);
 }
 
-module.exports = {
-  getDb,
-  run,
-  get,
-  all,
-  closeDb,
-  initDb,
-  upsertUser,
-  getUserById,
-  updateUserClickMode,
-  addProviderConnection,
-  getProviderConnections,
-  createFileShare,
-  getFileSharesByOwner,
-  getFileSharesByPath,
-  getFileSharesForSharee,
-  deleteFileShare,
-  createPublicShare,
-  updatePublicShare,
-  getPublicShareByToken,
-  getPublicSharesByUser,
-  getPublicSharesByPath,
-  deletePublicShare,
-  incrementPublicShareDownloads,
-  updateSharePathsOnMove,
-  createTrashItem,
-  getTrashItemsByUser,
-  getTrashItemById,
-  deleteTrashItem,
-  emptyTrash,
-  cleanupExpiredTrashItems,
-  logActivity,
-  getActivityLogByUser,
-  createTransfer,
-  getTransfersByUser,
-  getTransferById,
-  updateTransferProgress,
-  cancelTransfer,
-  createEcosystemIngestLog,
-  getEcosystemIngestLogs,
-  createSyncJob,
-  getSyncJobById,
-  getSyncJobsByUser,
-  updateSyncJobStatus,
-  createWebhook,
-  getWebhooksByUser,
-  getWebhookById,
-  deleteWebhook,
-  updateWebhook,
-  indexFileInFts,
-  deleteFileFromFts,
-  updateFtsPathOnMove,
-  searchFulltext,
-  reindexUserFiles,
-  createVault,
-  getVaultsByUser,
-  getVaultById,
-  assignTag,
-  removeTag,
-  getTagsByUser,
-  getNextVersionNumber,
-  createFileVersion,
-  getFileVersions,
-  getFileVersionById,
-  createFileComment,
-  getFileComments,
-  resolveFileComment,
-  deleteFileComment,
-  logShareAccess,
-  getShareAnalytics,
-  createBackupJob,
-  getBackupJobsByUser,
-  getBackupJobById,
-  updateBackupJobStatus,
-  createWopiToken,
-  getWopiToken,
-  deleteWopiToken,
-  getWopiLock,
-  setWopiLock,
-  deleteWopiLock,
-  getBandwidthSettings,
-  setBandwidthSettings,
-  saveFileChecksum,
-  getFileChecksum,
-  getAllChecksums,
-  updateChecksumStatus,
-  getCorruptedFiles,
-  deleteFileChecksum,
-  saveTranscription,
-  getTranscriptionsByUser,
-  getTranscriptionByFile,
-  deleteTranscription,
-  createFilingRule,
-  getFilingRulesByUser,
-  getFilingRuleById,
-  updateFilingRule,
-  deleteFilingRule,
-  createSecuritySession,
-  getSecuritySessionsByUser,
-  getSecuritySessionById,
-  deleteSecuritySession,
-  revokeAllOtherSessions,
-  getUserBranding,
-  setUserBranding,
-  deleteUserBranding,
-  createCloudSyncJob,
-  getCloudSyncJobsByUser,
-  getCloudSyncJobById,
-  updateCloudSyncJob,
-  deleteCloudSyncJob,
-  recordPresenceHeartbeat,
-  getActiveFolderPresence,
-  removeUserPresence,
-  createFileRequest,
-  getFileRequestByToken,
-  getFileRequestsByUser,
-  deleteFileRequest,
-  incrementFileRequestUploads,
-  createLegalHold,
-  getLegalHoldsByUser,
-  getLegalHoldById,
-  releaseLegalHold,
-  checkActiveLegalHold,
-  searchUniversal
-};
-
 async function getBandwidthSettings(userId) {
   const row = await get('SELECT upload_limit_kbps, download_limit_kbps FROM user_bandwidth_settings WHERE user_id = ?', [userId]);
   if (!row) {
@@ -1633,6 +1876,52 @@ async function deleteFilingRule(userId, ruleId) {
   const res = await run('DELETE FROM filing_rules WHERE user_id = ? AND id = ?', [userId, ruleId]);
   return res.changes > 0;
 }
+
+// ── Event-Driven File Automation Rules Helpers (#37) ─────────────────────────
+
+async function createAutomationRule({ userId, name = '', trigger_event = 'file_created', condition_type, condition_value, action_type = 'move', action_target, is_active = 1, priority = 0 }) {
+  const res = await run(`
+    INSERT INTO file_automation_rules (user_id, name, trigger_event, condition_type, condition_value, action_type, action_target, is_active, priority)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [userId, name, trigger_event, condition_type, condition_value, action_type, action_target, is_active ? 1 : 0, priority || 0]);
+  return get('SELECT * FROM file_automation_rules WHERE id = ?', [res.lastID]);
+}
+
+async function getAutomationRulesByUser(userId) {
+  return all('SELECT * FROM file_automation_rules WHERE user_id = ? ORDER BY priority DESC, id ASC', [userId]);
+}
+
+async function getAutomationRuleById(userId, ruleId) {
+  return get('SELECT * FROM file_automation_rules WHERE user_id = ? AND id = ?', [userId, ruleId]);
+}
+
+async function updateAutomationRule(userId, ruleId, updates = {}) {
+  const existing = await getAutomationRuleById(userId, ruleId);
+  if (!existing) return null;
+
+  const name = updates.name !== undefined ? updates.name : existing.name;
+  const trigger_event = updates.trigger_event !== undefined ? updates.trigger_event : existing.trigger_event;
+  const condition_type = updates.condition_type !== undefined ? updates.condition_type : existing.condition_type;
+  const condition_value = updates.condition_value !== undefined ? updates.condition_value : existing.condition_value;
+  const action_type = updates.action_type !== undefined ? updates.action_type : existing.action_type;
+  const action_target = updates.action_target !== undefined ? updates.action_target : existing.action_target;
+  const is_active = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
+  const priority = updates.priority !== undefined ? updates.priority : existing.priority;
+
+  await run(`
+    UPDATE file_automation_rules
+    SET name = ?, trigger_event = ?, condition_type = ?, condition_value = ?, action_type = ?, action_target = ?, is_active = ?, priority = ?, updated_at = datetime('now')
+    WHERE user_id = ? AND id = ?
+  `, [name, trigger_event, condition_type, condition_value, action_type, action_target, is_active, priority, userId, ruleId]);
+
+  return getAutomationRuleById(userId, ruleId);
+}
+
+async function deleteAutomationRule(userId, ruleId) {
+  const res = await run('DELETE FROM file_automation_rules WHERE user_id = ? AND id = ?', [userId, ruleId]);
+  return res.changes > 0;
+}
+
 
 // ── Session & Device Security Helpers (#91) ───────────────────────────────────
 
@@ -1919,6 +2208,47 @@ async function checkActiveLegalHold(userId, filePath) {
   return null;
 }
 
+// ── Favorites / Quick Access Helpers (#28) ───────────────────────────────────
+
+async function addFavorite(userId, filePath, itemType = 'file', title = null) {
+  const cleanPath = filePath.startsWith('/') ? filePath : '/' + filePath;
+  await run(`
+    INSERT INTO favorites (user_id, file_path, item_type, title)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, file_path) DO UPDATE SET
+      item_type = excluded.item_type,
+      title = excluded.title
+  `, [userId, cleanPath, itemType, title]);
+  return get('SELECT * FROM favorites WHERE user_id = ? AND file_path = ?', [userId, cleanPath]);
+}
+
+async function removeFavorite(userId, filePath) {
+  const cleanPath = filePath.startsWith('/') ? filePath : '/' + filePath;
+  await run('DELETE FROM favorites WHERE user_id = ? AND file_path = ?', [userId, cleanPath]);
+  const prefix = cleanPath.endsWith('/') ? cleanPath : `${cleanPath}/`;
+  await run('DELETE FROM favorites WHERE user_id = ? AND file_path LIKE ? || \'%\'', [userId, prefix]);
+}
+
+async function getFavoritesByUser(userId) {
+  return all('SELECT * FROM favorites WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+}
+
+async function updateFavoritePathsOnMove(userId, srcPath, dstPath) {
+  const cleanSrc = srcPath.startsWith('/') ? srcPath : '/' + srcPath;
+  const cleanDst = dstPath.startsWith('/') ? dstPath : '/' + dstPath;
+
+  await run('UPDATE favorites SET file_path = ? WHERE file_path = ? AND user_id = ?', [cleanDst, cleanSrc, userId]);
+
+  const srcPrefix = cleanSrc.endsWith('/') ? cleanSrc : `${cleanSrc}/`;
+  const dstPrefix = cleanDst.endsWith('/') ? cleanDst : `${cleanDst}/`;
+
+  await run(`
+    UPDATE favorites
+    SET file_path = ? || SUBSTR(file_path, ?)
+    WHERE file_path LIKE ? || '%' AND user_id = ?
+  `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
+}
+
 async function searchUniversal(userId, query, limit = 50) {
   if (!query || typeof query !== 'string' || !query.trim()) {
     return { files: [], shares: [], tags: [], ecosystem: [] };
@@ -2031,7 +2361,237 @@ async function searchUniversal(userId, query, limit = 50) {
     ecosystem
   };
 }
+async function createTusUploadSession({ id, userId, filename, destinationPath, totalBytes, tempFilePath, metadata = null }) {
+  const sql = `
+    INSERT INTO tus_upload_sessions (id, user_id, filename, destination_path, total_bytes, offset, temp_file_path, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now'), datetime('now'))
+  `;
+  await run(sql, [id, userId, filename, destinationPath, totalBytes, tempFilePath, metadata]);
+  return getTusUploadSession(id, userId);
+}
 
+async function getTusUploadSession(id, userId) {
+  const sql = `SELECT * FROM tus_upload_sessions WHERE id = ? AND user_id = ?`;
+  return get(sql, [id, userId]);
+}
 
+async function updateTusUploadSessionOffset(id, offset) {
+  const sql = `UPDATE tus_upload_sessions SET offset = ?, updated_at = datetime('now') WHERE id = ?`;
+  await run(sql, [offset, id]);
+}
 
+async function deleteTusUploadSession(id) {
+  const sql = `DELETE FROM tus_upload_sessions WHERE id = ?`;
+  await run(sql, [id]);
+}
 
+// ── Migration Plan Helpers (#45) ─────────────────────────────────────────────
+
+/**
+ * Persist a migration plan record (created by the wizard).
+ */
+async function createMigrationPlan({
+  id, userId, direction = 'local_to_cloud',
+  srcProviderType = 'local', dstProviderType = 's3',
+  srcPath, dstPath,
+  totalFiles = 0, totalBytes = 0, isDryRun = 0
+}) {
+  await run(`
+    INSERT INTO migration_plans (
+      id, user_id, direction, src_provider_type, dst_provider_type,
+      src_path, dst_path, total_files, total_bytes, is_dry_run, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+  `, [id, userId, direction, srcProviderType, dstProviderType,
+      srcPath, dstPath, totalFiles, totalBytes, isDryRun ? 1 : 0]);
+  return get('SELECT * FROM migration_plans WHERE id = ?', [id]);
+}
+
+/**
+ * Fetch a single migration plan by ID, scoped to userId.
+ */
+async function getMigrationPlanById(id, userId) {
+  return get('SELECT * FROM migration_plans WHERE id = ? AND user_id = ?', [id, userId]);
+}
+
+/**
+ * List all migration plans for a user, newest first.
+ */
+async function listMigrationPlans(userId, limit = 50, offset = 0) {
+  return all(
+    'SELECT * FROM migration_plans WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    [userId, limit, offset]
+  );
+}
+
+/**
+ * Update migration plan status and progress counters.
+ */
+async function updateMigrationPlanStatus(id, status, { completedFiles, failedFiles, errorLog, finishedAt } = {}) {
+  const updates = ['status = ?'];
+  const params = [status];
+  if (completedFiles !== undefined) { updates.push('completed_files = ?'); params.push(completedFiles); }
+  if (failedFiles    !== undefined) { updates.push('failed_files = ?');    params.push(failedFiles); }
+  if (errorLog       !== undefined) { updates.push('error_log = ?');       params.push(errorLog); }
+  updates.push('finished_at = ?');
+  params.push(finishedAt || new Date().toISOString());
+  params.push(id);
+  await run(`UPDATE migration_plans SET ${updates.join(', ')} WHERE id = ?`, params);
+  return get('SELECT * FROM migration_plans WHERE id = ?', [id]);
+}
+
+module.exports = {
+  initDb,
+  closeDb,
+  _resetForTest,
+  upsertUser,
+  getUserById,
+  updateUserClickMode,
+  addProviderConnection,
+  getProviderConnections,
+  createFileShare,
+  getFileSharesByOwner,
+  getFileSharesByPath,
+  getFileSharesForSharee,
+  deleteFileShare,
+  createFederatedShare,
+  getFederatedSharesByOwner,
+  getFederatedShareByToken,
+  deleteFederatedShare,
+  createInboundFederatedShare,
+  getInboundFederatedShares,
+  createPublicShare,
+  updatePublicShare,
+  getPublicShareByToken,
+  getPublicSharesByUser,
+  getPublicSharesByPath,
+  deletePublicShare,
+  incrementPublicShareDownloads,
+  updateSharePathsOnMove,
+  createTrashItem,
+  getTrashItemsByUser,
+  getTrashItemById,
+  deleteTrashItem,
+  emptyTrash,
+  cleanupExpiredTrashItems,
+  logActivity,
+  getActivityLogByUser,
+  createTransfer,
+  getTransfersByUser,
+  getTransferById,
+  updateTransferProgress,
+  cancelTransfer,
+  createEcosystemIngestLog,
+  getEcosystemIngestLogs,
+  createSyncJob,
+  getSyncJobById,
+  getSyncJobsByUser,
+  updateSyncJobStatus,
+  createWebhook,
+  getWebhooksByUser,
+  getWebhookById,
+  deleteWebhook,
+  updateWebhook,
+  indexFileInFts,
+  deleteFileFromFts,
+  updateFtsPathOnMove,
+  searchFulltext,
+  reindexUserFiles,
+  createVault,
+  getVaultsByUser,
+  getVaultById,
+  assignTag,
+  removeTag,
+  getTagsByUser,
+  getNextVersionNumber,
+  createFileVersion,
+  getFileVersions,
+  getFileVersionById,
+  createFileComment,
+  getFileComments,
+  resolveFileComment,
+  deleteFileComment,
+  logShareAccess,
+  getShareAnalytics,
+  createBackupJob,
+  getBackupJobsByUser,
+  getBackupJobById,
+  updateBackupJobStatus,
+  createWopiToken,
+  getWopiToken,
+  deleteWopiToken,
+  getWopiLock,
+  setWopiLock,
+  deleteWopiLock,
+  getBandwidthSettings,
+  setBandwidthSettings,
+  saveFileChecksum,
+  getFileChecksum,
+  getAllChecksums,
+  updateChecksumStatus,
+  getCorruptedFiles,
+  deleteFileChecksum,
+  saveTranscription,
+  getTranscriptionsByUser,
+  getTranscriptionByFile,
+  deleteTranscription,
+  createFilingRule,
+  getFilingRulesByUser,
+  getFilingRuleById,
+  updateFilingRule,
+  deleteFilingRule,
+  createAutomationRule,
+  getAutomationRulesByUser,
+  getAutomationRuleById,
+  updateAutomationRule,
+  deleteAutomationRule,
+  createSecuritySession,
+  getSecuritySessionsByUser,
+  getSecuritySessionById,
+  deleteSecuritySession,
+  revokeAllOtherSessions,
+  getUserBranding,
+  setUserBranding,
+  deleteUserBranding,
+  createCloudSyncJob,
+  getCloudSyncJobsByUser,
+  getCloudSyncJobById,
+  updateCloudSyncJob,
+  deleteCloudSyncJob,
+  recordPresenceHeartbeat,
+  getActiveFolderPresence,
+  removeUserPresence,
+  createFileRequest,
+  getFileRequestByToken,
+  getFileRequestsByUser,
+  deleteFileRequest,
+  incrementFileRequestUploads,
+  createLegalHold,
+  getLegalHoldsByUser,
+  getLegalHoldById,
+  releaseLegalHold,
+  checkActiveLegalHold,
+  addFavorite,
+  removeFavorite,
+  getFavoritesByUser,
+  updateFavoritePathsOnMove,
+  searchUniversal,
+  createPersonalAccessToken,
+  getPersonalAccessTokensByUser,
+  getPersonalAccessTokenByToken,
+  deletePersonalAccessToken,
+  createTusUploadSession,
+  getTusUploadSession,
+  updateTusUploadSessionOffset,
+  deleteTusUploadSession,
+  getUserRole,
+  updateUserRole,
+  getAllUsers,
+  logAdminAction,
+  getAdminAuditLogs,
+  logFileAccess,
+  getFileAccessLogs,
+  createMigrationPlan,
+  getMigrationPlanById,
+  listMigrationPlans,
+  updateMigrationPlanStatus,
+};
