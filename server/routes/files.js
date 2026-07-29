@@ -6,7 +6,7 @@ const Busboy = require('busboy');
 const crypto = require('crypto');
 const LocalProvider = require('../providers/local');
 const { validateUserIsolation } = require('../middleware/isolation');
-const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles, indexFileInFts, checkActiveLegalHold } = require('../db');
+const { updateSharePathsOnMove, createTrashItem, logActivity, updateFtsPathOnMove, deleteFileFromFts, searchFulltext, reindexUserFiles, indexFileInFts, checkActiveLegalHold, addFavorite, removeFavorite, getFavoritesByUser, updateFavoritePathsOnMove } = require('../db');
 const { decodeUtf8Filename } = require('../utils/utf8');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 const { emitSSEEvent } = require('../utils/sse_events');
@@ -128,6 +128,40 @@ router.get('/list', async (req, res) => {
       return res.status(403).json({ error: err.message });
     }
     res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Favorites / Quick Access Endpoints (#28)
+ */
+router.get('/favorites', async (req, res) => {
+  try {
+    const favorites = await getFavoritesByUser(req.userId);
+    res.json({ success: true, favorites });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/favorites', async (req, res) => {
+  try {
+    const { path: filePath, item_type = 'file', title } = req.body;
+    if (!filePath) return res.status(400).json({ error: 'path is required' });
+    const fav = await addFavorite(req.userId, filePath, item_type, title || path.basename(filePath));
+    res.status(201).json({ success: true, favorite: fav });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/favorites', async (req, res) => {
+  try {
+    const filePath = req.query.path || (req.body && req.body.path);
+    if (!filePath) return res.status(400).json({ error: 'path parameter is required' });
+    await removeFavorite(req.userId, filePath);
+    res.json({ success: true, unpinned: filePath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -299,6 +333,7 @@ router.post('/move', async (req, res) => {
     // Invariant: Update internal & public share link target paths on move (#14, #15, #45)
     await updateSharePathsOnMove(userId, src, dst);
     await updateFtsPathOnMove(userId, src, dst).catch(() => {});
+    await updateFavoritePathsOnMove(userId, src, dst).catch(() => {});
     await logActivity(userId, 'move', src, path.basename(src), 0, JSON.stringify({ dst }));
     emitSSEEvent(userId, 'file_renamed', { src, dst });
 
@@ -345,12 +380,15 @@ router.delete('/', async (req, res) => {
 
     if (isPermanent) {
       await provider.delete(requestedPath);
+      await removeFavorite(userId, requestedPath).catch(() => {});
       await deleteFileFromFts(userId, requestedPath).catch(() => {});
       await logActivity(userId, 'delete_permanent', requestedPath, path.basename(requestedPath), 0);
       await dispatchWebhookEvent(userId, 'file_deleted', { path: requestedPath, permanent: true }).catch(() => {});
       emitSSEEvent(userId, 'file_deleted', { path: requestedPath, permanent: true });
       return res.json({ success: true, permanent: true });
     }
+
+    await removeFavorite(userId, requestedPath).catch(() => {});
 
     // Soft-delete: Move to user's isolated .trash/ directory
     const meta = await provider.metadata(requestedPath);
@@ -439,6 +477,7 @@ router.post('/batch/move', async (req, res) => {
       if (item.src && item.dst) {
         await provider.move(item.src, item.dst);
         await updateSharePathsOnMove(userId, item.src, item.dst);
+        await updateFavoritePathsOnMove(userId, item.src, item.dst).catch(() => {});
         await logActivity(userId, 'move', item.src, path.basename(item.src), 0, JSON.stringify({ dst: item.dst }));
         movedCount++;
       }
@@ -729,6 +768,55 @@ router.post('/versions/rollback', async (req, res) => {
   } catch (err) {
     const statusCode = err.statusCode || 500;
     res.status(statusCode).json({ error: err.message });
+  }
+});
+
+// ── Favorites / Quick Access (#28) ──────────────────────────────────────────
+
+/**
+ * POST /api/files/local/favorites
+ * Pin a file or folder to the current user's favorites sidebar.
+ * Body: { path, item_type?, title? }
+ */
+router.post('/favorites', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { path: filePath, item_type = 'file', title = null } = req.body || {};
+    if (!filePath) return res.status(400).json({ error: 'path is required' });
+    const favorite = await addFavorite(userId, filePath, item_type, title);
+    res.status(201).json({ success: true, favorite });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/files/local/favorites
+ * List all pinned favorites for the current user.
+ */
+router.get('/favorites', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const favorites = await getFavoritesByUser(userId);
+    res.json({ success: true, favorites });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/files/local/favorites?path=<filePath>
+ * Unpin a file or folder from the current user's favorites.
+ */
+router.delete('/favorites', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ error: 'path query parameter is required' });
+    await removeFavorite(userId, filePath);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
