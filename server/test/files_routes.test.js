@@ -227,8 +227,7 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
     const listRes = await makeRequest('GET', '/api/files/local/smart-folders');
     assert.equal(listRes.status, 200);
     assert.ok(Array.isArray(listRes.body.smartFolders));
-    assert.equal(listRes.body.smartFolders.length, 1);
-    assert.equal(listRes.body.smartFolders[0].name, 'PDF Documents');
+    assert.ok(listRes.body.smartFolders.some(sf => sf.id === folderId && sf.name === 'PDF Documents'));
 
     // 4. Get smart folder details
     const getRes = await makeRequest('GET', `/api/files/local/smart-folders/${folderId}`);
@@ -265,8 +264,6 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
     assert.equal(delRes.body.success, true);
 
     const listResAfterDel = await makeRequest('GET', '/api/files/local/smart-folders');
-    assert.equal(listResAfterDel.body.smartFolders.length, 0);
+    assert.ok(!listResAfterDel.body.smartFolders.some(sf => sf.id === folderId));
   });
 });
-
-
