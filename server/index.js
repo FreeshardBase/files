@@ -42,8 +42,8 @@ const { i18nMiddleware } = require('./utils/i18n');
 const app = express();
 const PORT = process.env.PORT || 3005;
 
-// Trust reverse proxy (Nginx / SSH Tunnel) so secure session cookies are set correctly (#2)
-app.set('trust proxy', 1);
+// Trust reverse proxy (Nginx / Caddy / Traefik / Authelia) so secure session cookies are set correctly (#2)
+app.set('trust proxy', true);
 
 // HTTP Request Logger
 app.use((req, res, next) => {
@@ -61,7 +61,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: 'auto',
     sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }

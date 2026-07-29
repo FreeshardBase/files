@@ -233,7 +233,10 @@ router.get('/callback', async (req, res) => {
     req.session.email = email;
     req.session.avatarUrl = avatarUrl;
 
-    res.redirect('/#/files');
+    req.session.save((saveErr) => {
+      if (saveErr) console.error('[OIDC Session Save Error]', saveErr);
+      res.redirect('/#/files');
+    });
   } catch (err) {
     console.error('[OIDC Callback Error]', err);
     res.status(401).send(`Authentication failed: ${err.message}`);
