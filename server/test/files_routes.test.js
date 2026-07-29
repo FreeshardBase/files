@@ -155,6 +155,7 @@ describe('Files & Provider API Route Integration Tests (#4, #7, #50, #56, Regres
   });
 
   test('Favorites API — Pin, list, move, and unpin files/folders (#28)', async () => {
+    await db.run('DELETE FROM favorites WHERE user_id = ?', ['test_route_user']);
     // 1. Pin a file and a folder
     const pinRes1 = await makeRequest('POST', '/api/files/local/favorites', {
       path: '/doc1.txt',
