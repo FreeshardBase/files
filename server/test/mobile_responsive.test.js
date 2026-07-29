@@ -43,3 +43,32 @@ describe('Mobile & Touch Responsiveness Strategy (#67)', () => {
     assert.ok(cssContent.includes('white-space: nowrap'));
   });
 });
+
+describe('Design Guide Alignment — Visual Identity & Responsive Theme (#17)', () => {
+  const cssPath = path.join(__dirname, '../../public/css/app.css');
+  let cssContent = '';
+
+  try {
+    cssContent = fs.readFileSync(cssPath, 'utf8');
+  } catch (err) {
+    console.error('Failed to read app.css:', err);
+  }
+
+  test('defines glassmorphism CSS variables and dark mode palette tokens in app.css', () => {
+    assert.ok(cssContent.includes('--glass-bg'));
+    assert.ok(cssContent.includes('--glass-border'));
+    assert.ok(cssContent.includes('--glass-blur'));
+  });
+
+  test('defines glassmorphism panel utility class with backdrop-filter', () => {
+    assert.ok(cssContent.includes('.glass-panel'));
+    assert.ok(cssContent.includes('backdrop-filter: blur('));
+  });
+
+  test('defines micro-animations and smooth transition effects', () => {
+    assert.ok(cssContent.includes('.micro-hover'));
+    assert.ok(cssContent.includes('.micro-bounce'));
+    assert.ok(cssContent.includes('@keyframes microPulse'));
+  });
+});
+

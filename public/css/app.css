@@ -33,8 +33,11 @@
   --border-w: 1px;        /* structural */
   --border-w-glyph: 1.5px;/* glyph / arc outlines */
 
-  /* elevation: NONE. No drop shadows, no glow. Depth = border + surface tone. */
+  /* elevation & glassmorphism */
   --shadow: none;
+  --glass-bg: rgba(255, 254, 251, 0.75);
+  --glass-border: rgba(216, 210, 198, 0.5);
+  --glass-blur: 12px;
 }
 
 [data-theme="dark"], .theme-dark {
@@ -49,6 +52,8 @@
   --data:        #9fd8e6;
   --accent:      #f0b35e;
   --danger:      #d8665a;
+  --glass-bg:     rgba(33, 29, 22, 0.75);
+  --glass-border: rgba(58, 52, 42, 0.5);
 
   /* glow = signal, never decoration. Apply ONLY to actively live/changing elements. */
   --glow-live: 0 0 7px var(--data);
@@ -90,6 +95,42 @@ body {
   font-size: var(--fs-mono);
   letter-spacing: var(--ls-mono);
 }
+
+/* Glassmorphism & Micro-Animations Utility Classes (#17) */
+.glass-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.micro-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.micro-hover:hover {
+  transform: translateY(-2px);
+}
+
+.micro-bounce {
+  transition: transform 0.15s ease-in-out;
+}
+
+.micro-bounce:active {
+  transform: scale(0.96);
+}
+
+@keyframes microPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.85;
+  }
+}
+
 
 /* Sidebar & Shard Identity Badge */
 .sidebar {

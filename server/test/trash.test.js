@@ -1,4 +1,4 @@
-const { test, describe, before, after } = require('node:test');
+const { test, describe, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs/promises');
@@ -11,7 +11,7 @@ describe('Trash & Soft-Delete System (#18)', () => {
   const userRoot = path.join(dataDir, 'users', user.id);
   const trashDir = path.join(userRoot, '.trash');
 
-  before(async () => {
+  beforeEach(async () => {
     await db.initDb();
     await db.upsertUser(user.id, user.username, 'trash@example.com', 'local', null, user.displayName);
     await fs.mkdir(userRoot, { recursive: true });
