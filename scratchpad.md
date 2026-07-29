@@ -10,6 +10,7 @@
 - **Issue #99:** Automated Compliance Retention & Legal Hold Policies (`server/routes/legal_hold.js`, `server/test/legal_hold.test.js`) - PASSED (5/5)
 - **Issue #100:** Freeshard Ecosystem Universal Search & Cross-App Deep Links (`server/routes/search.js`, `server/test/universal_search.test.js`) - PASSED (4/4)
 - **Issue #17:** Design Guide Alignment — Visual Identity & Responsive Theme (`public/css/app.css`) - PASSED (9/9): `--glass-bg/border/blur` vars, `.glass-panel` with `backdrop-filter`, `.micro-hover`, `.micro-bounce`, `@keyframes microPulse`
+- **Issue #23:** Photo Gallery Mode — Dedicated Image-Centric Folder View (`server/utils/gallery.js`, `server/routes/files.js`, `server/test/file_viewer.test.js`) - PASSED (11/11): `IMAGE_MIME_TYPES`, `buildGalleryItems()`, `GET /api/files/gallery` endpoint
 
 ## Key Architectural Decisions & Patterns
 - `searchUniversal(userId, query)` queries full-text file search (`files_fts`), public & internal file shares (`public_shares`, `file_shares`), user file tags (`file_tags`), and ecosystem ingest records (`ecosystem_ingest_log`).
