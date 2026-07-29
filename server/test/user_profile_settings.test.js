@@ -181,4 +181,68 @@ describe('User Profile & Settings Modal Enhancement (#48)', () => {
       'filebrowser.js must send displayName in the PATCH body'
     );
   });
+
+  // ── Centralized Settings Management UI (#33) ──
+  test('PATCH /api/auth/users/me persists preferredTheme to users table (#33)', async () => {
+    const res = await makeRequest('PATCH', '/api/auth/users/me', { preferredTheme: 'light' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+
+    const row = await db.get('SELECT preferred_theme FROM users WHERE id = ?', [testUser.id]);
+    assert.equal(row.preferred_theme, 'light');
+  });
+
+  test('PATCH /api/auth/users/me rejects invalid preferredTheme values (#33)', async () => {
+    const res = await makeRequest('PATCH', '/api/auth/users/me', { preferredTheme: 'invalid_theme' });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.error, 'must return error for invalid theme');
+
+    const row = await db.get('SELECT preferred_theme FROM users WHERE id = ?', [testUser.id]);
+    assert.notEqual(row.preferred_theme, 'invalid_theme');
+  });
+
+  test('GET /api/auth/me returns preferredTheme field (#33)', async () => {
+    await db.run('UPDATE users SET preferred_theme = ? WHERE id = ?', ['system', testUser.id]);
+
+    const res = await makeRequest('GET', '/api/auth/me');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.authenticated, true);
+    assert.ok(res.body.user);
+    assert.equal(res.body.user.preferredTheme, 'system');
+  });
+
+  test('index.html modalSettings contains selectTheme and appPasswordsSection (#33)', async () => {
+    const indexHtml = await fs.readFile(path.join(__dirname, '../../public/index.html'), 'utf8');
+
+    assert.ok(
+      indexHtml.includes('id="selectTheme"'),
+      'index.html must contain #selectTheme for theme tokens in settings modal'
+    );
+    assert.ok(
+      indexHtml.includes('id="appPasswordsSection"'),
+      'index.html must contain #appPasswordsSection for app passwords management'
+    );
+    assert.ok(
+      indexHtml.includes('id="btnCreateAppPassword"'),
+      'index.html must contain #btnCreateAppPassword button'
+    );
+  });
+
+  test('filebrowser.js settings save handler sends preferredTheme and manages app passwords (#33)', async () => {
+    const filebrowserJs = await fs.readFile(path.join(__dirname, '../../public/js/filebrowser.js'), 'utf8');
+
+    assert.ok(
+      filebrowserJs.includes('selectTheme'),
+      'filebrowser.js must reference #selectTheme for theme settings save'
+    );
+    assert.ok(
+      filebrowserJs.includes('preferredTheme'),
+      'filebrowser.js must send preferredTheme in the PATCH body'
+    );
+    assert.ok(
+      filebrowserJs.includes('/api/auth/app-passwords'),
+      'filebrowser.js must reference app passwords endpoint'
+    );
+  });
 });
+

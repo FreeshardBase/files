@@ -36,7 +36,7 @@ async function getUserStorageUsage(userRoot) {
 async function validateUserIsolation(req, res, next) {
   const userId = req.userId || req.session?.userId || req.session?.user?.id || 'default-user';
   const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
-  const userRoot = path.resolve(rootBase, userId);
+  const userRoot = req.userRoot || path.resolve(rootBase, userId);
 
   try {
     await ensureUserHome(userRoot);
@@ -48,7 +48,7 @@ async function validateUserIsolation(req, res, next) {
     req.resolvedPath = safePath(userRoot, requestedPath);
 
     if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-      const user = await db.get('SELECT quota_bytes FROM users WHERE id = ?', [userId]);
+      const user = await db.getUserById(userId);
       if (user && user.quota_bytes !== null && user.quota_bytes > 0) {
         const currentUsage = await getUserStorageUsage(userRoot);
         const incomingContentLength = parseInt(req.headers['content-length'] || '0', 10);

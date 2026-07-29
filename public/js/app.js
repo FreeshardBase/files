@@ -108,13 +108,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const shownName = data.user.displayName || data.user.username || 'User';
+        const avatarHtml = data.user.avatarUrl
+          ? `<img src="${data.user.avatarUrl}" alt="${shownName}" class="fs-avatar" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;" />`
+          : `<span class="fs-avatar" style="width: 24px; height: 24px; border-radius: 50%; background: var(--line); font-size: 11px; font-weight: 600; color: #fff; display: flex; align-items: center; justify-content: center;">
+              ${shownName.charAt(0).toUpperCase()}
+            </span>`;
+
         if (userMenu) {
           userMenu.innerHTML = `
             <div style="display: flex; align-items: center; gap: var(--space-3);">
               <div style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: var(--radius-control); background: var(--bg); border: var(--border-w) solid var(--border-cool);">
-                <span class="fs-avatar" style="width: 24px; height: 24px; border-radius: 50%; background: var(--line); font-size: 11px; font-weight: 600; color: #fff; display: flex; align-items: center; justify-content: center;">
-                  ${shownName.charAt(0).toUpperCase()}
-                </span>
+                ${avatarHtml}
                 <span class="fs-mono" style="font-weight: 500; font-size: var(--fs-mono); color: var(--ink);">${shownName}</span>
               </div>
               <button id="btnLogout" class="fs-btn text-sm" style="padding: 4px 10px; font-size: 12px;">Log out</button>

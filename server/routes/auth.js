@@ -65,9 +65,11 @@ router.get('/me', async (req, res) => {
           username,
           displayName,
           email: user?.email || req.session.email || null,
+          avatarUrl: user?.avatar_url || req.session.avatarUrl || null,
           preferredLocale: user?.preferred_locale || null,
           preferredViewMode: user?.preferred_view_mode || 'grid',
-          preferredClickMode: user?.preferred_click_mode || 'double'
+          preferredClickMode: user?.preferred_click_mode || 'double',
+          preferredTheme: user?.preferred_theme || 'dark'
         }
       });
     } catch (err) {
@@ -77,15 +79,20 @@ router.get('/me', async (req, res) => {
   res.json({ authenticated: false });
 });
 
-// ── PATCH /api/users/me (Update User Profile #25, #48, #68) ───────────────────────
+// ── PATCH /api/users/me (Update User Profile #25, #33, #48, #49, #68) ───────────────────────
 router.patch('/users/me', requireAuth, async (req, res) => {
   try {
-    const { displayName, preferredLocale, preferredViewMode, preferredClickMode } = req.body;
+    const { displayName, preferredLocale, preferredViewMode, preferredClickMode, preferredTheme, avatarUrl } = req.body;
     const userId = req.session.userId;
 
     if (displayName !== undefined) {
       await db.run('UPDATE users SET display_name = ? WHERE id = ?', [displayName, userId]);
       req.session.displayName = displayName;
+    }
+
+    if (avatarUrl !== undefined) {
+      await db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId]);
+      req.session.avatarUrl = avatarUrl;
     }
 
     if (preferredLocale !== undefined) {
@@ -94,6 +101,14 @@ router.patch('/users/me', requireAuth, async (req, res) => {
       }
       await db.run('UPDATE users SET preferred_locale = ? WHERE id = ?', [preferredLocale, userId]);
       req.session.preferredLocale = preferredLocale;
+    }
+
+    if (preferredTheme !== undefined) {
+      if (!['dark', 'light', 'system'].includes(preferredTheme)) {
+        return res.status(400).json({ error: `Invalid theme "${preferredTheme}": must be one of "dark", "light", "system"` });
+      }
+      await db.run('UPDATE users SET preferred_theme = ? WHERE id = ?', [preferredTheme, userId]);
+      req.session.preferredTheme = preferredTheme;
     }
 
     if (preferredViewMode !== undefined && ['grid', 'list'].includes(preferredViewMode)) {
@@ -106,7 +121,7 @@ router.patch('/users/me', requireAuth, async (req, res) => {
       req.session.preferredClickMode = preferredClickMode;
     }
 
-    const updatedUser = await db.get('SELECT id, username, display_name, email, preferred_locale, preferred_view_mode, preferred_click_mode FROM users WHERE id = ?', [userId]);
+    const updatedUser = await db.get('SELECT id, username, display_name, email, avatar_url, preferred_locale, preferred_view_mode, preferred_click_mode, preferred_theme FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -187,9 +202,10 @@ router.get('/callback', async (req, res) => {
     const displayName = claims.name || claims.preferred_username || claims.username || null;
     const username = claims.preferred_username || claims.username || (claims.email ? claims.email.split('@')[0] : null) || claims.sub;
     const email = claims.email || null;
+    const avatarUrl = claims.picture || claims.avatar_url || claims.avatar || null;
 
-    // Just-In-Time User Provisioning in SQLite DB (#2, #13, #48)
-    await db.upsertUser(userId, username, email, 'oidc', null, displayName);
+    // Just-In-Time User Provisioning in SQLite DB (#2, #13, #48, #49)
+    await db.upsertUser(userId, username, email, 'oidc', null, displayName, null, null, avatarUrl);
 
     // Auto-provision user home directory structure
     const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
@@ -205,6 +221,7 @@ router.get('/callback', async (req, res) => {
     req.session.username = username;
     req.session.displayName = displayName || username;
     req.session.email = email;
+    req.session.avatarUrl = avatarUrl;
 
     res.redirect('/#/files');
   } catch (err) {

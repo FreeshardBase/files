@@ -1,4 +1,5 @@
 const https = require('https');
+const crypto = require('crypto');
 const { Readable, PassThrough } = require('stream');
 const path = require('path');
 const BaseProvider = require('./base');
@@ -330,6 +331,80 @@ class DropboxProvider extends BaseProvider {
       }
     }
     return { used, total };
+  }
+
+  /**
+   * Retrieves latest cursor for folder changes via /files/list_folder/get_latest_cursor (#57)
+   */
+  async getLatestCursor(dirPath = '') {
+    const cleanPath = dirPath === '/' || !dirPath ? '' : dirPath.replace(/\/+$/, '');
+    const res = await this._dropboxRpcApi('/files/list_folder/get_latest_cursor', {
+      path: cleanPath,
+      recursive: true,
+      include_media_info: false,
+      include_deleted: true
+    });
+    const data = JSON.parse(res.body);
+    return { cursor: data.cursor };
+  }
+
+  /**
+   * Retrieves incremental changes/delta using /files/list_folder/continue (#57)
+   */
+  async listFolderContinue(cursor) {
+    const res = await this._dropboxRpcApi('/files/list_folder/continue', { cursor });
+    const data = JSON.parse(res.body);
+    const entries = (data.entries || []).map(item => {
+      const isDeleted = item['.tag'] === 'deleted';
+      const isDir = item['.tag'] === 'folder';
+      return {
+        name: item.name || (item.path_display ? path.basename(item.path_display) : ''),
+        path: item.path_display || item.path_lower || '',
+        isDirectory: isDir,
+        deleted: isDeleted,
+        size: isDir || isDeleted ? 0 : (item.size || 0),
+        modified: item.server_modified || null,
+        mimeType: isDir ? 'cloud/folder' : 'application/octet-stream',
+        rawTag: item['.tag']
+      };
+    });
+    return {
+      entries,
+      cursor: data.cursor,
+      hasMore: !!data.has_more,
+      rawEntries: data.entries || []
+    };
+  }
+
+  /**
+   * Fetches all pending delta pages starting from cursor (#57)
+   */
+  async fetchDelta(cursor) {
+    let currentCursor = cursor;
+    let hasMore = true;
+    let allEntries = [];
+
+    while (hasMore) {
+      const page = await this.listFolderContinue(currentCursor);
+      allEntries = allEntries.concat(page.entries);
+      currentCursor = page.cursor;
+      hasMore = page.hasMore;
+    }
+
+    return { entries: allEntries, cursor: currentCursor };
+  }
+
+  /**
+   * Verifies Dropbox X-Dropbox-Signature header against raw request body (#57)
+   */
+  static verifyWebhookSignature(signature, rawBody, clientSecret) {
+    if (!signature || !clientSecret) return false;
+    const hmac = crypto.createHmac('sha256', clientSecret);
+    const content = Buffer.isBuffer(rawBody) ? rawBody : (typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+    hmac.update(content);
+    const expected = hmac.digest('hex');
+    if (signature.length !== expected.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
   }
 }
 

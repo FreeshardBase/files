@@ -1,6 +1,7 @@
 const express = require('express');
 const LocalProvider = require('../providers/local');
 const FailoverProvider = require('../providers/failover');
+const { getStorageAnalytics } = require('../utils/storage_analytics');
 const path = require('path');
 
 let globalFailoverInstance = null;
@@ -45,9 +46,31 @@ function createStorageRouter(customFailoverProvider = null) {
     }
   });
 
+  router.get('/analytics', async (req, res) => {
+    try {
+      const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+      const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+      const userRoot = req.userRoot || (userId ? path.join(dataDir, 'users', userId) : (process.env.FILES_ROOT || dataDir));
+
+      const analytics = await getStorageAnalytics(userRoot, userId);
+      res.json(analytics);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to retrieve storage analytics', details: err.message });
+    }
+  });
+
   return router;
 }
 
 // Support both express router middleware default export and factory function
 const defaultRouter = createStorageRouter();
-module.exports = Object.assign(createStorageRouter, defaultRouter);
+
+function storageMiddleware(req, res, next) {
+  if (req && req.on && typeof next === 'function') {
+    return defaultRouter(req, res, next);
+  }
+  return createStorageRouter(req);
+}
+
+module.exports = Object.assign(storageMiddleware, defaultRouter, { createStorageRouter });
+

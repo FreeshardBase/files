@@ -8,6 +8,7 @@ describe('Advanced Public Link Management (#53)', () => {
 
   before(async () => {
     await db.initDb();
+    await db.run('DELETE FROM public_shares WHERE user_id = ?', [user.id]);
     await db.upsertUser(user.id, user.username, 'adv@example.com', 'local', null, user.displayName);
   });
 

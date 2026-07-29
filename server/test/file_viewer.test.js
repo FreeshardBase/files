@@ -86,10 +86,15 @@ describe('Photo Gallery Mode (#23)', () => {
     // Seed: /Documents has no images
     await provider.write('/Documents/report.pdf', Readable.from([Buffer.from('%PDF')]));
 
+    const db = require('../db');
+    await db.initDb();
+
     const app = express();
     app.use(express.json());
     app.use((req, res, next) => {
       req.userId = 'gallery_user';
+      req.userRoot = USER_HOME;
+      req.session = { user: { id: 'gallery_user' } };
       next();
     });
     app.use('/api/files', filesRouter);
@@ -173,4 +178,167 @@ describe('Photo Gallery Mode (#23)', () => {
     assert.ok(data.items.some(i => i.name === 'beach.jpg'));
   });
 });
+
+describe('Client-Side PDF Tools (#38)', () => {
+  const PDF_ROOT = path.resolve(__dirname, 'test_pdf_home');
+  const USER_HOME = path.join(PDF_ROOT, 'pdf_user');
+  let provider;
+  let server;
+  let baseUrl;
+  const originalFilesRoot = process.env.FILES_ROOT;
+
+  const pdfTools = require('../utils/pdf_tools');
+
+  before(async () => {
+    process.env.FILES_ROOT = PDF_ROOT;
+    try { await fs.rm(PDF_ROOT, { recursive: true, force: true }); } catch {}
+    provider = new LocalProvider({ userRoot: USER_HOME });
+    await provider.ensureUserHome();
+
+    // Create sample PDF files
+    const multiPagePdf = Buffer.from(
+      '%PDF-1.4\n' +
+      '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n' +
+      '2 0 obj\n<< /Type /Pages /Count 2 /Kids [ 3 0 R 4 0 R ] >>\nendobj\n' +
+      '3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>\nendobj\n' +
+      '4 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 6 0 R >>\nendobj\n' +
+      '5 0 obj\nstream\n(Page 1 content)\nendstream\nendobj\n' +
+      '6 0 obj\nstream\n(Page 2 content)\nendstream\nendobj\n' +
+      '%%EOF'
+    );
+
+    const doc1 = Buffer.from('%PDF-1.4\n3 0 obj\n<< /Type /Page /Contents 4 0 R >>\nendobj\n%%EOF');
+    const doc2 = Buffer.from('%PDF-1.4\n3 0 obj\n<< /Type /Page /Contents 5 0 R >>\nendobj\n%%EOF');
+
+    await provider.write('/Documents/sample_multipage.pdf', Readable.from([multiPagePdf]));
+    await provider.write('/Documents/doc1.pdf', Readable.from([doc1]));
+    await provider.write('/Documents/doc2.pdf', Readable.from([doc2]));
+
+    const db = require('../db');
+    await db.initDb();
+    await db.upsertUser('pdf_user', 'PDF User', 'pdf@test.com');
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      req.userId = 'pdf_user';
+      req.userRoot = USER_HOME;
+      req.session = { user: { id: 'pdf_user' } };
+      next();
+    });
+    app.use('/api/files', filesRouter);
+
+    await new Promise((resolve) => {
+      server = http.createServer(app).listen(0, '127.0.0.1', () => {
+        const addr = server.address();
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+        resolve();
+      });
+    });
+  });
+
+  after(async () => {
+    process.env.FILES_ROOT = originalFilesRoot;
+    if (server) await new Promise((res) => server.close(res));
+    try { await fs.rm(PDF_ROOT, { recursive: true, force: true }); } catch {}
+  });
+
+  test('getPdfPageCount extracts accurate page count', () => {
+    const pdfBuf = Buffer.from(
+      '%PDF-1.4\n3 0 obj\n<< /Type /Page >>\nendobj\n4 0 obj\n<< /Type /Page >>\nendobj\n%%EOF'
+    );
+    assert.equal(pdfTools.getPdfPageCount(pdfBuf), 2);
+  });
+
+  test('rotatePdfPages rotates PDF pages correctly', () => {
+    const pdfBuf = Buffer.from('%PDF-1.4\n3 0 obj\n<< /Type /Page >>\nendobj\n%%EOF');
+    const rotated = pdfTools.rotatePdfPages(pdfBuf, { angle: 90 });
+    const str = rotated.toString('latin1');
+    assert.ok(str.includes('/Rotate 90'), 'Rotated PDF buffer must contain /Rotate 90');
+  });
+
+  test('splitPdfPages splits multi-page PDF into separate PDF buffers', () => {
+    const pdfBuf = Buffer.from(
+      '%PDF-1.4\n3 0 obj\n<< /Type /Page >>\nendobj\n4 0 obj\n<< /Type /Page >>\nendobj\n%%EOF'
+    );
+    const split = pdfTools.splitPdfPages(pdfBuf, { ranges: [[1], [2]] });
+    assert.equal(split.length, 2);
+    assert.ok(split[0].toString('latin1').includes('%PDF-1.4'));
+    assert.ok(split[1].toString('latin1').includes('%PDF-1.4'));
+  });
+
+  test('mergePdfBuffers merges multiple PDF buffers into single combined PDF', () => {
+    const buf1 = Buffer.from('%PDF-1.4\n3 0 obj\n<< /Type /Page >>\nendobj\n%%EOF');
+    const buf2 = Buffer.from('%PDF-1.4\n4 0 obj\n<< /Type /Page >>\nendobj\n%%EOF');
+    const merged = pdfTools.mergePdfBuffers([buf1, buf2]);
+    assert.equal(pdfTools.getPdfPageCount(merged), 2);
+  });
+
+  test('POST /api/files/pdf/rotate rotates specified PDF file', async () => {
+    const res = await fetch(`${baseUrl}/api/files/pdf/rotate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/Documents/sample_multipage.pdf', angle: 90 })
+    });
+    const data = await res.json();
+    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(data)}`);
+    assert.equal(data.success, true);
+
+    const { stream } = await provider.read('/Documents/sample_multipage.pdf');
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const updated = Buffer.concat(chunks).toString('latin1');
+    assert.ok(updated.includes('/Rotate 90'));
+  });
+
+  test('POST /api/files/pdf/split splits specified PDF into output files', async () => {
+    const res = await fetch(`${baseUrl}/api/files/pdf/split`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/Documents/sample_multipage.pdf',
+        ranges: [[1], [2]]
+      })
+    });
+    const data = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(data.success, true);
+    assert.equal(data.createdFiles.length, 2);
+
+    for (const file of data.createdFiles) {
+      const { stream } = await provider.read(file);
+      assert.ok(stream, `File ${file} should exist`);
+    }
+  });
+
+  test('POST /api/files/pdf/merge merges specified PDF files into target file', async () => {
+    const res = await fetch(`${baseUrl}/api/files/pdf/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        paths: ['/Documents/doc1.pdf', '/Documents/doc2.pdf'],
+        targetPath: '/Documents/merged_docs.pdf'
+      })
+    });
+    const data = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(data.success, true);
+
+    const { stream } = await provider.read('/Documents/merged_docs.pdf');
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const mergedContent = Buffer.concat(chunks);
+    assert.equal(pdfTools.getPdfPageCount(mergedContent), 2);
+  });
+
+  test('POST /api/files/pdf/rotate blocks path traversal attempts', async () => {
+    const res = await fetch(`${baseUrl}/api/files/pdf/rotate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/Documents/../../etc/passwd', angle: 90 })
+    });
+    assert.equal(res.status, 403);
+  });
+});
+
 

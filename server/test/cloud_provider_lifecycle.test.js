@@ -10,6 +10,9 @@ describe('Cloud Storage Lifecycle & Share Reconciliation Wizard with Retention W
   before(async () => {
     process.env.PROVIDER_SHARE_RETENTION_DAYS = '90';
     await initDb();
+    await run("DELETE FROM public_shares WHERE token = 'token_retention_90' OR user_id = ?", [userId]);
+    await run("DELETE FROM file_shares WHERE owner_user_id = ?", [userId]);
+    await run("DELETE FROM provider_connections WHERE user_id = ?", [userId]);
     await run("INSERT OR IGNORE INTO users (id, username, email) VALUES (?, ?, ?)", [userId, 'retention_user', 'retention@test.com']);
     await run("INSERT OR IGNORE INTO users (id, username, email) VALUES ('sharee_retention', 'sharee2', 'sharee2@test.com')");
   });
@@ -160,4 +163,39 @@ describe('Cloud Storage Lifecycle & Share Reconciliation Wizard with Retention W
     const deleted = await get('SELECT * FROM provider_connections WHERE id = ?', [testConnId]);
     assert.equal(deleted, undefined);
   });
+
+  test('Issue #41: Proactive Provider Health & Connectivity Monitor', async () => {
+    const db = require('../db');
+    const { checkProviderHealth, checkAllProvidersHealth } = require('../utils/provider_health');
+
+    // 1. Create a mock healthy provider connection
+    const resHealthy = await run(
+      "INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      [userId, 'local', 'Healthy Local Storage', 'enc_data', 'iv', 'tag']
+    );
+    const healthyConnId = resHealthy.lastID;
+
+    // 2. Create a mock broken provider connection
+    const resBroken = await run(
+      "INSERT INTO provider_connections (user_id, provider_type, display_name, credentials_encrypted, iv, auth_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      [userId, 'invalid_provider', 'Broken Provider', 'enc_data', 'iv', 'tag']
+    );
+    const brokenConnId = resBroken.lastID;
+
+    // 3. Run health check on single provider
+    const healthResult = await checkProviderHealth(healthyConnId);
+    assert.equal(healthResult.status, 'healthy');
+    assert.ok(healthResult.last_health_check);
+
+    const brokenResult = await checkProviderHealth(brokenConnId);
+    assert.equal(brokenResult.status, 'unhealthy');
+    assert.ok(brokenResult.error_message);
+
+    // 4. Run checkAllProvidersHealth for user
+    const allResults = await checkAllProvidersHealth(userId);
+    assert.ok(allResults.length >= 2);
+    assert.ok(allResults.some(p => p.id === healthyConnId && p.health_status === 'healthy'));
+    assert.ok(allResults.some(p => p.id === brokenConnId && p.health_status === 'unhealthy'));
+  });
 });
+

@@ -7,13 +7,30 @@ const { requireAuth } = require('../middleware/auth');
 const {
   createFileShare, getFileSharesByOwner, getFileSharesByPath, getFileSharesForSharee, deleteFileShare,
   createPublicShare, updatePublicShare, getPublicSharesByUser, getPublicSharesByPath, deletePublicShare, logActivity,
-  getShareAnalytics
+  getShareAnalytics, createFederatedShare, getFederatedSharesByOwner, getFederatedShareByToken, deleteFederatedShare,
+  createInboundFederatedShare, getInboundFederatedShares, searchUsers
 } = require('../db');
 const { dispatchWebhookEvent } = require('../utils/webhook_dispatcher');
 const { emitSSEEvent } = require('../utils/sse_events');
 
 // Require session authentication for all link creation operations
 router.use(requireAuth);
+
+// ── USER SEARCH & AUTOCOMPLETE FOR INTERNAL SHARING (#51) ─────────────────────
+
+router.get('/users/search', async (req, res) => {
+  try {
+    const currentUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const query = req.query.q || req.query.query || '';
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
+
+    const users = await searchUsers(query, currentUserId, limit);
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ── OVERVIEW & ITEM DETAILS (#52) ─────────────────────────────────────────────
 
@@ -79,6 +96,16 @@ router.post('/internal', async (req, res) => {
       return res.status(400).json({ error: 'sharee_username and file_path are required' });
     }
 
+    if (sharee_username.includes('@')) {
+      const parts = sharee_username.split('@');
+      const targetShard = parts[1] || 'remote';
+      const token = crypto.randomBytes(16).toString('hex');
+      const share = await createFederatedShare(ownerUserId, targetShard, sharee_username, file_path, is_directory, read_write, token);
+      await logActivity(ownerUserId, 'share_federated', file_path, path.basename(file_path), is_directory, JSON.stringify({ sharee: sharee_username, target_shard: targetShard }));
+      emitSSEEvent(ownerUserId, 'file_shared', { file_path, sharee: sharee_username, type: 'federated' });
+      return res.status(201).json({ success: true, share, is_federated: true });
+    }
+
     const shareeUser = await require('../db').get(
       'SELECT id, username, display_name FROM users WHERE username = ? OR display_name = ? OR id = ?',
       [sharee_username, sharee_username, sharee_username]
@@ -131,6 +158,91 @@ router.delete('/internal/:id', async (req, res) => {
       return res.status(404).json({ error: 'Share not found or permission denied' });
     }
     await dispatchWebhookEvent(ownerUserId, 'share_revoked', { share_id: shareId, share_type: 'internal' }).catch(() => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CROSS-SHARD FEDERATED SHARING (#31) ──────────────────────────────────────
+
+router.post('/federated', async (req, res) => {
+  try {
+    const ownerUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    if (!ownerUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { target_shard_id, sharee_handle, file_path, read_write = 0, is_directory = 0 } = req.body;
+    if ((!target_shard_id && !sharee_handle) || !file_path) {
+      return res.status(400).json({ error: 'target_shard_id (or sharee_handle) and file_path are required' });
+    }
+
+    const resolvedShard = target_shard_id || (sharee_handle && sharee_handle.includes('@') ? sharee_handle.split('@')[1] : 'remote');
+    const token = crypto.randomBytes(16).toString('hex');
+
+    const share = await createFederatedShare(ownerUserId, resolvedShard, sharee_handle || `user@${resolvedShard}`, file_path, is_directory, read_write, token);
+    await logActivity(ownerUserId, 'share_federated', file_path, path.basename(file_path), is_directory, JSON.stringify({ target_shard: resolvedShard, sharee: sharee_handle }));
+    emitSSEEvent(ownerUserId, 'file_shared', { file_path, target_shard_id: resolvedShard, sharee_handle, type: 'federated' });
+
+    res.status(201).json({ success: true, share });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/federated/receive', async (req, res) => {
+  try {
+    const { recipient_user_id, sender_shard_id, sender_handle, file_name, federated_token, read_write = 0 } = req.body;
+    if (!recipient_user_id || !sender_shard_id || !sender_handle || !file_name || !federated_token) {
+      return res.status(400).json({ error: 'Missing required parameters for inbound federated share' });
+    }
+
+    const recipientUser = await require('../db').get('SELECT id FROM users WHERE id = ? OR username = ?', [recipient_user_id, recipient_user_id]);
+    if (!recipientUser) {
+      return res.status(404).json({ error: 'Recipient user not found' });
+    }
+
+    const share = await createInboundFederatedShare(recipientUser.id, sender_shard_id, sender_handle, file_name, federated_token, read_write);
+    res.status(201).json({ success: true, share });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/federated/my-shares', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const outbound = await getFederatedSharesByOwner(userId);
+    const inbound = await getInboundFederatedShares(userId);
+    res.json({ outbound, inbound });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/federated/access/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const share = await getFederatedShareByToken(token);
+    if (!share) {
+      return res.status(404).json({ error: 'Federated share token not found or revoked' });
+    }
+    res.json({ success: true, share });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/federated/:id', async (req, res) => {
+  try {
+    const ownerUserId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const shareId = req.params.id;
+    const deleted = await deleteFederatedShare(shareId, ownerUserId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Federated share not found or permission denied' });
+    }
+    await dispatchWebhookEvent(ownerUserId, 'share_revoked', { share_id: shareId, share_type: 'federated' }).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

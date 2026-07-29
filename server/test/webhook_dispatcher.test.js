@@ -238,4 +238,177 @@ describe('Webhook Event Dispatcher for Real-Time File Change Notifications (#72)
 
     await db.deleteWebhook(webhook.id, userId);
   });
+
+  test('Issue #37: Automation Rules DB CRUD & API endpoints', async () => {
+    // 1. Create automation rule via DB helper
+    const rule1 = await db.createAutomationRule({
+      userId,
+      name: 'Auto Move Invoices',
+      trigger_event: 'file_created',
+      condition_type: 'keyword',
+      condition_value: 'invoice',
+      action_type: 'move',
+      action_target: '/Invoices',
+      priority: 10
+    });
+    assert.ok(rule1);
+    assert.equal(rule1.name, 'Auto Move Invoices');
+    assert.equal(rule1.action_type, 'move');
+    assert.equal(rule1.action_target, '/Invoices');
+
+    // 2. Create automation rule via API endpoint
+    const apiRes = await fetch(`${serverUrl}/api/webhooks/automation-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Auto Tag PDFs',
+        trigger_event: 'file_created',
+        condition_type: 'extension',
+        condition_value: 'pdf',
+        action_type: 'tag',
+        action_target: 'important-pdf',
+        priority: 5
+      })
+    });
+    const apiData = await apiRes.json();
+    assert.equal(apiRes.status, 201);
+    assert.equal(apiData.success, true);
+    assert.ok(apiData.rule.id);
+
+    // 3. List rules via API endpoint
+    const listRes = await fetch(`${serverUrl}/api/webhooks/automation-rules`);
+    const listData = await listRes.json();
+    assert.equal(listRes.status, 200);
+    assert.ok(listData.rules.length >= 2);
+
+    // Clean up
+    await db.deleteAutomationRule(userId, rule1.id);
+    await db.deleteAutomationRule(userId, apiData.rule.id);
+  });
+
+  test('Issue #37: Event-driven rule engine auto-moves and auto-tags files on file_created trigger', async () => {
+    const userFilesDir = path.join(dataDir, 'users', userId, 'files');
+    await fs.mkdir(userFilesDir, { recursive: true });
+
+    // Create rules
+    const moveRule = await db.createAutomationRule({
+      userId,
+      name: 'Auto-Move Receipts',
+      trigger_event: 'file_created',
+      condition_type: 'keyword',
+      condition_value: 'receipt',
+      action_type: 'move',
+      action_target: '/Finance/Receipts',
+      priority: 10
+    });
+
+    const tagRule = await db.createAutomationRule({
+      userId,
+      name: 'Auto-Tag Reports',
+      trigger_event: 'file_created',
+      condition_type: 'extension',
+      condition_value: 'pdf',
+      action_type: 'tag',
+      action_target: 'automated-report',
+      priority: 5
+    });
+
+    // Create physical files to test
+    const receiptPath = '/march_receipt.txt';
+    const absReceipt = path.join(userFilesDir, 'march_receipt.txt');
+    await fs.writeFile(absReceipt, 'receipt content 123');
+
+    const reportPath = '/annual_report.pdf';
+    const absReport = path.join(userFilesDir, 'annual_report.pdf');
+    await fs.writeFile(absReport, 'pdf report data');
+
+    // Trigger dispatchWebhookEvent for file_created
+    const dispatchResults = await dispatchWebhookEvent(userId, 'file_created', { path: receiptPath, userRoot: userFilesDir });
+    assert.ok(dispatchResults);
+
+    // Check that march_receipt.txt was moved to /Finance/Receipts/march_receipt.txt
+    const movedFileDisk = path.join(userFilesDir, 'Finance', 'Receipts', 'march_receipt.txt');
+    const movedExists = await fs.stat(movedFileDisk).then(() => true).catch(() => false);
+    assert.equal(movedExists, true, 'File should be auto-moved to /Finance/Receipts/march_receipt.txt');
+
+    // Trigger dispatchWebhookEvent for reportPath
+    await dispatchWebhookEvent(userId, 'file_created', { path: reportPath, userRoot: userFilesDir });
+    const tags = await db.getTagsByUser(userId, reportPath);
+    assert.ok(tags.some(t => t.tag_name === 'automated-report'), 'File should be auto-tagged');
+
+    // Clean up rules
+    await db.deleteAutomationRule(userId, moveRule.id);
+    await db.deleteAutomationRule(userId, tagRule.id);
+  });
+
+  test('Issue #40: DB Helpers for Personal Access Tokens (PATs)', async () => {
+    // 1. Create PAT
+    const pat = await db.createPersonalAccessToken({
+      userId,
+      name: 'CI/CD Deployment Token',
+      expiresAt: null
+    });
+    assert.ok(pat);
+    assert.equal(pat.name, 'CI/CD Deployment Token');
+    assert.ok(pat.token.startsWith('fs_pat_'));
+
+    // 2. List PATs
+    const pats = await db.getPersonalAccessTokensByUser(userId);
+    assert.ok(pats.length >= 1);
+    assert.ok(pats.some(p => p.id === pat.id));
+
+    // 3. Validate PAT by token
+    const fetched = await db.getPersonalAccessTokenByToken(pat.token);
+    assert.ok(fetched);
+    assert.equal(fetched.user_id, userId);
+
+    // 4. Delete PAT
+    const deleted = await db.deletePersonalAccessToken(userId, pat.id);
+    assert.equal(deleted, true);
+
+    const check = await db.getPersonalAccessTokenByToken(pat.token);
+    assert.equal(check, null);
+  });
+
+  test('Issue #40: API Endpoints for PAT Management & Authorization header authentication', async () => {
+    // 1. Create PAT via API
+    const createRes = await fetch(`${serverUrl}/api/webhooks/pats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Backup Script Token' })
+    });
+    const createData = await createRes.json();
+    assert.equal(createRes.status, 201);
+    assert.equal(createData.success, true);
+    assert.ok(createData.pat.token);
+
+    const tokenVal = createData.pat.token;
+    const patId = createData.pat.id;
+
+    // 2. List PATs via API
+    const listRes = await fetch(`${serverUrl}/api/webhooks/pats`, {
+      headers: { 'Authorization': `Bearer ${tokenVal}` }
+    });
+    const listData = await listRes.json();
+    assert.equal(listRes.status, 200);
+    assert.ok(listData.pats.some(p => p.id === patId));
+
+    // 3. Authenticate request using PAT in Bearer header without active session
+    const webhooksRes = await fetch(`${serverUrl}/api/webhooks`, {
+      headers: { 'Authorization': `Bearer ${tokenVal}` }
+    });
+    assert.equal(webhooksRes.status, 200);
+
+    // 4. Delete PAT via API
+    const delRes = await fetch(`${serverUrl}/api/webhooks/pats/${patId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${tokenVal}` }
+    });
+    const delData = await delRes.json();
+    assert.equal(delRes.status, 200);
+    assert.equal(delData.success, true);
+  });
 });
+
+
+

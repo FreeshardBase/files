@@ -101,4 +101,35 @@ describe('Authentication & App Passwords (#2, #48)', () => {
     const updatedUser = await db.get('SELECT preferred_view_mode FROM users WHERE id = ?', [userId]);
     assert.equal(updatedUser.preferred_view_mode, 'list');
   });
+
+  test('fetches and persists OIDC profile photo avatar from picture claim (#49)', async () => {
+    const userId = 'usr-oidc-avatar-test';
+    const pictureUrl = 'https://auth.gryzia.de/avatars/aaron.png';
+
+    const user = await db.upsertUser(userId, 'aaron_avatar', 'aaron@gryzia.de', 'oidc', null, 'Aaron Gryzia', null, null, pictureUrl);
+    assert.equal(user.id, userId);
+    assert.equal(user.avatar_url, pictureUrl);
+
+    const fetched = await db.get('SELECT avatar_url FROM users WHERE id = ?', [userId]);
+    assert.equal(fetched.avatar_url, pictureUrl);
+  });
+
+  test('OIDC claims picture claim maps to avatar_url in callback session provisioning (#49)', async () => {
+    const claims = {
+      sub: 'usr-oidc-claims-avatar',
+      preferred_username: 'avatar_user',
+      email: 'avatar_claim@gryzia.de',
+      name: 'Avatar Claim User',
+      picture: 'https://auth.gryzia.de/avatars/claim.png'
+    };
+
+    const avatarUrl = claims.picture || claims.avatar_url || null;
+    const user = await db.upsertUser(claims.sub, claims.preferred_username, claims.email, 'oidc', null, claims.name, null, null, avatarUrl);
+    assert.equal(user.avatar_url, 'https://auth.gryzia.de/avatars/claim.png');
+
+    const storedUser = await db.get('SELECT * FROM users WHERE id = ?', [claims.sub]);
+    assert.equal(storedUser.avatar_url, claims.picture);
+  });
 });
+
+

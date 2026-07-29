@@ -72,3 +72,37 @@ describe('Design Guide Alignment — Visual Identity & Responsive Theme (#17)', 
   });
 });
 
+describe('Progressive Web App (PWA) & Offline Caching Engine (#47)', () => {
+  const publicDir = path.join(__dirname, '../../public');
+  const manifestPath = path.join(publicDir, 'manifest.json');
+  const swPath = path.join(publicDir, 'sw.js');
+  const htmlPath = path.join(publicDir, 'index.html');
+
+  test('defines PWA web app manifest with name, icons, and start_url', () => {
+    assert.ok(fs.existsSync(manifestPath), 'manifest.json must exist in public directory');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.ok(manifest.name, 'manifest must specify app name');
+    assert.ok(manifest.short_name, 'manifest must specify short_name');
+    assert.ok(manifest.start_url, 'manifest must specify start_url');
+    assert.ok(manifest.display, 'manifest must specify display mode');
+    assert.ok(Array.isArray(manifest.icons) && manifest.icons.length > 0, 'manifest must contain icons array');
+  });
+
+  test('implements service worker for offline caching with install, activate, and fetch handlers', () => {
+    assert.ok(fs.existsSync(swPath), 'sw.js must exist in public directory');
+    const swContent = fs.readFileSync(swPath, 'utf8');
+    assert.ok(swContent.includes("addEventListener('install'"), 'sw.js must handle install event');
+    assert.ok(swContent.includes("addEventListener('activate'"), 'sw.js must handle activate event');
+    assert.ok(swContent.includes("addEventListener('fetch'"), 'sw.js must handle fetch event');
+    assert.ok(swContent.includes('caches.open'), 'sw.js must open cache for offline storage');
+  });
+
+  test('links manifest.json and registers service worker in index.html', () => {
+    assert.ok(fs.existsSync(htmlPath), 'index.html must exist in public directory');
+    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    assert.ok(htmlContent.includes('rel="manifest"') || htmlContent.includes("rel='manifest'"), 'index.html must link manifest.json');
+    assert.ok(htmlContent.includes('serviceWorker.register'), 'index.html must register service worker sw.js');
+  });
+});
+
+

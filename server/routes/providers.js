@@ -10,6 +10,43 @@ const GoogleDriveProvider = require('../providers/gdrive');
 const DropboxProvider = require('../providers/dropbox');
 const { decodeUtf8Filename } = require('../utils/utf8');
 
+// ── PUBLIC PROVIDER WEBHOOK ENDPOINTS (#57) ───────────────────────────────────
+
+/**
+ * GET /api/providers/dropbox/webhook
+ * Verification endpoint for Dropbox webhook challenge (#57)
+ */
+router.get('/dropbox/webhook', (req, res) => {
+  const challenge = req.query.challenge;
+  if (challenge) {
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(200).send(challenge);
+  }
+  return res.status(400).send('Missing challenge parameter');
+});
+
+/**
+ * POST /api/providers/dropbox/webhook
+ * Inbound webhook delta notification receiver from Dropbox (#57)
+ */
+router.post('/dropbox/webhook', async (req, res) => {
+  try {
+    const signature = req.headers['x-dropbox-signature'];
+    const secret = process.env.DROPBOX_CLIENT_SECRET;
+
+    if (signature && secret) {
+      const isValid = DropboxProvider.verifyWebhookSignature(signature, req.body, secret);
+      if (!isValid) {
+        return res.status(403).json({ error: 'Invalid webhook signature' });
+      }
+    }
+
+    res.status(200).json({ success: true, processed: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.use(requireAuth);
 
 /**

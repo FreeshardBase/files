@@ -38,6 +38,7 @@ class FileBrowser {
     // Mouse Side-Button Folder History Navigation (#65)
     this.historyStack = [];
     this.historyIndex = -1;
+    this.internalClipboard = null;
 
     this.init();
   }
@@ -636,6 +637,7 @@ class FileBrowser {
         const selectClickMode = document.getElementById('selectClickMode');
         const inputDisplayName = document.getElementById('inputDisplayName');
         const selectLanguage = document.getElementById('selectLanguage');
+        const selectTheme = document.getElementById('selectTheme');
 
         if (selectClickMode) {
           selectClickMode.value = this.clickNavigationMode || 'double';
@@ -648,10 +650,12 @@ class FileBrowser {
             if (data && data.authenticated && data.user) {
               if (inputDisplayName) inputDisplayName.value = data.user.displayName || '';
               if (selectLanguage) selectLanguage.value = data.user.preferredLocale || 'en';
+              if (selectTheme) selectTheme.value = data.user.preferredTheme || 'dark';
             }
           }
         } catch (err) {}
 
+        this.loadAppPasswords();
         this.showModal('modalSettings');
       });
     }
@@ -659,18 +663,42 @@ class FileBrowser {
     const btnSettingsClose = document.getElementById('btnSettingsClose');
     const btnSettingsCancel = document.getElementById('btnSettingsCancel');
     const btnSettingsSave = document.getElementById('btnSettingsSave');
+    const btnCreateAppPassword = document.getElementById('btnCreateAppPassword');
 
     if (btnSettingsClose) btnSettingsClose.addEventListener('click', () => this.hideModal('modalSettings'));
     if (btnSettingsCancel) btnSettingsCancel.addEventListener('click', () => this.hideModal('modalSettings'));
+    if (btnCreateAppPassword) {
+      btnCreateAppPassword.addEventListener('click', async () => {
+        const inputLabel = document.getElementById('inputAppPasswordLabel');
+        const label = inputLabel ? inputLabel.value.trim() : '';
+        if (!label) return;
+        try {
+          const res = await fetch('/api/auth/app-passwords', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (inputLabel) inputLabel.value = '';
+            alert(`App Password Created for "${label}":\n\n${data.password}\n\nPlease copy it now. It will not be shown again.`);
+            this.loadAppPasswords();
+          }
+        } catch (e) {}
+      });
+    }
+
     if (btnSettingsSave) {
       btnSettingsSave.addEventListener('click', async () => {
         const selectClickMode = document.getElementById('selectClickMode');
         const inputDisplayName = document.getElementById('inputDisplayName');
         const selectLanguage = document.getElementById('selectLanguage');
+        const selectTheme = document.getElementById('selectTheme');
 
         const mode = selectClickMode ? selectClickMode.value : 'double';
         const displayName = inputDisplayName ? inputDisplayName.value : undefined;
         const preferredLocale = selectLanguage ? selectLanguage.value : undefined;
+        const preferredTheme = selectTheme ? selectTheme.value : undefined;
 
         this.clickNavigationMode = mode;
         localStorage.setItem('fs-click-mode', mode);
@@ -682,7 +710,8 @@ class FileBrowser {
             body: JSON.stringify({
               preferredClickMode: mode,
               displayName: displayName,
-              preferredLocale: preferredLocale
+              preferredLocale: preferredLocale,
+              preferredTheme: preferredTheme
             })
           });
         } catch (e) {}
@@ -690,6 +719,35 @@ class FileBrowser {
         this.render();
       });
     }
+
+  async loadAppPasswords() {
+    const listEl = document.getElementById('appPasswordsList');
+    if (!listEl) return;
+    try {
+      const res = await fetch('/api/auth/app-passwords');
+      if (!res.ok) return;
+      const data = await res.json();
+      const passwords = data.appPasswords || [];
+      if (passwords.length === 0) {
+        listEl.innerHTML = '<p style="font-size:12px; color:var(--ink-muted);">No active app passwords.</p>';
+        return;
+      }
+      listEl.innerHTML = passwords.map(item => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:12px;">
+          <span><strong>${item.label}</strong> (created ${new Date(item.created_at).toLocaleDateString()})</span>
+          <button type="button" class="fs-btn fs-btn--danger" style="padding:2px 6px; font-size:11px;" onclick="window.fileBrowser.deleteAppPassword(${item.id})">Revoke</button>
+        </div>
+      `).join('');
+    } catch (e) {}
+  }
+
+  async deleteAppPassword(id) {
+    if (!confirm('Revoke this app password?')) return;
+    try {
+      const res = await fetch(`/api/auth/app-passwords/${id}`, { method: 'DELETE' });
+      if (res.ok) this.loadAppPasswords();
+    } catch (e) {}
+  }
 
     // Mouse Side-Button Folder History Navigation (#65)
     const handleMouseNav = (e) => {
@@ -954,9 +1012,26 @@ class FileBrowser {
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.hideModal('modalRename'));
     document.getElementById('btnConfirmRename')?.addEventListener('click', () => this.renameSelectedItem());
 
-    // Internal Share Modal (#14)
+    // Internal Share Modal (#14, #51)
     document.getElementById('btnCancelShare')?.addEventListener('click', () => this.hideModal('modalShareInternal'));
     document.getElementById('btnConfirmShare')?.addEventListener('click', () => this.createInternalShare());
+
+    const shareeInput = document.getElementById('inputShareeUsername');
+    shareeInput?.addEventListener('input', async (e) => {
+      const q = e.target.value.trim();
+      const datalist = document.getElementById('userAutocompleteList');
+      if (!datalist || q.length < 1) return;
+      try {
+        const res = await fetch(`/api/shares/users/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.users)) {
+          datalist.innerHTML = data.users
+            .map(u => `<option value="${u.username}">${u.display_name && u.display_name !== u.username ? u.display_name + ' (' + u.username + ')' : u.username}</option>`)
+            .join('');
+        }
+      } catch (err) {}
+    });
 
     // Public Share Modal (#15)
     document.getElementById('btnCancelPublicShare')?.addEventListener('click', () => this.hideModal('modalSharePublic'));
@@ -974,18 +1049,8 @@ class FileBrowser {
       if (this.currentMediaItem) this.downloadFile(this.currentMediaItem.path);
     });
 
-    // Keyboard Shortcuts (Esc to close modal & clear selection)
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        this.closeMediaViewer();
-        this.hideModal('modalNewFolder');
-        this.hideModal('modalRename');
-        this.hideModal('modalShareInternal');
-        this.hideModal('modalSharePublic');
-        this.hideContextMenu();
-        this.clearSelection();
-      }
-    });
+    // Keyboard Shortcuts — Desktop-Grade File Navigation (#29)
+    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
     // Drag & Drop Upload Overlay (Only for OS file uploads, ignore internal file moves)
     window.addEventListener('dragover', (e) => {
@@ -2091,6 +2156,179 @@ class FileBrowser {
       } else {
         this.selectionActionBar.style.display = 'none';
       }
+  }
+
+  // ── Keyboard Shortcuts — Desktop-Grade File Navigation (#29) ──────────────
+  selectItemByIndex(index) {
+    if (!this.items || this.items.length === 0) return;
+    if (index < 0) index = 0;
+    if (index >= this.items.length) index = this.items.length - 1;
+
+    const item = this.items[index];
+    this.clearSelection();
+    this.selectedItem = item;
+    this.selectedPaths.add(item.path);
+
+    if (this.container) {
+      const cards = Array.from(this.container.querySelectorAll('.file-card'));
+      cards.forEach(c => {
+        const cardPath = c.getAttribute('data-path');
+        if (cardPath === item.path) {
+          c.classList.add('selected');
+          const cb = c.querySelector('.file-checkbox');
+          if (cb) cb.checked = true;
+          c.scrollIntoView({ block: 'nearest' });
+        } else {
+          c.classList.remove('selected');
+          const cb = c.querySelector('.file-checkbox');
+          if (cb) cb.checked = false;
+        }
+      });
+    }
+    this.updateSelectionActionBar();
+  }
+
+  selectNextItem() {
+    if (!this.items || this.items.length === 0) return;
+    let currentIndex = -1;
+    if (this.selectedItem) {
+      currentIndex = this.items.findIndex(i => i.path === this.selectedItem.path);
+    }
+    const nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, this.items.length - 1);
+    this.selectItemByIndex(nextIndex);
+  }
+
+  selectPreviousItem() {
+    if (!this.items || this.items.length === 0) return;
+    let currentIndex = -1;
+    if (this.selectedItem) {
+      currentIndex = this.items.findIndex(i => i.path === this.selectedItem.path);
+    }
+    const prevIndex = currentIndex < 0 ? this.items.length - 1 : Math.max(currentIndex - 1, 0);
+    this.selectItemByIndex(prevIndex);
+  }
+
+  selectAll() {
+    if (!this.items || this.items.length === 0) return;
+    this.selectedPaths.clear();
+    this.items.forEach(i => this.selectedPaths.add(i.path));
+    if (this.items.length > 0) {
+      this.selectedItem = this.items[0];
+    }
+    if (this.container) {
+      this.container.querySelectorAll('.file-card').forEach(c => {
+        c.classList.add('selected');
+        const cb = c.querySelector('.file-checkbox');
+        if (cb) cb.checked = true;
+      });
+    }
+    this.updateSelectionActionBar();
+  }
+
+  copySelection() {
+    let pathsToCopy = [];
+    if (this.selectedPaths.size > 0) {
+      pathsToCopy = Array.from(this.selectedPaths);
+    } else if (this.selectedItem) {
+      pathsToCopy = [this.selectedItem.path];
+    }
+    if (pathsToCopy.length > 0) {
+      this.internalClipboard = {
+        action: 'copy',
+        paths: pathsToCopy,
+        sourcePath: this.currentPath
+      };
+    }
+    return pathsToCopy;
+  }
+
+  async pasteSelection() {
+    if (!this.internalClipboard || !this.internalClipboard.paths || this.internalClipboard.paths.length === 0) return;
+    const targetDir = this.currentPath;
+    const pathsToPaste = this.internalClipboard.paths;
+
+    for (const srcPath of pathsToPaste) {
+      const filename = srcPath.split('/').filter(Boolean).pop() || 'copied_file';
+      const dstPath = targetDir === '/' ? `/${filename}` : `${targetDir}/${filename}`;
+      if (srcPath === dstPath) continue;
+
+      try {
+        await fetch('/api/files/local/copy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: srcPath, dst: dstPath })
+        });
+      } catch (err) {
+        console.error('Paste failed for', srcPath, err);
+      }
+    }
+    this.loadDirectory(this.currentPath);
+  }
+
+  handleKeyDown(e) {
+    const activeEl = document.activeElement;
+    const tag = activeEl ? activeEl.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || activeEl?.isContentEditable) {
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      this.closeMediaViewer();
+      this.hideModal('modalNewFolder');
+      this.hideModal('modalRename');
+      this.hideModal('modalShareInternal');
+      this.hideModal('modalSharePublic');
+      this.hideModal('modalSettings');
+      this.hideModal('modalFileDetails');
+      this.hideContextMenu();
+      this.clearSelection();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+      e.preventDefault();
+      this.selectAll();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      this.copySelection();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+      e.preventDefault();
+      this.pasteSelection();
+      return;
+    }
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      if (this.selectedPaths.size > 0) {
+        this.batchDelete();
+      } else if (this.selectedItem) {
+        this.deleteSelectedItem();
+      }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.openSelectedItem();
+      return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      this.selectNextItem();
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      this.selectPreviousItem();
+      return;
     }
   }
 
@@ -2406,6 +2644,63 @@ class FileBrowser {
           alert('Error saving image: ' + e.message);
         }
       };
+    }
+  }
+
+  async rotatePdf(itemPath, angle = 90) {
+    try {
+      const res = await fetch('/api/files/pdf/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: itemPath, angle })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to rotate PDF');
+      }
+      this.showToast ? this.showToast('PDF rotated successfully', 'success') : alert('PDF rotated successfully');
+      this.fetchFiles();
+      return data;
+    } catch (err) {
+      alert(`Error rotating PDF: ${err.message}`);
+    }
+  }
+
+  async splitPdf(itemPath, ranges = null) {
+    try {
+      const res = await fetch('/api/files/pdf/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: itemPath, ranges })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to split PDF');
+      }
+      alert(`PDF split into ${data.createdFiles.length} file(s)`);
+      this.fetchFiles();
+      return data;
+    } catch (err) {
+      alert(`Error splitting PDF: ${err.message}`);
+    }
+  }
+
+  async mergePdfs(filePaths, targetPath) {
+    try {
+      const res = await fetch('/api/files/pdf/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: filePaths, targetPath })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to merge PDFs');
+      }
+      alert('PDFs merged successfully');
+      this.fetchFiles();
+      return data;
+    } catch (err) {
+      alert(`Error merging PDFs: ${err.message}`);
     }
   }
 

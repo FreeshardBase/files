@@ -99,3 +99,59 @@ describe('Cloud Storage Quota & Capacity Usage Indicators (#63)', () => {
   });
 
 });
+
+describe('Storage Analytics Dashboard (#30)', () => {
+  const { getStorageAnalytics } = require('../utils/storage_analytics');
+  const express = require('express');
+  const storageRouter = require('../routes/storage');
+
+  test('getStorageAnalytics categorizes files by type and extension', async () => {
+    const tmpDir = path.join(__dirname, '..', '..', 'tmp_analytics_test_' + Date.now());
+    fs.mkdirSync(path.join(tmpDir, 'sub'), { recursive: true });
+
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'photo.jpg'), Buffer.alloc(1024));
+      fs.writeFileSync(path.join(tmpDir, 'doc.pdf'), Buffer.alloc(2048));
+      fs.writeFileSync(path.join(tmpDir, 'sub', 'script.js'), Buffer.alloc(512));
+
+      const analytics = await getStorageAnalytics(tmpDir, 'user-analytics-test');
+      assert.equal(analytics.totalFiles, 3);
+      assert.equal(analytics.totalUsed, 3584);
+      assert.equal(analytics.byFileType.images.count, 1);
+      assert.equal(analytics.byFileType.images.bytes, 1024);
+      assert.equal(analytics.byFileType.documents.count, 1);
+      assert.equal(analytics.byFileType.documents.bytes, 2048);
+      assert.equal(analytics.byFileType.code.count, 1);
+      assert.equal(analytics.byFileType.code.bytes, 512);
+      assert.ok(analytics.byExtension['.jpg']);
+      assert.equal(analytics.byExtension['.jpg'].bytes, 1024);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('API Endpoint: GET /api/storage/analytics returns breakdown per provider and file type', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/storage', storageRouter);
+
+    const server = app.listen(0);
+    const port = server.address().port;
+    const url = `http://localhost:${port}/api/storage/analytics`;
+
+    try {
+      const res = await fetch(url);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.ok(data);
+      assert.ok(typeof data.totalUsed === 'number');
+      assert.ok(typeof data.totalFiles === 'number');
+      assert.ok(data.byFileType);
+      assert.ok(data.providers);
+      assert.ok(data.providers.local);
+    } finally {
+      server.close();
+    }
+  });
+});
+

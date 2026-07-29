@@ -8,6 +8,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="manifest" href="/manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.error('ServiceWorker registration failed:', err));
+      });
+    }
+  </script>
 </head>
 <body>
   <!-- Login / Authentication Screen Overlay (Shown when unauthenticated) -->
@@ -331,7 +339,8 @@
       <p class="fs-mono" id="shareItemNameText" style="color: var(--ink-muted); margin-bottom: 1rem; font-size: 12px;"></p>
       <div class="fs-field">
         <label class="fs-label">Username / Display Name</label>
-        <input type="text" id="inputShareeUsername" class="fs-input" placeholder="e.g. aaron">
+        <input type="text" id="inputShareeUsername" class="fs-input" placeholder="e.g. aaron" list="userAutocompleteList">
+        <datalist id="userAutocompleteList"></datalist>
       </div>
       <div class="fs-field" style="margin-top: 0.5rem;">
         <label class="fs-label">Permission</label>
@@ -499,10 +508,6 @@
       </div>
       <div class="fs-modal-body">
         <div class="fs-field" style="margin-bottom: 12px;">
-          <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">Display Name</label>
-          <input type="text" id="inputDisplayName" class="fs-input" placeholder="e.g. Alex Morgan">
-        </div>
-        <div class="fs-field" style="margin-bottom: 12px;">
           <label class="fs-label" for="inputDisplayName" style="font-weight: 600; margin-bottom: 4px;">Display Name</label>
           <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">The name shown in the UI. Leave blank to use your username.</p>
           <input type="text" id="inputDisplayName" class="fs-input" placeholder="Your display name" autocomplete="off" />
@@ -515,13 +520,31 @@
             <option value="de">Deutsch</option>
           </select>
         </div>
-        <div class="fs-field">
+        <div class="fs-field" style="margin-bottom: 12px;">
+          <label class="fs-label" for="selectTheme" style="font-weight: 600; margin-bottom: 4px;">Theme Tokens</label>
+          <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Select UI visual identity theme token palette.</p>
+          <select id="selectTheme" class="fs-input">
+            <option value="dark">Dark Mode (Default)</option>
+            <option value="light">Light Mode</option>
+            <option value="system">System / Auto</option>
+          </select>
+        </div>
+        <div class="fs-field" style="margin-bottom: 12px;">
           <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">Folder Navigation Mode</label>
           <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Choose how folders are opened when clicked in the browser grid or list view.</p>
           <select id="selectClickMode" class="fs-input">
             <option value="double">Double-Click (Default)</option>
             <option value="single">Single-Click</option>
           </select>
+        </div>
+        <div class="fs-field" id="appPasswordsSection" style="margin-top: 16px; border-top: 1px solid var(--glass-border, #333); padding-top: 12px;">
+          <label class="fs-label" style="font-weight: 600; margin-bottom: 4px;">App Passwords (WebDAV & API)</label>
+          <p style="font-size: 12px; color: var(--ink-muted); margin-bottom: 8px;">Manage personal access tokens and WebDAV app passwords.</p>
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <input type="text" id="inputAppPasswordLabel" class="fs-input" placeholder="App / Device Label (e.g. Mobile Sync)" style="flex: 1;" />
+            <button type="button" class="fs-btn fs-btn--primary" id="btnCreateAppPassword">Create</button>
+          </div>
+          <div id="appPasswordsList" style="max-height: 120px; overflow-y: auto;"></div>
         </div>
       </div>
       <div class="fs-modal-footer" style="display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: 1rem;">

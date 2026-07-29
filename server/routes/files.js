@@ -492,6 +492,71 @@ router.post('/batch/move', async (req, res) => {
   }
 });
 
+// POST /api/files/local/batch/rename (#35 Pattern-Based Bulk File Renaming)
+router.post('/batch/rename', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { paths, items, prefix, suffix, search, replace, isRegex, useRegex } = req.body;
+    const filePaths = paths || items;
+
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return res.status(400).json({ error: 'paths or items array is required' });
+    }
+
+    if (!prefix && !suffix && search === undefined) {
+      return res.status(400).json({ error: 'At least one rename rule (prefix, suffix, or search) is required' });
+    }
+
+    const regexEnabled = Boolean(isRegex || useRegex);
+    let renamedCount = 0;
+    const results = [];
+
+    for (const srcPath of filePaths) {
+      if (typeof srcPath !== 'string' || !srcPath) continue;
+
+      const dir = path.posix.dirname(srcPath);
+      const filename = path.posix.basename(srcPath);
+      const ext = path.extname(filename);
+      let stem = path.basename(filename, ext);
+
+      if (search !== undefined && search !== '') {
+        if (regexEnabled) {
+          const rx = new RegExp(search, 'g');
+          stem = stem.replace(rx, replace || '');
+        } else {
+          stem = stem.replaceAll(search, replace || '');
+        }
+      }
+
+      if (prefix) {
+        stem = prefix + stem;
+      }
+      if (suffix) {
+        stem = stem + suffix;
+      }
+
+      const newFilename = stem + ext;
+      const dstPath = path.posix.join(dir, newFilename);
+
+      if (srcPath !== dstPath) {
+        await provider.move(srcPath, dstPath);
+        await updateSharePathsOnMove(userId, srcPath, dstPath);
+        await updateFavoritePathsOnMove(userId, srcPath, dstPath).catch(() => {});
+        await logActivity(userId, 'rename', srcPath, filename, 0, JSON.stringify({ dst: dstPath }));
+        renamedCount++;
+        results.push({ src: srcPath, dst: dstPath });
+      }
+    }
+
+    res.json({ success: true, renamedCount, results });
+  } catch (err) {
+    if (err.message.includes('Path traversal blocked')) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // GET /api/files/local/batch/zip?paths=/Documents/f1.txt,/Documents/f2.txt
 router.get('/batch/zip', async (req, res) => {
   try {
@@ -596,6 +661,146 @@ router.post('/image/transform', async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 });
+
+/**
+ * POST /api/files/pdf/rotate (#38)
+ */
+router.post('/pdf/rotate', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { path: itemPath, angle = 90, pages = null } = req.body || {};
+
+    if (!itemPath) {
+      return res.status(400).json({ error: 'path parameter is required' });
+    }
+
+    const { stream } = await provider.read(itemPath);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+
+    const { rotatePdfPages, getPdfPageCount } = require('../utils/pdf_tools');
+    const updatedBuffer = rotatePdfPages(buffer, { angle, pages });
+
+    const { Readable } = require('stream');
+    await provider.write(itemPath, Readable.from([updatedBuffer]));
+
+    await logActivity(userId, 'pdf_rotate', itemPath, path.basename(itemPath), 0, JSON.stringify({ size: updatedBuffer.length }));
+    try {
+      dispatchWebhookEvent(userId, 'file_updated', { path: itemPath, action: 'rotate' });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      path: itemPath,
+      size: updatedBuffer.length,
+      pageCount: getPdfPageCount(updatedBuffer)
+    });
+  } catch (err) {
+    if (err.message && (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root'))) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
+    }
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/pdf/split (#38)
+ */
+router.post('/pdf/split', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { path: itemPath, ranges, targetDir } = req.body || {};
+
+    if (!itemPath) {
+      return res.status(400).json({ error: 'path parameter is required' });
+    }
+
+    const { stream } = await provider.read(itemPath);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+
+    const { splitPdfPages } = require('../utils/pdf_tools');
+    const splitBuffers = splitPdfPages(buffer, { ranges });
+
+    const dir = targetDir || path.dirname(itemPath);
+    const base = path.basename(itemPath, path.extname(itemPath));
+    const ext = path.extname(itemPath) || '.pdf';
+    const createdFiles = [];
+
+    const { Readable } = require('stream');
+    for (let i = 0; i < splitBuffers.length; i++) {
+      const outPath = path.posix.join(dir, `${base}_part${i + 1}${ext}`);
+      await provider.write(outPath, Readable.from([splitBuffers[i]]));
+      createdFiles.push(outPath);
+
+      await logActivity(userId, 'pdf_split', outPath, path.basename(outPath), 0, JSON.stringify({ size: splitBuffers[i].length }));
+      try {
+        dispatchWebhookEvent(userId, 'file_created', { path: outPath, action: 'split' });
+      } catch (e) {}
+    }
+
+    return res.json({
+      success: true,
+      createdFiles
+    });
+  } catch (err) {
+    if (err.message && (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root'))) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
+    }
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/pdf/merge (#38)
+ */
+router.post('/pdf/merge', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { paths: filePaths, targetPath } = req.body || {};
+
+    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+      return res.status(400).json({ error: 'paths array is required' });
+    }
+    if (!targetPath) {
+      return res.status(400).json({ error: 'targetPath parameter is required' });
+    }
+
+    const buffers = [];
+    for (const fPath of filePaths) {
+      const { stream } = await provider.read(fPath);
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      buffers.push(Buffer.concat(chunks));
+    }
+
+    const { mergePdfBuffers, getPdfPageCount } = require('../utils/pdf_tools');
+    const mergedBuffer = mergePdfBuffers(buffers);
+
+    const { Readable } = require('stream');
+    await provider.write(targetPath, Readable.from([mergedBuffer]));
+
+    await logActivity(userId, 'pdf_merge', targetPath, path.basename(targetPath), 0, JSON.stringify({ size: mergedBuffer.length }));
+    try {
+      dispatchWebhookEvent(userId, 'file_created', { path: targetPath, action: 'merge' });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      targetPath,
+      size: mergedBuffer.length,
+      pageCount: getPdfPageCount(mergedBuffer)
+    });
+  } catch (err) {
+    if (err.message && (err.message.includes('Path traversal blocked') || err.message.includes('path escapes user root'))) {
+      return res.status(403).json({ error: 'Path traversal blocked' });
+    }
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
 
 /**
  * GET /api/files/search/fulltext?q=query (#74)
@@ -814,6 +1019,110 @@ router.delete('/favorites', async (req, res) => {
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'path query parameter is required' });
     await removeFavorite(userId, filePath);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Smart Folders & Saved Dynamic Search Views (#46) ────────────────────────
+
+/**
+ * POST /smart-folders
+ * Create a new smart folder / saved search view.
+ */
+router.post('/smart-folders', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { createSmartFolder } = require('../db');
+    const { name, query, filters } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const smartFolder = await createSmartFolder(userId, name, query, filters);
+    res.status(201).json({ success: true, smartFolder });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /smart-folders
+ * List all smart folders for current user.
+ */
+router.get('/smart-folders', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { getSmartFoldersByUser } = require('../db');
+    const smartFolders = await getSmartFoldersByUser(userId);
+    res.json({ success: true, smartFolders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /smart-folders/:id
+ * Get single smart folder definition.
+ */
+router.get('/smart-folders/:id', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { getSmartFolderById } = require('../db');
+    const smartFolder = await getSmartFolderById(req.params.id, userId);
+    if (!smartFolder) return res.status(404).json({ error: 'Smart folder not found' });
+    res.json({ success: true, smartFolder });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /smart-folders/:id/contents
+ * Dynamically evaluate smart folder criteria and return matching file items.
+ */
+router.get('/smart-folders/:id/contents', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { getSmartFolderById } = require('../db');
+    const { evaluateSmartFolder } = require('../utils/smart_folders');
+    const smartFolder = await getSmartFolderById(req.params.id, userId);
+    if (!smartFolder) return res.status(404).json({ error: 'Smart folder not found' });
+
+    const items = await evaluateSmartFolder(req.userRoot, smartFolder);
+    res.json({ success: true, smartFolder, items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /smart-folders/:id or PATCH /smart-folders/:id
+ * Update smart folder definition.
+ */
+const updateSmartFolderHandler = async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { updateSmartFolder } = require('../db');
+    const updated = await updateSmartFolder(req.params.id, userId, req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Smart folder not found' });
+    res.json({ success: true, smartFolder: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+router.put('/smart-folders/:id', updateSmartFolderHandler);
+router.patch('/smart-folders/:id', updateSmartFolderHandler);
+
+/**
+ * DELETE /smart-folders/:id
+ * Delete smart folder definition.
+ */
+router.delete('/smart-folders/:id', async (req, res) => {
+  try {
+    const { userId } = getLocalProvider(req);
+    const { deleteSmartFolder, getSmartFolderById } = require('../db');
+    const existing = await getSmartFolderById(req.params.id, userId);
+    if (!existing) return res.status(404).json({ error: 'Smart folder not found' });
+    await deleteSmartFolder(req.params.id, userId);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

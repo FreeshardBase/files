@@ -110,10 +110,16 @@ test('SSE Events: Direct emitSSEEvent broadcasts event to active client', async 
   }
 });
 
+const fs = require('fs/promises');
+const path = require('path');
+
 test('SSE Events: File operations (move, delete, share) emit real-time events', async (t) => {
   removeAllClients();
   await db.initDb();
   await db.upsertUser('user_sse_3', 'user_sse_3', 'user_sse_3@example.com');
+  const rootBase = process.env.FILES_ROOT || path.join(__dirname, '..', '..', 'data', 'users');
+  const userHome = path.resolve(rootBase, 'user_sse_3');
+  try { await fs.rm(userHome, { recursive: true, force: true }); } catch (e) {}
 
   const app = await setupApp();
   const server = app.listen(0);

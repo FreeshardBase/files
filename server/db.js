@@ -111,6 +111,11 @@ async function initDb() {
   if (!hasRole) {
     try { await run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';"); } catch (e) {}
   }
+  const hasAvatarUrl = columns.some(c => c.name === 'avatar_url');
+  if (!hasAvatarUrl) {
+    try { await run("ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT NULL;"); } catch (e) {}
+  }
+
 
   // App Passwords table (#2, #3, #21)
   await run(`
@@ -773,17 +778,30 @@ async function initDb() {
     )
   `);
 
+  // Smart Folders & Saved Dynamic Search Views (#46)
+  await run(`
+    CREATE TABLE IF NOT EXISTS smart_folders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      query TEXT DEFAULT '',
+      filters TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Ensure fallback default-user exists for unauthenticated operations (#44)
   await upsertUser('default-user', 'Default User', 'default@freeshard.local');
 }
 
 // ── CRUD Helpers ─────────────────────────────────────────────────────────────
 
-async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null, displayName = null, preferredLocale = null, role = null) {
+async function upsertUser(id, username, email = null, authType = 'oidc', quotaBytes = null, displayName = null, preferredLocale = null, role = null, avatarUrl = null) {
   const userRole = role || 'user';
   await run(`
-    INSERT INTO users (id, username, email, display_name, auth_type, quota_bytes, preferred_locale, role, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO users (id, username, email, display_name, auth_type, quota_bytes, preferred_locale, role, avatar_url, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       username = excluded.username,
       email = excluded.email,
@@ -791,8 +809,9 @@ async function upsertUser(id, username, email = null, authType = 'oidc', quotaBy
       quota_bytes = excluded.quota_bytes,
       preferred_locale = COALESCE(excluded.preferred_locale, users.preferred_locale),
       role = COALESCE(excluded.role, users.role),
+      avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
       updated_at = datetime('now')
-  `, [id, username, email, displayName, authType, quotaBytes, preferredLocale, userRole]);
+  `, [id, username, email, displayName, authType, quotaBytes, preferredLocale, userRole, avatarUrl]);
   return get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
@@ -2440,6 +2459,9 @@ async function updateMigrationPlanStatus(id, status, { completedFiles, failedFil
 }
 
 module.exports = {
+  run,
+  get,
+  all,
   initDb,
   closeDb,
   _resetForTest,
@@ -2594,4 +2616,76 @@ module.exports = {
   getMigrationPlanById,
   listMigrationPlans,
   updateMigrationPlanStatus,
+  createSmartFolder,
+  getSmartFoldersByUser,
+  getSmartFolderById,
+  updateSmartFolder,
+  deleteSmartFolder,
+  searchUsers,
 };
+
+// ── User Search & Autocomplete (#51) ──────────────────────────────────────────
+
+async function searchUsers(query, currentUserId = null, limit = 10) {
+  if (!query || typeof query !== 'string') return [];
+  const term = `%${query.trim()}%`;
+  const rows = await all(
+    `SELECT id, username, display_name, email, avatar_url
+     FROM users
+     WHERE (username LIKE ? OR display_name LIKE ? OR email LIKE ?)
+       AND id != ? AND id != 'default-user'
+     ORDER BY username ASC
+     LIMIT ?`,
+    [term, term, term, currentUserId || '', limit]
+  );
+  return rows;
+}
+
+// ── Smart Folders & Saved Dynamic Search Views (#46) ────────────────────────
+
+async function createSmartFolder(userId, name, query = '', filters = {}) {
+  const filterStr = typeof filters === 'string' ? filters : JSON.stringify(filters || {});
+  const res = await run(
+    'INSERT INTO smart_folders (user_id, name, query, filters) VALUES (?, ?, ?, ?)',
+    [userId, name, query || '', filterStr]
+  );
+  return getSmartFolderById(res.lastID, userId);
+}
+
+async function getSmartFoldersByUser(userId) {
+  const rows = await all('SELECT * FROM smart_folders WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+  return rows.map(r => ({
+    ...r,
+    filters: r.filters ? JSON.parse(r.filters) : {}
+  }));
+}
+
+async function getSmartFolderById(id, userId) {
+  const row = await get('SELECT * FROM smart_folders WHERE id = ? AND user_id = ?', [id, userId]);
+  if (!row) return null;
+  return {
+    ...row,
+    filters: row.filters ? JSON.parse(row.filters) : {}
+  };
+}
+
+async function updateSmartFolder(id, userId, updates = {}) {
+  const existing = await getSmartFolderById(id, userId);
+  if (!existing) return null;
+  const name = updates.name !== undefined ? updates.name : existing.name;
+  const query = updates.query !== undefined ? updates.query : existing.query;
+  const filters = updates.filters !== undefined ? updates.filters : existing.filters;
+  const filterStr = typeof filters === 'string' ? filters : JSON.stringify(filters || {});
+  await run(
+    `UPDATE smart_folders SET name = ?, query = ?, filters = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+    [name, query || '', filterStr, id, userId]
+  );
+  return getSmartFolderById(id, userId);
+}
+
+async function deleteSmartFolder(id, userId) {
+  await run('DELETE FROM smart_folders WHERE id = ? AND user_id = ?', [id, userId]);
+  return true;
+}
+
+

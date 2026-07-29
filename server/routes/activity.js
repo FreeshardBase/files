@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { getActivityLogByUser } = require('../db');
+const { getActivityLogByUser, getFileAccessLogs } = require('../db');
 
 router.use(requireAuth);
 
@@ -22,4 +22,24 @@ router.get('/', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/activity/file-access
+ * Retrieve role-based file access logs (#44)
+ */
+router.get('/file-access', async (req, res) => {
+  try {
+    const userId = req.query.userId || req.userId;
+    const status = req.query.status;
+    const filePath = req.query.filePath;
+    const limit = parseInt(req.query.limit || '50', 10);
+    const offset = parseInt(req.query.offset || '0', 10);
+
+    const logs = await getFileAccessLogs({ userId, status, filePath, limit, offset });
+    res.json({ logs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+

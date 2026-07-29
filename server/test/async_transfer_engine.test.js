@@ -202,4 +202,142 @@ describe('Server-Side Asynchronous Background Transfer Engine (#64)', () => {
     assert.ok(text.includes('connected') || text.includes(': keepalive') || text.includes('event:'));
     reader.cancel();
   });
+
+  test('TUS Protocol: POST /api/transfers/tus - Create chunked upload session', async () => {
+    const res = await fetch(`${serverUrl}/api/transfers/tus`, {
+      method: 'POST',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': '1024',
+        'Upload-Metadata': 'filename dGVzdF9jaHVuay50eHQ=,destinationPath L2Rlc3RfY2h1bmsudHh0'
+      }
+    });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.headers.get('tus-resumable'), '1.0.0');
+    assert.equal(res.headers.get('upload-offset'), '0');
+    const location = res.headers.get('location');
+    assert.ok(location);
+    assert.ok(location.includes('/api/transfers/tus/'));
+  });
+
+  test('TUS Protocol: HEAD /api/transfers/tus/:id - Query session status', async () => {
+    const createRes = await fetch(`${serverUrl}/api/transfers/tus`, {
+      method: 'POST',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': '500',
+        'Upload-Metadata': 'filename dGVzdF9oZWFkLnR4dA==,destinationPath L2Rlc3RfaGVhZC50eHQ='
+      }
+    });
+    const location = createRes.headers.get('location');
+    const uploadId = location.split('/').pop();
+
+    const headRes = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'HEAD',
+      headers: { 'Tus-Resumable': '1.0.0' }
+    });
+
+    assert.equal(headRes.status, 200);
+    assert.equal(headRes.headers.get('upload-offset'), '0');
+    assert.equal(headRes.headers.get('upload-length'), '500');
+  });
+
+  test('TUS Protocol: PATCH /api/transfers/tus/:id - Multi-chunk resumable upload and completion', async () => {
+    const userHome = path.join(dataDir, 'users', userId);
+    const chunk1 = Buffer.from('Hello, World! ');
+    const chunk2 = Buffer.from('This is chunk 2.');
+    const totalLength = chunk1.length + chunk2.length;
+
+    const createRes = await fetch(`${serverUrl}/api/transfers/tus`, {
+      method: 'POST',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': String(totalLength),
+        'Upload-Metadata': `filename ${Buffer.from('tus_complete.txt').toString('base64')},destinationPath ${Buffer.from('/tus_complete.txt').toString('base64')}`
+      }
+    });
+
+    const location = createRes.headers.get('location');
+    const uploadId = location.split('/').pop();
+
+    // Send Chunk 1
+    const patch1 = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': '0'
+      },
+      body: chunk1
+    });
+
+    assert.equal(patch1.status, 204);
+    assert.equal(patch1.headers.get('upload-offset'), String(chunk1.length));
+
+    // Verify offset via HEAD before chunk 2
+    const headRes = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'HEAD',
+      headers: { 'Tus-Resumable': '1.0.0' }
+    });
+    assert.equal(headRes.headers.get('upload-offset'), String(chunk1.length));
+
+    // Mismatched offset error handling
+    const patchMismatch = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': '0'
+      },
+      body: chunk2
+    });
+    assert.equal(patchMismatch.status, 409);
+
+    // Send Chunk 2 (completes upload)
+    const patch2 = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': String(chunk1.length)
+      },
+      body: chunk2
+    });
+
+    assert.equal(patch2.status, 204);
+    assert.equal(patch2.headers.get('upload-offset'), String(totalLength));
+
+    // Verify destination file created with concatenated contents
+    const destFileContent = await fs.readFile(path.join(userHome, 'tus_complete.txt'), 'utf8');
+    assert.equal(destFileContent, 'Hello, World! This is chunk 2.');
+  });
+
+  test('TUS Protocol: DELETE /api/transfers/tus/:id - Terminate upload session', async () => {
+    const createRes = await fetch(`${serverUrl}/api/transfers/tus`, {
+      method: 'POST',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': '2000',
+        'Upload-Metadata': 'filename dGVzdF9kZWwudHh0=,destinationPath L2Rlc3RfZGVsLnR4dA=='
+      }
+    });
+
+    const location = createRes.headers.get('location');
+    const uploadId = location.split('/').pop();
+
+    const delRes = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'DELETE',
+      headers: { 'Tus-Resumable': '1.0.0' }
+    });
+
+    assert.equal(delRes.status, 204);
+
+    // Verify session no longer exists
+    const headRes = await fetch(`${serverUrl}/api/transfers/tus/${uploadId}`, {
+      method: 'HEAD',
+      headers: { 'Tus-Resumable': '1.0.0' }
+    });
+    assert.equal(headRes.status, 404);
+  });
 });
