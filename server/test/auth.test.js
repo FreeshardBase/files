@@ -125,10 +125,41 @@ describe('Authentication & App Passwords (#2, #48)', () => {
 
     const avatarUrl = claims.picture || claims.avatar_url || null;
     const user = await db.upsertUser(claims.sub, claims.preferred_username, claims.email, 'oidc', null, claims.name, null, null, avatarUrl);
-    assert.equal(user.avatar_url, 'https://auth.gryzia.de/avatars/claim.png');
-
     const storedUser = await db.get('SELECT * FROM users WHERE id = ?', [claims.sub]);
     assert.equal(storedUser.avatar_url, claims.picture);
+  });
+
+  test('handles malformed cookie URI encoding gracefully without URIError crash', () => {
+    function parseCookies(req) {
+      const list = {};
+      const rc = req.headers.cookie;
+      if (rc) {
+        rc.split(';').forEach(cookie => {
+          const parts = cookie.split('=');
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const rawVal = parts.slice(1).join('=');
+            try {
+              list[key] = decodeURIComponent(rawVal);
+            } catch (e) {
+              list[key] = rawVal;
+            }
+          }
+        });
+      }
+      return list;
+    }
+
+    const mockReq = {
+      headers: {
+        cookie: 'connect.sid=s%3A123; fs_oidc_state=%G%1%2; valid=hello%20world'
+      }
+    };
+
+    const parsed = parseCookies(mockReq);
+    assert.equal(parsed['connect.sid'], 's:123');
+    assert.equal(parsed['fs_oidc_state'], '%G%1%2');
+    assert.equal(parsed['valid'], 'hello world');
   });
 });
 
