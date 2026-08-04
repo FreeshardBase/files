@@ -62,6 +62,22 @@ router.get('/config', (req, res) => {
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get('/me', async (req, res) => {
+  if (process.env.E2E_TEST === 'true' && (!req.session || !req.session.userId)) {
+    try {
+      let user = await db.get('SELECT * FROM users WHERE username = ?', ['default-user']);
+      if (!user) {
+        user = await db.upsertUser('default-user', 'default-user', 'default@freeshard.local');
+      }
+      if (req.session) {
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        req.session.displayName = user.display_name || user.username;
+      }
+    } catch (e2eErr) {
+      console.warn('[E2E Auth Bypass Error]', e2eErr.message);
+    }
+  }
+
   if (req.session && req.session.userId) {
     try {
       const user = await db.get('SELECT * FROM users WHERE id = ?', [req.session.userId]);

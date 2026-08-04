@@ -629,6 +629,18 @@ class FileBrowser {
   }
 
   setupEventListeners() {
+    // Global Event Delegation: Modal Overlay Backdrop & Close Buttons (#72)
+    document.addEventListener('click', (e) => {
+      if (e.target.matches('.modal-close, .fs-modal-close, [data-dismiss="modal"]')) {
+        const modal = e.target.closest('.modal, .fs-modal-overlay, .media-viewer-modal');
+        if (modal) {
+          modal.style.display = 'none';
+        }
+      } else if (e.target.classList.contains('modal') || e.target.classList.contains('fs-modal-overlay')) {
+        e.target.style.display = 'none';
+      }
+    });
+
     // Settings Modal Navigation & Preference Persistence (#68)
     const navSettingsEl = document.getElementById('navSettings');
     if (navSettingsEl) {
@@ -719,35 +731,6 @@ class FileBrowser {
         this.render();
       });
     }
-
-  async loadAppPasswords() {
-    const listEl = document.getElementById('appPasswordsList');
-    if (!listEl) return;
-    try {
-      const res = await fetch('/api/auth/app-passwords');
-      if (!res.ok) return;
-      const data = await res.json();
-      const passwords = data.appPasswords || [];
-      if (passwords.length === 0) {
-        listEl.innerHTML = '<p style="font-size:12px; color:var(--ink-muted);">No active app passwords.</p>';
-        return;
-      }
-      listEl.innerHTML = passwords.map(item => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:12px;">
-          <span><strong>${item.label}</strong> (created ${new Date(item.created_at).toLocaleDateString()})</span>
-          <button type="button" class="fs-btn fs-btn--danger" style="padding:2px 6px; font-size:11px;" onclick="window.fileBrowser.deleteAppPassword(${item.id})">Revoke</button>
-        </div>
-      `).join('');
-    } catch (e) {}
-  }
-
-  async deleteAppPassword(id) {
-    if (!confirm('Revoke this app password?')) return;
-    try {
-      const res = await fetch(`/api/auth/app-passwords/${id}`, { method: 'DELETE' });
-      if (res.ok) this.loadAppPasswords();
-    } catch (e) {}
-  }
 
     // Mouse Side-Button Folder History Navigation (#65)
     const handleMouseNav = (e) => {
@@ -1163,6 +1146,35 @@ class FileBrowser {
     // Edit Public Share Modal Controls (#53)
     document.getElementById('btnCancelEditPublicShare')?.addEventListener('click', () => this.hideModal('modalEditPublicShare'));
     document.getElementById('btnConfirmEditPublicShare')?.addEventListener('click', () => this.updatePublicShareLink());
+  }
+
+  async loadAppPasswords() {
+    const listEl = document.getElementById('appPasswordsList');
+    if (!listEl) return;
+    try {
+      const res = await fetch('/api/auth/app-passwords');
+      if (!res.ok) return;
+      const data = await res.json();
+      const passwords = data.appPasswords || [];
+      if (passwords.length === 0) {
+        listEl.innerHTML = '<p style="font-size:12px; color:var(--ink-muted);">No active app passwords.</p>';
+        return;
+      }
+      listEl.innerHTML = passwords.map(item => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:12px;">
+          <span><strong>${item.label}</strong> (created ${new Date(item.created_at).toLocaleDateString()})</span>
+          <button type="button" class="fs-btn fs-btn--danger" style="padding:2px 6px; font-size:11px;" onclick="window.fileBrowser.deleteAppPassword(${item.id})">Revoke</button>
+        </div>
+      `).join('');
+    } catch (e) {}
+  }
+
+  async deleteAppPassword(id) {
+    if (!confirm('Revoke this app password?')) return;
+    try {
+      const res = await fetch(`/api/auth/app-passwords/${id}`, { method: 'DELETE' });
+      if (res.ok) this.loadAppPasswords();
+    } catch (e) {}
   }
 
   async loadDirectory(dirPath, updateTab = true, isNavigatingHistory = false) {
@@ -2156,6 +2168,7 @@ class FileBrowser {
       } else {
         this.selectionActionBar.style.display = 'none';
       }
+    }
   }
 
   // ── Keyboard Shortcuts — Desktop-Grade File Navigation (#29) ──────────────

@@ -1039,39 +1039,6 @@ async function updateSharePathsOnMove(userId, srcPath, dstPath) {
   `, [dstPrefix, srcPrefix.length + 1, srcPrefix, userId]);
 }
 
-// ── Federated Sharing Helpers (#31) ──────────────────────────────────────────
-
-async function createFederatedShare(ownerUserId, targetShardId, shareeHandle, filePath, isDirectory = 0, readWrite = 0, federatedToken = null) {
-  const token = federatedToken || ('fed_' + crypto.randomBytes(16).toString('hex'));
-  const res = await run(`
-    INSERT INTO federated_shares (owner_user_id, target_shard_id, sharee_handle, file_path, is_directory, read_write, federated_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, [ownerUserId, targetShardId, shareeHandle, filePath, isDirectory ? 1 : 0, readWrite ? 1 : 0, token]);
-  return get('SELECT * FROM federated_shares WHERE id = ?', [res.lastID]);
-}
-
-async function getFederatedSharesByOwner(ownerUserId) {
-  return all('SELECT * FROM federated_shares WHERE owner_user_id = ? ORDER BY created_at DESC', [ownerUserId]);
-}
-
-async function createInboundFederatedShare(userId, senderShardId, senderHandle, fileName, inboundToken = null, readWrite = 0) {
-  const token = inboundToken || ('inbound_' + crypto.randomBytes(16).toString('hex'));
-  const res = await run(`
-    INSERT INTO inbound_federated_shares (recipient_user_id, sender_shard_id, sender_handle, file_name, federated_token, read_write)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, [userId, senderShardId, senderHandle, fileName, token, readWrite ? 1 : 0]);
-  return get('SELECT * FROM inbound_federated_shares WHERE id = ?', [res.lastID]);
-}
-
-async function getInboundFederatedShares(userId) {
-  return all('SELECT * FROM inbound_federated_shares WHERE recipient_user_id = ? ORDER BY created_at DESC', [userId]);
-}
-
-async function deleteFederatedShare(shareId, ownerUserId) {
-  const res = await run('DELETE FROM federated_shares WHERE id = ? AND owner_user_id = ?', [shareId, ownerUserId]);
-  return res.changes > 0;
-}
-
 
 // ── Trash & Soft-Delete Helpers (#18) ────────────────────────────────────────
 
