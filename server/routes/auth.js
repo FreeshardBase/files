@@ -161,7 +161,13 @@ function parseCookies(req) {
     rc.split(';').forEach(cookie => {
       const parts = cookie.split('=');
       if (parts.length >= 2) {
-        list[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('='));
+        const key = parts[0].trim();
+        const rawVal = parts.slice(1).join('=');
+        try {
+          list[key] = decodeURIComponent(rawVal);
+        } catch (e) {
+          list[key] = rawVal;
+        }
       }
     });
   }
@@ -192,10 +198,16 @@ router.get('/login', async (req, res) => {
     req.session.code_verifier = code_verifier;
 
     const isSecure = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
-    const oidcCookieVal = encodeURIComponent(JSON.stringify({ state, nonce, code_verifier }));
-    res.setHeader('Set-Cookie', [
-      `fs_oidc_state=${oidcCookieVal}; Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Max-Age=600`
-    ]);
+    const oidcCookieVal = JSON.stringify({ state, nonce, code_verifier });
+    
+    // Safely append cookie using res.cookie so express-session's connect.sid is preserved (#2)
+    res.cookie('fs_oidc_state', oidcCookieVal, {
+      path: '/',
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'lax',
+      maxAge: 600 * 1000
+    });
 
     const authUrl = client.authorizationUrl({
       scope: 'openid profile email',
