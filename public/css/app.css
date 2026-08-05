@@ -65,6 +65,11 @@
   padding: 0;
 }
 
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 body {
   background-color: var(--bg);
   color: var(--ink);
@@ -78,8 +83,11 @@ body {
 #app {
   display: flex;
   width: 100%;
+  max-width: 100vw;
   height: 100%;
+  overflow-x: hidden;
 }
+
 
 /* Typography Classes */
 .fs-label {
@@ -282,7 +290,7 @@ body {
   line-height: 1.2;
 }
 
-/* Multi-Tab Navigation System (#60) */
+/* Multi-Tab Navigation System (#60, #76) */
 .tab-bar-container {
   display: flex;
   align-items: center;
@@ -291,15 +299,18 @@ body {
   padding: 6px var(--space-4) 0 var(--space-4);
   gap: var(--space-2);
   user-select: none;
+  height: 40px;
+  box-sizing: border-box;
 }
 
 .tab-bar-scroll {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
   flex: 1;
+  height: 100%;
 }
 
 .tab-bar-scroll::-webkit-scrollbar {
@@ -311,7 +322,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.03);
   border: var(--border-w) solid var(--border-cool);
   border-bottom: none;
   border-radius: var(--radius-control) var(--radius-control) 0 0;
@@ -321,34 +332,43 @@ body {
   cursor: pointer;
   max-width: 170px;
   min-width: 90px;
+  height: 33px;
+  box-sizing: border-box;
   white-space: nowrap;
-  transition: all 150ms ease;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
   position: relative;
 }
 
 .tab-item:hover {
   color: var(--ink);
-  background: var(--bg);
+  background: var(--surface);
 }
 
 .tab-item.active {
   background: var(--surface);
   color: var(--ink);
-  border-color: var(--line);
+  border-color: var(--border-cool);
+  border-top: 2px solid var(--accent, #6366f1);
   font-weight: 600;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .tab-item .tab-icon {
   font-size: 13px;
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 .tab-item .tab-title {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   flex: 1;
+  min-width: 0;
 }
 
 .tab-item .tab-close {
@@ -766,7 +786,10 @@ body {
 
 .modal-content {
   width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
+
 
 .modal-actions {
   display: flex;
@@ -1035,9 +1058,11 @@ body {
     min-height: 44px; /* Touch target minimum height */
   }
 
-  /* 2. Touch-Scrollable & Compact Multi-Tab Bar */
+  /* 2. Touch-Scrollable & Compact Multi-Tab Bar (#76) */
   .tab-bar-container {
     padding: 2px var(--space-2) 0 var(--space-2) !important;
+    height: 40px !important;
+    min-height: 40px !important;
   }
 
   .tab-bar-scroll {
@@ -1052,16 +1077,32 @@ body {
 
   .tab-item {
     max-width: 130px !important;
+    min-width: 75px !important;
     padding: 5px 8px !important;
+    height: 33px !important;
+    flex-shrink: 0;
   }
 
-  .tab-item:not(.active) .tab-title {
-    display: none !important; /* Hide text on inactive tabs on narrow mobile */
+  .tab-item .tab-title {
+    display: inline-block !important;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* 3. Toolbar & Breadcrumbs Scrollable Container */
+  /* 3. Toolbar & Breadcrumbs Stacking Container (#75) */
+  .toolbar-area {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: var(--space-2) !important;
+  }
+
   .breadcrumb,
   .breadcrumb-area {
+    width: 100%;
+    max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
@@ -1073,14 +1114,14 @@ body {
     display: none;
   }
 
-  .toolbar-area {
+  .action-buttons,
+  .actions-group {
+    width: 100%;
     flex-wrap: wrap;
+    justify-content: flex-start;
     gap: var(--space-2);
   }
 
-  .actions-group {
-    flex-wrap: wrap;
-  }
 
   /* 4. Touch-Friendly Context Menu Sizing */
   .context-menu-item {

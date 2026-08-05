@@ -32,9 +32,9 @@ describe('Mobile & Tablet Responsiveness Contracts (#67)', () => {
     assert.ok(cssContent.includes('scrollbar-width: none'));
   });
 
-  test('collapses inactive tab titles on mobile viewports', () => {
-    assert.ok(cssContent.includes('.tab-item:not(.active) .tab-title'));
-    assert.ok(cssContent.includes('display: none'));
+  test('truncates tab titles on mobile viewports for layout stability', () => {
+    assert.ok(cssContent.includes('.tab-item .tab-title'));
+    assert.ok(cssContent.includes('text-overflow: ellipsis'));
   });
 
   test('defines scrollable breadcrumb area for deep folder hierarchies on mobile', () => {

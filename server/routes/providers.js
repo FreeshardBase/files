@@ -408,41 +408,64 @@ router.post('/gdrive/connect', async (req, res) => {
 });
 
 /**
- * POST /api/providers/s3/connect (#73, #9)
+ * GET /api/providers/supported-flows (#74)
+ * Returns classified lists of OAuth 2.0 and Credential-based providers
  */
-router.post('/s3/connect', async (req, res) => {
+router.get('/supported-flows', (req, res) => {
+  res.json({
+    oauth_providers: [
+      { type: 'gdrive', name: 'Google Drive', flow: 'oauth2', auth_url: '/api/providers/gdrive/auth' },
+      { type: 'dropbox', name: 'Dropbox', flow: 'oauth2', auth_url: '/api/providers/dropbox/auth' }
+    ],
+    credential_providers: [
+      { type: 's3', name: 'S3 / MinIO / Wasabi', flow: 'credentials', fields: ['name', 'endpoint', 'bucket', 'accessKey', 'secretKey'] },
+      { type: 'moveit', name: 'MOVEit / SFTP', flow: 'credentials', fields: ['name', 'host', 'username', 'password'] }
+    ]
+  });
+});
+
+/**
+ * POST /api/providers/s3 & POST /api/providers/s3/connect (#73, #74, #9)
+ */
+const handleS3Connect = async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
-    const { display_name, endpoint, bucket, access_key, secret_key } = req.body;
+    const { displayName, display_name, endpoint, bucket, accessKey, access_key, secretKey, secret_key } = req.body || {};
+    const name = displayName || display_name;
+    const accKey = accessKey || access_key;
+    const secKey = secretKey || secret_key;
 
-    if (!display_name || !bucket || !access_key || !secret_key) {
-      return res.status(400).json({ error: 'display_name, bucket, access_key, and secret_key are required' });
+    if (!name || !bucket || !accKey || !secKey) {
+      return res.status(400).json({ error: 'displayName, bucket, accessKey, and secretKey are required' });
     }
 
     const credentials = {
       endpoint: endpoint || null,
       bucket,
-      accessKeyId: access_key,
-      secretAccessKey: secret_key
+      accessKeyId: accKey,
+      secretAccessKey: secKey
     };
 
-    const connectionId = await addProviderConnection(userId, 's3', display_name, credentials);
-    res.status(201).json({ success: true, connectionId, display_name, provider_type: 's3' });
+    const connectionId = await addProviderConnection(userId, 's3', name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name: name, provider_type: 's3' });
   } catch (err) {
     res.status(400).json({ error: `S3 connection failed: ${err.message}` });
   }
-});
+};
+router.post('/s3', handleS3Connect);
+router.post('/s3/connect', handleS3Connect);
 
 /**
- * POST /api/providers/moveit/connect (#73, #70)
+ * POST /api/providers/moveit & POST /api/providers/moveit/connect (#73, #74, #70)
  */
-router.post('/moveit/connect', async (req, res) => {
+const handleMoveitConnect = async (req, res) => {
   try {
     const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
-    const { display_name, host, username, password } = req.body;
+    const { displayName, display_name, host, username, password } = req.body || {};
+    const name = displayName || display_name;
 
-    if (!display_name || !host || !username || !password) {
-      return res.status(400).json({ error: 'display_name, host, username, and password are required' });
+    if (!name || !host || !username || !password) {
+      return res.status(400).json({ error: 'displayName, host, username, and password are required' });
     }
 
     const credentials = {
@@ -451,12 +474,14 @@ router.post('/moveit/connect', async (req, res) => {
       password
     };
 
-    const connectionId = await addProviderConnection(userId, 'moveit', display_name, credentials);
-    res.status(201).json({ success: true, connectionId, display_name, provider_type: 'moveit' });
+    const connectionId = await addProviderConnection(userId, 'moveit', name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name: name, provider_type: 'moveit' });
   } catch (err) {
     res.status(400).json({ error: `MOVEit connection failed: ${err.message}` });
   }
-});
+};
+router.post('/moveit', handleMoveitConnect);
+router.post('/moveit/connect', handleMoveitConnect);
 
 /**
  * GET /api/providers/connections

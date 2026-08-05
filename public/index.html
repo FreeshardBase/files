@@ -119,10 +119,28 @@
           <button class="fs-btn" id="btnFileDetails" style="display: none;">ℹ️ <span>Details</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
           <button class="fs-btn" id="btnNewSmartFolder">🔍 <span data-i18n="files.new_smart_folder">Smart Folder</span></button>
-          <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer;">
-            📤 <span data-i18n="files.upload">Upload</span>
-            <input type="file" id="fileInput" multiple style="display: none;">
-          </label>
+          <div class="dropdown-split upload-dropdown-split" id="uploadDropdownContainer" style="position: relative; display: inline-flex; vertical-align: middle;">
+            <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer; border-top-right-radius: 0; border-bottom-right-radius: 0;">
+              📤 <span data-i18n="files.upload">Upload</span>
+              <input type="file" id="fileInput" multiple style="display: none;">
+            </label>
+            <button class="fs-btn fs-btn--primary dropdown-toggle" id="btnUploadDropdownToggle" style="border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(255,255,255,0.25); padding: 0 8px;" title="Upload Options" aria-label="Upload options menu">
+              ▼
+            </button>
+            <div class="dropdown-menu upload-dropdown-menu" id="uploadDropdownMenu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 1000; min-width: 190px; background: var(--surface-card, #1e293b); border: 1px solid var(--border, #334155); border-radius: var(--radius-card, 8px); box-shadow: var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.5)); padding: 4px 0;">
+              <label class="dropdown-item" id="btnUploadFiles" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; color: var(--text, #f8fafc);">
+                📄 <span data-i18n="files.upload_files">Upload Files</span>
+                <input type="file" id="fileInputOption" multiple style="display: none;">
+              </label>
+              <label class="dropdown-item" id="btnUploadFolder" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; color: var(--text, #f8fafc);">
+                📁 <span data-i18n="files.upload_folder">Upload Folder</span>
+                <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+              </label>
+              <button type="button" class="dropdown-item" id="btnImportUrl" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; width: 100%; text-align: left; background: transparent; border: none; cursor: pointer; color: var(--text, #f8fafc); font-size: 14px;">
+                🔗 <span data-i18n="files.import_url">Import from URL</span>
+              </button>
+            </div>
+          </div>
           <div class="view-toggle">
             <button class="fs-btn btn-icon active" id="btnGridView" title="Grid View">🔲</button>
             <button class="fs-btn btn-icon" id="btnListView" title="List View">☰</button>
@@ -290,69 +308,84 @@
   <div id="modalAddProvider" class="modal" style="display: none;">
     <div class="modal-content fs-sheet" style="max-width: 500px;">
       <h3 style="margin-bottom: 0.5rem; font-size: var(--fs-h3);">Connect External Cloud Storage</h3>
-      <p style="color: var(--ink-muted); font-size: 13px; margin-bottom: 1.25rem;">Select your cloud provider for 1-click OAuth 2.0 connection.</p>
+      <p style="color: var(--ink-muted); font-size: 13px; margin-bottom: 1.25rem;">Select your cloud provider for 1-click OAuth 2.0 connection or fill in host credentials below.</p>
 
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <a href="/api/providers/gdrive/auth" class="fs-btn fs-btn--primary" style="justify-content: center; padding: 10px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-          <svg width="20" height="20" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.2-2.1 7.4-12.8c.8-1.4 1.2-2.95 1.2-4.5h-27.5l6.85 11.85z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.95-1.2-4.5-1.2h-18.5c-1.55 0-3.15.4-4.5 1.2z" fill="#00832d"/><path d="m59.8 50h27.5c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8z" fill="#ffba00"/><path d="m27.5 50 13.75 23.8c1.35.8 2.95 1.2 4.5 1.2h27.5c1.55 0 3.15-.4 4.5-1.2l-13.75-23.8z" fill="#2684fc"/></svg>
-          Connect Google Drive (OAuth 2.0)
-        </a>
-        <a href="/api/providers/dropbox/auth" class="fs-btn" style="justify-content: center; padding: 10px; font-weight: 600; background: rgba(0, 97, 255, 0.1); border-color: #0061ff; color: #0061ff; display: flex; align-items: center; gap: 8px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#0061FF" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L0 6l6 4 6-4-6-4zm12 0l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4l-6 4 6 4 6-4-6-4zM6 19.5l6 4 6-4-6-3.5-6 3.5z"/></svg>
-          Connect Dropbox (OAuth 2.0)
-        </a>
+      <!-- 1-Click OAuth 2.0 Providers Section -->
+      <div class="provider-auth-section" data-flow="oauth2" style="margin-bottom: 1.25rem;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink); display: flex; align-items: center; justify-content: space-between;">
+          <span>1-Click OAuth 2.0 Providers</span>
+          <span class="badge badge-oauth" style="font-size: 11px; padding: 2px 6px; background: rgba(0,102,218,0.1); color: var(--primary); border-radius: 4px;">OAuth 2.0</span>
+        </h4>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <a href="/api/providers/gdrive/auth" class="fs-btn fs-btn--primary provider-oauth-btn" data-provider="gdrive" style="justify-content: center; padding: 10px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.2-2.1 7.4-12.8c.8-1.4 1.2-2.95 1.2-4.5h-27.5l6.85 11.85z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.95-1.2-4.5-1.2h-18.5c-1.55 0-3.15.4-4.5 1.2z" fill="#00832d"/><path d="m59.8 50h27.5c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8z" fill="#ffba00"/><path d="m27.5 50 13.75 23.8c1.35.8 2.95 1.2 4.5 1.2h27.5c1.55 0 3.15-.4 4.5-1.2l-13.75-23.8z" fill="#2684fc"/></svg>
+            Connect Google Drive (OAuth 2.0)
+          </a>
+          <a href="/api/providers/dropbox/auth" class="fs-btn provider-oauth-btn" data-provider="dropbox" style="justify-content: center; padding: 10px; font-weight: 600; background: rgba(0, 97, 255, 0.1); border-color: #0061ff; color: #0061ff; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#0061FF" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L0 6l6 4 6-4-6-4zm12 0l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4l-6 4 6 4 6-4-6-4zM6 19.5l6 4 6-4-6-3.5-6 3.5z"/></svg>
+            Connect Dropbox (OAuth 2.0)
+          </a>
+        </div>
       </div>
 
-      <!-- S3 / MinIO / Wasabi Storage Connection Form -->
-      <div class="provider-form-section" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink);">S3 / MinIO / Wasabi Storage</h4>
-        <form id="formAddS3Provider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
-          <div class="fs-field">
-            <label class="fs-label" for="inputS3Name">Provider Name / Label</label>
-            <input type="text" id="inputS3Name" class="fs-input" placeholder="e.g. My S3 Bucket" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputS3Endpoint">Endpoint URL</label>
-            <input type="text" id="inputS3Endpoint" class="fs-input" placeholder="https://s3.amazonaws.com or http://localhost:9000" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputS3Bucket">Bucket Name</label>
-            <input type="text" id="inputS3Bucket" class="fs-input" placeholder="my-bucket" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputS3AccessKey">Access Key</label>
-            <input type="text" id="inputS3AccessKey" class="fs-input" placeholder="Access Key ID" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputS3SecretKey">Secret Key</label>
-            <input type="password" id="inputS3SecretKey" class="fs-input" placeholder="Secret Access Key" required>
-          </div>
-          <button type="submit" id="btnConnectS3" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect S3 Storage</button>
-        </form>
-      </div>
+      <!-- Credential-Based Form Providers Section -->
+      <div class="provider-auth-section" data-flow="credentials" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink); display: flex; align-items: center; justify-content: space-between;">
+          <span>Credential-Based Form Providers</span>
+          <span class="badge badge-credentials" style="font-size: 11px; padding: 2px 6px; background: rgba(255,186,0,0.15); color: #b88600; border-radius: 4px;">Credentials</span>
+        </h4>
 
-      <!-- MOVEit Transfer Connection Form -->
-      <div class="provider-form-section" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink);">MOVEit Transfer Storage</h4>
-        <form id="formAddMoveitProvider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
-          <div class="fs-field">
-            <label class="fs-label" for="inputMoveitName">Provider Name / Label</label>
-            <input type="text" id="inputMoveitName" class="fs-input" placeholder="e.g. Corporate MOVEit" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputMoveitHost">MOVEit Host / Endpoint</label>
-            <input type="text" id="inputMoveitHost" class="fs-input" placeholder="moveit.example.com" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputMoveitUsername">Username</label>
-            <input type="text" id="inputMoveitUsername" class="fs-input" placeholder="moveit_user" required>
-          </div>
-          <div class="fs-field">
-            <label class="fs-label" for="inputMoveitPassword">Password</label>
-            <input type="password" id="inputMoveitPassword" class="fs-input" placeholder="••••••••" required>
-          </div>
-          <button type="submit" id="btnConnectMoveit" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect MOVEit Storage</button>
-        </form>
+        <!-- S3 / MinIO / Wasabi Storage Connection Form -->
+        <div class="provider-form-section" data-provider-type="s3" style="margin-top: 0.75rem;">
+          <h5 style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink-muted);">S3 / MinIO / Wasabi Storage</h5>
+          <form id="formAddS3Provider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+            <div class="fs-field">
+              <label class="fs-label" for="inputS3Name">Provider Name / Label</label>
+              <input type="text" id="inputS3Name" class="fs-input" placeholder="e.g. My S3 Bucket" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputS3Endpoint">Endpoint URL</label>
+              <input type="text" id="inputS3Endpoint" class="fs-input" placeholder="https://s3.amazonaws.com or http://localhost:9000" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputS3Bucket">Bucket Name</label>
+              <input type="text" id="inputS3Bucket" class="fs-input" placeholder="my-bucket" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputS3AccessKey">Access Key</label>
+              <input type="text" id="inputS3AccessKey" class="fs-input" placeholder="Access Key ID" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputS3SecretKey">Secret Key</label>
+              <input type="password" id="inputS3SecretKey" class="fs-input" placeholder="Secret Access Key" required>
+            </div>
+            <button type="submit" id="btnConnectS3" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect S3 Storage</button>
+          </form>
+        </div>
+
+        <!-- MOVEit Transfer Connection Form -->
+        <div class="provider-form-section" data-provider-type="moveit" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 0.75rem;">
+          <h5 style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink-muted);">MOVEit Transfer Storage</h5>
+          <form id="formAddMoveitProvider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+            <div class="fs-field">
+              <label class="fs-label" for="inputMoveitName">Provider Name / Label</label>
+              <input type="text" id="inputMoveitName" class="fs-input" placeholder="e.g. Corporate MOVEit" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputMoveitHost">MOVEit Host / Endpoint</label>
+              <input type="text" id="inputMoveitHost" class="fs-input" placeholder="moveit.example.com" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputMoveitUsername">Username</label>
+              <input type="text" id="inputMoveitUsername" class="fs-input" placeholder="moveit_user" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputMoveitPassword">Password</label>
+              <input type="password" id="inputMoveitPassword" class="fs-input" placeholder="••••••••" required>
+            </div>
+            <button type="submit" id="btnConnectMoveit" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect MOVEit Storage</button>
+          </form>
+        </div>
       </div>
 
       <div class="modal-actions" style="margin-top: 1.5rem;">
@@ -622,8 +655,45 @@
       </div>
       <div class="fs-modal-footer" style="display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: 1rem;">
         <button class="fs-btn" id="btnSettingsCancel">Cancel</button>
-        <button class="fs-btn fs-btn--primary" id="btnSettingsSave">Save Preference</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Import from URL (#77) -->
+  <div id="modalUrlImport" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet" style="min-width: 360px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="font-size: var(--fs-h3); margin: 0;">🔗 <span data-i18n="files.import_from_url">Import File from URL</span></h3>
+        <button type="button" class="fs-btn text-sm" id="btnCloseUrlImportModal" style="padding: 2px 6px; border: none; background: transparent;">✖</button>
+      </div>
+      <form id="formUrlImport">
+        <div class="fs-field" style="margin-bottom: 12px;">
+          <label class="fs-label" for="inputImportUrl" style="font-weight: 600; margin-bottom: 4px; display: block;">File URL</label>
+          <input type="url" class="fs-input" id="inputImportUrl" placeholder="https://example.com/file.pdf" required style="width: 100%;">
+        </div>
+        <div class="fs-field" style="margin-bottom: 16px;">
+          <label class="fs-label" for="inputImportFilename" style="font-weight: 600; margin-bottom: 4px; display: block;">Target Filename (Optional)</label>
+          <input type="text" class="fs-input" id="inputImportFilename" placeholder="Leave empty to use original filename" style="width: 100%;">
+        </div>
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem;">
+          <button type="button" class="fs-btn" id="btnCancelUrlImport">Cancel</button>
+          <button type="submit" class="fs-btn fs-btn--primary" id="btnSubmitUrlImport">Import File</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Floating Batch Upload Progress Queue (#77) -->
+  <div id="uploadProgressQueue" class="floating-upload-queue" style="display: none; position: fixed; bottom: 20px; right: 20px; width: 340px; background: var(--surface-card, #1e293b); border: 1px solid var(--border, #334155); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); z-index: 9999; overflow: hidden; backdrop-filter: blur(10px);">
+    <div class="queue-header" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid var(--border, #334155);">
+      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px;">
+        <span class="queue-icon">📤</span>
+        <span id="queueTitle">Upload Progress Queue</span>
+      </div>
+      <button id="btnCloseUploadQueue" class="fs-btn text-sm" style="padding: 2px 6px; border: none; background: transparent; cursor: pointer; color: var(--text-muted, #94a3b8);">✖</button>
+    </div>
+    <div id="queueItemsList" class="queue-items-list" style="max-height: 200px; overflow-y: auto; padding: 8px 12px;">
+      <!-- Progress Queue Items dynamically rendered -->
     </div>
   </div>
 

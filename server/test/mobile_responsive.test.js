@@ -33,9 +33,9 @@ describe('Mobile & Touch Responsiveness Strategy (#67)', () => {
     assert.ok(cssContent.includes('scrollbar-width: none'));
   });
 
-  test('collapses inactive tab titles on mobile viewports', () => {
-    assert.ok(cssContent.includes('.tab-item:not(.active) .tab-title'));
-    assert.ok(cssContent.includes('display: none'));
+  test('truncates tab titles on mobile viewports for layout stability', () => {
+    assert.ok(cssContent.includes('.tab-item .tab-title'));
+    assert.ok(cssContent.includes('text-overflow: ellipsis'));
   });
 
   test('defines scrollable breadcrumb container for deep folder hierarchies on mobile', () => {
@@ -104,5 +104,29 @@ describe('Progressive Web App (PWA) & Offline Caching Engine (#47)', () => {
     assert.ok(htmlContent.includes('serviceWorker.register'), 'index.html must register service worker sw.js');
   });
 });
+
+describe('Mobile Viewport Overflow & Toolbar Stacking (#75)', () => {
+  const cssPath = path.join(__dirname, '../../public/css/app.css');
+  let cssContent = '';
+
+  try {
+    cssContent = fs.readFileSync(cssPath, 'utf8');
+  } catch (err) {
+    console.error('Failed to read app.css:', err);
+  }
+
+  test('enforces max-width 100vw and overflow-x hidden on root layout elements', () => {
+    assert.ok(cssContent.includes('max-width: 100vw'), 'app.css must define max-width: 100vw');
+    assert.ok(cssContent.includes('overflow-x: hidden'), 'app.css must define overflow-x: hidden');
+  });
+
+  test('stacks mobile toolbar and breadcrumbs vertically on mobile viewports', () => {
+    assert.ok(cssContent.includes('.toolbar-area'), 'app.css must define styles for .toolbar-area');
+    assert.ok(cssContent.includes('@media (max-width: 640px)'), 'app.css must include mobile media query');
+    const mobileBlock = cssContent.slice(cssContent.indexOf('@media (max-width: 640px)'));
+    assert.ok(mobileBlock.includes('.toolbar-area'), 'mobile media query must contain .toolbar-area layout rules');
+  });
+});
+
 
 

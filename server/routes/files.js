@@ -213,13 +213,15 @@ router.post('/upload', (req, res) => {
     const { provider, userId } = getLocalProvider(req);
     const busboy = Busboy({ headers: req.headers });
     let targetPath = '/';
+    let relativePath = '';
 
     busboy.on('field', (fieldname, val) => {
       if (fieldname === 'path') targetPath = val;
+      if (fieldname === 'relativePath') relativePath = val;
     });
 
     busboy.on('file', async (fieldname, fileStream, info) => {
-      const rawFilename = info.filename;
+      const rawFilename = relativePath || info.filename;
       const filename = decodeUtf8Filename(rawFilename);
       const destinationPath = path.posix.join(targetPath, filename);
 
@@ -247,9 +249,9 @@ router.post('/upload', (req, res) => {
         const { Readable } = require('stream');
         const streamToSave = Readable.from(fullBuffer);
         const result = await provider.write(destinationPath, streamToSave);
-        await logActivity(userId, 'upload', destinationPath, filename, 0);
+        await logActivity(userId, 'upload', destinationPath, path.posix.basename(destinationPath), 0);
         await dispatchWebhookEvent(userId, 'file_created', { path: destinationPath, type: 'file' }).catch(() => {});
-        emitSSEEvent(userId, 'file_uploaded', { path: destinationPath, filename });
+        emitSSEEvent(userId, 'file_uploaded', { path: destinationPath, filename: path.posix.basename(destinationPath) });
         res.status(201).json({ success: true, file: result });
       } catch (err) {
         if (err.message.includes('Path traversal blocked')) {
@@ -264,6 +266,86 @@ router.post('/upload', (req, res) => {
     });
 
     req.pipe(busboy);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/files/local/url-import (#77)
+ * Imports a file from a public HTTP/HTTPS URL directly into user's workspace
+ */
+router.post('/url-import', async (req, res) => {
+  try {
+    const { provider, userId } = getLocalProvider(req);
+    const { url: importUrl, path: targetDirPath = '/', filename: customFilename } = req.body || {};
+
+    if (!importUrl || typeof importUrl !== 'string' || !importUrl.trim()) {
+      return res.status(400).json({ error: 'Valid URL is required for import' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(importUrl);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ error: 'Only HTTP and HTTPS URLs are supported' });
+    }
+
+    let fetchRes;
+    try {
+      fetchRes = await fetch(importUrl);
+    } catch (err) {
+      return res.status(400).json({ error: `Failed to download file from URL: ${err.message}` });
+    }
+
+    if (!fetchRes.ok) {
+      return res.status(400).json({ error: `URL responded with HTTP status ${fetchRes.status}` });
+    }
+
+    const arrayBuffer = await fetchRes.arrayBuffer();
+    const fullBuffer = Buffer.from(arrayBuffer);
+
+    let targetFilename = customFilename ? customFilename.trim() : '';
+    if (!targetFilename) {
+      const pathnameParts = parsedUrl.pathname.split('/').filter(Boolean);
+      if (pathnameParts.length > 0) {
+        targetFilename = decodeURIComponent(pathnameParts[pathnameParts.length - 1]);
+      }
+    }
+    if (!targetFilename) {
+      targetFilename = 'imported_file';
+    }
+
+    targetFilename = decodeUtf8Filename(targetFilename);
+    const destinationPath = path.posix.join(targetDirPath, targetFilename);
+
+    const scanResult = scanBuffer(fullBuffer);
+    if (scanResult.infected) {
+      return res.status(422).json({
+        success: false,
+        error: `Malware detected: ${scanResult.threat}`,
+        threat: scanResult.threat
+      });
+    }
+
+    const activeHold = await checkActiveLegalHold(userId, destinationPath);
+    if (activeHold) {
+      return res.status(403).json({ error: `File '${destinationPath}' is under active legal hold and cannot be modified or overwritten` });
+    }
+
+    const { Readable } = require('stream');
+    const streamToSave = Readable.from(fullBuffer);
+    const result = await provider.write(destinationPath, streamToSave);
+
+    await logActivity(userId, 'upload', destinationPath, path.posix.basename(destinationPath), 0);
+    await dispatchWebhookEvent(userId, 'file_created', { path: destinationPath, type: 'file' }).catch(() => {});
+    emitSSEEvent(userId, 'file_uploaded', { path: destinationPath, filename: path.posix.basename(destinationPath) });
+
+    res.status(201).json({ success: true, file: result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

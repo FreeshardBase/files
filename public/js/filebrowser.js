@@ -181,11 +181,19 @@ class FileBrowser {
       if (pName.includes('gdrive') || pName.includes('google')) {
         return this.getProviderIconSvg('gdrive', size);
       }
+      if (pName.includes('s3') || pName.includes('minio') || pName.includes('wasabi')) {
+        return this.getProviderIconSvg('s3', size);
+      }
+      if (pName.includes('moveit') || pName.includes('sftp')) {
+        return this.getProviderIconSvg('moveit', size);
+      }
       return this.getProviderIconSvg('cloud', size);
     }
     if (tab.viewType === 'shared') return '🔗';
     if (tab.viewType === 'trash') return '🗑️';
     if (tab.viewType === 'activity') return '🕒';
+    if (tab.viewType === 'smart_folder') return '🔍';
+    if (tab.viewType === 'favorites') return '⭐';
     return '🏠';
   }
 
@@ -458,6 +466,12 @@ class FileBrowser {
     if (providerType === 'dropbox') {
       return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#0061FF" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; flex-shrink: 0;"><path d="M6 2L0 6l6 4 6-4-6-4zm12 0l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4l-6 4 6 4 6-4-6-4zM6 19.5l6 4 6-4-6-3.5-6 3.5z"/></svg>`;
     }
+    if (providerType === 's3' || providerType === 'minio' || providerType === 'wasabi') {
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; flex-shrink: 0;"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`;
+    }
+    if (providerType === 'moveit' || providerType === 'sftp') {
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; flex-shrink: 0;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+    }
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; flex-shrink: 0;"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
   }
 
@@ -631,6 +645,13 @@ class FileBrowser {
   setupEventListeners() {
     // Global Event Delegation: Modal Overlay Backdrop & Close Buttons (#72)
     document.addEventListener('click', (e) => {
+      if (e.target.closest('#btnImportUrl')) {
+        const menu = document.getElementById('uploadDropdownMenu');
+        if (menu) menu.style.display = 'none';
+        const modal = document.getElementById('modalUrlImport');
+        if (modal) modal.style.display = 'flex';
+        return;
+      }
       if (e.target.matches('.modal-close, .fs-modal-close, [data-dismiss="modal"]')) {
         const modal = e.target.closest('.modal, .fs-modal-overlay, .media-viewer-modal');
         if (modal) {
@@ -878,8 +899,59 @@ class FileBrowser {
       this.hideProviderContextMenu();
     });
 
-    // Upload Input
+    // Upload Engine Event Listeners (#77)
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
+    document.getElementById('fileInputOption')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
+    document.getElementById('folderInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
+
+    // Split Upload Dropdown Toggle (#77)
+    const btnUploadDropdownToggle = document.getElementById('btnUploadDropdownToggle');
+    const uploadDropdownMenu = document.getElementById('uploadDropdownMenu');
+    if (btnUploadDropdownToggle && uploadDropdownMenu) {
+      btnUploadDropdownToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = uploadDropdownMenu.style.display === 'block';
+        uploadDropdownMenu.style.display = isVisible ? 'none' : 'block';
+      });
+      document.addEventListener('click', (e) => {
+        if (!uploadDropdownMenu.contains(e.target) && e.target !== btnUploadDropdownToggle) {
+          uploadDropdownMenu.style.display = 'none';
+        }
+      });
+    }
+
+    // Multi-Source Options: Files, Folder, URL Import (#77)
+    document.getElementById('btnUploadFiles')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (uploadDropdownMenu) uploadDropdownMenu.style.display = 'none';
+      document.getElementById('fileInputOption')?.click();
+    });
+    document.getElementById('btnUploadFolder')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (uploadDropdownMenu) uploadDropdownMenu.style.display = 'none';
+      document.getElementById('folderInput')?.click();
+    });
+    document.getElementById('btnImportUrl')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = document.getElementById('uploadDropdownMenu');
+      if (menu) menu.style.display = 'none';
+      this.showModal('modalUrlImport');
+    });
+
+    // URL Import Modal Form Handlers (#77)
+    document.getElementById('btnCloseUrlImportModal')?.addEventListener('click', () => this.hideModal('modalUrlImport'));
+    document.getElementById('btnCancelUrlImport')?.addEventListener('click', () => this.hideModal('modalUrlImport'));
+    document.getElementById('formUrlImport')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleUrlImportSubmit();
+    });
+
+    // Floating Upload Queue Close (#77)
+    document.getElementById('btnCloseUploadQueue')?.addEventListener('click', () => {
+      const queueEl = document.getElementById('uploadProgressQueue');
+      if (queueEl) queueEl.style.display = 'none';
+    });
 
     // Connect Cloud Storage Modal (#7, #56)
     document.getElementById('btnAddCloudDrive')?.addEventListener('click', () => {
@@ -1126,10 +1198,18 @@ class FileBrowser {
       this.dropOverlay.classList.remove('active');
     });
 
-    this.dropOverlay?.addEventListener('drop', (e) => {
+    this.dropOverlay?.addEventListener('drop', async (e) => {
       e.preventDefault();
       this.dropOverlay.classList.remove('active');
       if (this.isInternalDragging || this.activeDragPayload) return;
+      const items = e.dataTransfer ? e.dataTransfer.items : null;
+      if (items && items.length && items[0] && items[0].webkitGetAsEntry) {
+        const files = await this.readDroppedEntries(items);
+        if (files && files.length) {
+          this.handleFileUpload(files);
+          return;
+        }
+      }
       if (e.dataTransfer.files && e.dataTransfer.files.length) {
         this.handleFileUpload(e.dataTransfer.files);
       }
@@ -2986,15 +3066,140 @@ class FileBrowser {
     return candidate;
   }
 
+  async readDroppedEntries(items) {
+    const files = [];
+    const traverseEntry = (entry, pathPrefix = '') => {
+      return new Promise((resolve) => {
+        if (!entry) return resolve();
+        if (entry.isFile) {
+          entry.file((file) => {
+            const relPath = pathPrefix ? `${pathPrefix}/${file.name}` : file.name;
+            try {
+              Object.defineProperty(file, 'relativePath', { value: relPath, writable: true, configurable: true });
+            } catch (e) {
+              file.relativePath = relPath;
+            }
+            files.push(file);
+            resolve();
+          }, () => resolve());
+        } else if (entry.isDirectory) {
+          const dirReader = entry.createReader();
+          const currentPrefix = pathPrefix ? `${pathPrefix}/${entry.name}` : entry.name;
+          const readAll = () => {
+            dirReader.readEntries(async (entries) => {
+              if (!entries || !entries.length) {
+                resolve();
+              } else {
+                for (const subEntry of entries) {
+                  await traverseEntry(subEntry, currentPrefix);
+                }
+                readAll();
+              }
+            }, () => resolve());
+          };
+          readAll();
+        } else {
+          resolve();
+        }
+      });
+    };
+
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+      if (entry) {
+        await traverseEntry(entry);
+      }
+    }
+    return files;
+  }
+
+  renderUploadProgressQueue(fileList) {
+    const queueEl = document.getElementById('uploadProgressQueue');
+    const queueTitle = document.getElementById('queueTitle');
+    const queueList = document.getElementById('queueItemsList');
+
+    if (!queueEl || !queueList) return;
+    queueEl.style.display = 'block';
+    if (queueTitle) queueTitle.textContent = `Uploading ${fileList.length} item(s)...`;
+    queueList.innerHTML = '';
+
+    fileList.forEach((file, index) => {
+      const fileName = file.name || file.filename || file.relativePath || `Item ${index + 1}`;
+      const row = document.createElement('div');
+      row.id = `queue-item-${index}`;
+      row.className = 'queue-item';
+      row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;';
+      row.innerHTML = `
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; color: var(--text, #f8fafc);" title="${fileName}">
+          ${fileName}
+        </div>
+        <div class="queue-item-status" id="queue-status-${index}" style="font-weight: bold; color: var(--accent-primary, #3b82f6);">⏳</div>
+      `;
+      queueList.appendChild(row);
+    });
+  }
+
+  async handleUrlImportSubmit() {
+    const inputUrl = document.getElementById('inputImportUrl')?.value?.trim();
+    const inputFilename = document.getElementById('inputImportFilename')?.value?.trim();
+
+    if (!inputUrl) return;
+
+    this.hideModal('modalUrlImport');
+    const displayFilename = inputFilename || inputUrl.split('/').filter(Boolean).pop() || 'imported_file';
+    this.renderUploadProgressQueue([{ name: displayFilename }]);
+
+    try {
+      const res = await fetch('/api/files/local/url-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: inputUrl,
+          path: this.currentPath,
+          filename: inputFilename
+        })
+      });
+
+      const queueStatusEl = document.getElementById('queue-status-0');
+      const queueTitle = document.getElementById('queueTitle');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (queueStatusEl) { queueStatusEl.textContent = '✖'; queueStatusEl.style.color = '#ef4444'; }
+        if (queueTitle) queueTitle.textContent = 'Import failed';
+        alert('URL Import Error: ' + (errData.error || 'Failed to import file from URL'));
+      } else {
+        if (queueStatusEl) { queueStatusEl.textContent = '✓'; queueStatusEl.style.color = '#10b981'; }
+        if (queueTitle) queueTitle.textContent = 'Import complete';
+      }
+    } catch (err) {
+      const queueStatusEl = document.getElementById('queue-status-0');
+      if (queueStatusEl) { queueStatusEl.textContent = '✖'; queueStatusEl.style.color = '#ef4444'; }
+      alert('URL Import Error: ' + err.message);
+    } finally {
+      if (document.getElementById('inputImportUrl')) document.getElementById('inputImportUrl').value = '';
+      if (document.getElementById('inputImportFilename')) document.getElementById('inputImportFilename').value = '';
+      if (this.currentViewType === 'provider') {
+        this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
+      } else {
+        this.loadDirectory(this.currentPath);
+      }
+    }
+  }
+
   async handleFileUpload(files) {
     if (!files || !files.length) return;
+
+    const fileList = Array.from(files);
+    this.renderUploadProgressQueue(fileList);
 
     const existingNames = this.items.map(i => i.name.toLowerCase());
     let rememberedChoice = null;
 
-    for (const file of files) {
+    for (let index = 0; index < fileList.length; index++) {
+      const file = fileList[index];
       let finalFile = file;
       let finalName = file.name;
+      const statusEl = document.getElementById(`queue-status-${index}`);
 
       if (existingNames.includes(file.name.toLowerCase())) {
         const existingItem = this.items.find(i => i.name.toLowerCase() === file.name.toLowerCase());
@@ -3027,6 +3232,7 @@ class FileBrowser {
         }
 
         if (choice === 'cancel') {
+          if (statusEl) statusEl.textContent = '⏭';
           continue;
         } else if (choice === 'rename') {
           finalName = this.generateNonConflictingName(file.name, this.items.map(i => i.name));
@@ -3040,6 +3246,10 @@ class FileBrowser {
 
       const formData = new FormData();
       formData.append('path', this.currentPath);
+      const relPath = file.relativePath || file.webkitRelativePath || '';
+      if (relPath) {
+        formData.append('relativePath', relPath);
+      }
       formData.append('file', finalFile, finalName);
 
       try {
@@ -3050,12 +3260,18 @@ class FileBrowser {
 
         if (!res.ok) {
           const err = await res.json();
+          if (statusEl) { statusEl.textContent = '✖'; statusEl.style.color = '#ef4444'; }
           throw new Error(err.error || `Upload failed for ${finalName}`);
         }
+        if (statusEl) { statusEl.textContent = '✓'; statusEl.style.color = '#10b981'; }
       } catch (err) {
+        if (statusEl) { statusEl.textContent = '✖'; statusEl.style.color = '#ef4444'; }
         alert('Upload Error: ' + err.message);
       }
     }
+
+    const queueTitle = document.getElementById('queueTitle');
+    if (queueTitle) queueTitle.textContent = `Upload complete (${fileList.length} items)`;
 
     if (this.currentViewType === 'provider') {
       this.loadProviderDirectory(this.currentProviderId, this.currentProviderName, this.currentPath);
@@ -3585,32 +3801,6 @@ class FileBrowser {
 
   downloadFile(filePath) {
     window.location.href = `/api/files/local/read?path=${encodeURIComponent(filePath)}`;
-  }
-
-  async handleFileUpload(files) {
-    if (!files || !files.length) return;
-
-    for (const file of files) {
-      const formData = new FormData();
-      formData.append('path', this.currentPath);
-      formData.append('file', file);
-
-      try {
-        const res = await fetch('/api/files/local/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || `Upload failed for ${file.name}`);
-        }
-      } catch (err) {
-        alert('Upload Error: ' + err.message);
-      }
-    }
-
-    this.loadDirectory(this.currentPath);
   }
 
   showFileDetailsModalFromContextMenu() {
