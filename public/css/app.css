@@ -1164,6 +1164,44 @@ body {
 }
 
 @media (max-width: 768px) {
+  /* Header & Search-Bar Responsive Wrap (#78) */
+  .header {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    min-height: 56px;
+    padding: var(--space-2) var(--space-3) !important;
+    gap: var(--space-2) !important;
+  }
+
+  .search-bar {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100%;
+  }
+
+  /* Action Toolbar Button Stacking & Scroll Container (<768px) (#79) */
+  .action-buttons,
+  .action-toolbar,
+  .actions-group {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: var(--space-2) !important;
+    box-sizing: border-box !important;
+  }
+
+  .action-buttons .fs-btn,
+  .action-buttons .dropdown-split {
+    flex-shrink: 0;
+    max-width: 100%;
+  }
+
+
   .panes-wrapper.split-view-active {
     grid-template-columns: 1fr !important; /* Stack vertically on mobile viewports */
   }
@@ -1240,3 +1278,77 @@ body {
   color: var(--line);
 }
 
+
+/* ============================================================
+   Issue #80: File Details Drawer — Mobile Bottom-Sheet (#80)
+   Converts fixed 380px detail-drawer to max-width 100vw
+   mobile bottom-sheet overlay on viewports <768px.
+   ============================================================ */
+
+/* Named utility class for bottom-sheet drawer (used by tests) */
+.detail-drawer-mobile-sheet {
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  width: 100%;
+  max-width: 100vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding-top: 1rem;
+  position: relative;
+}
+
+/* Drag handle indicator */
+.detail-drawer-mobile-sheet::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-cool);
+  margin: 0 auto 0.75rem;
+}
+
+@media (max-width: 768px) {
+  /* Overlay anchors to bottom instead of center */
+  #modalFileDetails {
+    align-items: flex-end;
+  }
+
+  /* Modal content becomes a full-width bottom sheet */
+  #modalFileDetails .modal-content {
+    width: 100%;
+    max-width: 100vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    animation: slideUpSheet 0.28s cubic-bezier(0.32, 0, 0.67, 0) both;
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
+  /* Drag-handle pseudo-element on modal-content for mobile */
+  #modalFileDetails .modal-content::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-cool);
+    margin: 0 auto 0.75rem;
+  }
+}
+
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

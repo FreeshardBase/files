@@ -128,5 +128,75 @@ describe('Mobile Viewport Overflow & Toolbar Stacking (#75)', () => {
   });
 });
 
+describe('Action Toolbar Button Stacking & Scroll Container (#79)', () => {
+  const cssPath = path.join(__dirname, '../../public/css/app.css');
+  let cssContent = '';
+
+  try {
+    cssContent = fs.readFileSync(cssPath, 'utf8');
+  } catch (err) {
+    console.error('Failed to read app.css:', err);
+  }
+
+  test('defines action toolbar responsive flex layout and scroll container on mobile viewports (<768px)', () => {
+    assert.ok(cssContent.includes('.action-buttons'), 'app.css must define styles for .action-buttons');
+    assert.ok(cssContent.includes('@media (max-width: 768px)'), 'app.css must include max-width 768px media query');
+    const mobile768Block = cssContent.slice(cssContent.indexOf('@media (max-width: 768px)'));
+    assert.ok(mobile768Block.includes('.action-buttons'), 'app.css must contain .action-buttons in 768px media query');
+    assert.ok(mobile768Block.includes('overflow-x: auto') || mobile768Block.includes('flex-wrap: wrap'), 'action buttons must support responsive wrapping or horizontal scrolling');
+  });
+});
+
+describe('File Details Drawer — Mobile Bottom-Sheet Overlay (#80)', () => {
+  const cssPath = path.join(__dirname, '../../public/css/app.css');
+  let cssContent = '';
+
+  try {
+    cssContent = fs.readFileSync(cssPath, 'utf8');
+  } catch (err) {
+    console.error('Failed to read app.css:', err);
+  }
+
+  test('defines detail-drawer-mobile-sheet class for bottom-sheet positioning', () => {
+    assert.ok(
+      cssContent.includes('.detail-drawer-mobile-sheet'),
+      'app.css must define .detail-drawer-mobile-sheet class'
+    );
+  });
+
+  test('applies bottom-sheet layout to #modalFileDetails .modal-content inside max-width 768px media query', () => {
+    assert.ok(
+      cssContent.includes('@media (max-width: 768px)'),
+      'app.css must include @media (max-width: 768px)'
+    );
+    const mobile768Block = cssContent.slice(cssContent.indexOf('@media (max-width: 768px)'));
+    assert.ok(
+      mobile768Block.includes('#modalFileDetails'),
+      'app.css must target #modalFileDetails inside 768px media query'
+    );
+    assert.ok(
+      mobile768Block.includes('max-width: 100vw') || mobile768Block.includes('width: 100%'),
+      '#modalFileDetails must be constrained to viewport width on mobile'
+    );
+  });
+
+  test('positions the detail drawer modal at the bottom of the screen on mobile', () => {
+    const mobile768Block = cssContent.slice(cssContent.indexOf('@media (max-width: 768px)'));
+    assert.ok(
+      mobile768Block.includes('bottom: 0') || mobile768Block.includes('align-items: flex-end'),
+      '#modalFileDetails or its overlay must anchor to the bottom of the screen on mobile'
+    );
+  });
+
+  test('adds touch-friendly drag handle and rounded top corners to bottom sheet', () => {
+    assert.ok(
+      cssContent.includes('.detail-drawer-mobile-sheet') &&
+      (cssContent.includes('border-radius') || cssContent.includes('border-top-left-radius')),
+      'bottom sheet must have rounded top corners'
+    );
+  });
+});
+
+
 
 
