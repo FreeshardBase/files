@@ -1,4 +1,4 @@
-const CACHE_NAME = 'freeshard-files-v1';
+const CACHE_NAME = 'freeshard-files-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -35,21 +35,20 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (event.request.url.includes('/api/')) return;
 
+  // Network-First Strategy: Always fetch fresh assets from server first (#78)
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
+    fetch(event.request).then((response) => {
+      if (response && response.status === 200 && response.type === 'basic') {
         const responseToCache = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
         });
-        return response;
-      }).catch(() => {
+      }
+      return response;
+    }).catch(() => {
+      // Fallback to cache if network is unavailable (offline mode)
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
         if (event.request.headers.get('accept')?.includes('text/html')) {
           return caches.match('/index.html');
         }
