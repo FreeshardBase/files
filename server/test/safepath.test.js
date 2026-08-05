@@ -166,7 +166,8 @@ describe('Encryption Invariants Guard (#24)', () => {
 
   test('detects ciphertext tampering and fails decryption', () => {
     const encrypted = encrypt('Tamper test data');
-    const tamperedData = encrypted.data.substring(0, encrypted.data.length - 2) + '00';
+    const lastChar = encrypted.data.slice(-1);
+    const tamperedData = encrypted.data.slice(0, -1) + (lastChar === '0' ? '1' : '0');
     assert.throws(() => decrypt({ ...encrypted, data: tamperedData }));
   });
 
