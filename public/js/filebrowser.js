@@ -354,6 +354,7 @@ class FileBrowser {
   init() {
     this.checkOAuthCallback();
     this.setupEventListeners();
+    this.loadSidebarCollapsedState();
     this.loadUserPreferences();
     this.loadSidebarProviders();
     this.loadTabsFromSession();
@@ -363,6 +364,37 @@ class FileBrowser {
       this.switchTab(activeTab.id);
     } else {
       this.loadDirectory(this.currentPath);
+    }
+  }
+
+  loadSidebarCollapsedState() {
+    try {
+      const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+      if (isCollapsed) {
+        this.toggleSidebar(true);
+      }
+    } catch (e) {}
+  }
+
+  toggleSidebar(forceState) {
+    const sidebar = document.querySelector('.sidebar');
+    const app = document.getElementById('app');
+    const btn = document.getElementById('btnToggleSidebar');
+
+    const isCurrentlyCollapsed = sidebar?.classList.contains('sidebar-collapsed') || app?.classList.contains('sidebar-collapsed');
+    const shouldCollapse = forceState !== undefined ? forceState : !isCurrentlyCollapsed;
+
+    if (sidebar) sidebar.classList.toggle('sidebar-collapsed', shouldCollapse);
+    if (app) app.classList.toggle('sidebar-collapsed', shouldCollapse);
+
+    if (btn) {
+      btn.setAttribute('aria-expanded', shouldCollapse ? 'false' : 'true');
+    }
+
+    try {
+      localStorage.setItem('sidebar_collapsed', shouldCollapse ? 'true' : 'false');
+    } catch (err) {
+      console.warn('Failed to save sidebar_collapsed state:', err);
     }
   }
 
@@ -900,6 +932,15 @@ class FileBrowser {
   }
 
   setupEventListeners() {
+    // Sidebar Collapse Toggle Switch (#86)
+    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+    if (btnToggleSidebar) {
+      btnToggleSidebar.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.toggleSidebar();
+      });
+    }
+
     // Global Event Delegation: Modal Overlay Backdrop & Close Buttons (#72)
     document.addEventListener('click', (e) => {
       if (e.target.closest('#btnImportUrl')) {
@@ -1155,6 +1196,39 @@ class FileBrowser {
       this.hideTabContextMenu();
       this.hideProviderContextMenu();
     });
+
+    // Search Input Handler (#100)
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      let searchDebounceTimer = null;
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value;
+        clearTimeout(searchDebounceTimer);
+        if (!query.trim()) {
+          this.loadDirectory(this.currentPath || '/');
+          return;
+        }
+        searchDebounceTimer = setTimeout(() => {
+          this.executeSearch(query.trim());
+        }, 300);
+      });
+
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          clearTimeout(searchDebounceTimer);
+          const query = searchInput.value.trim();
+          if (query) {
+            this.executeSearch(query);
+          } else {
+            this.loadDirectory(this.currentPath || '/');
+          }
+        } else if (e.key === 'Escape') {
+          searchInput.value = '';
+          this.loadDirectory(this.currentPath || '/');
+        }
+      });
+    }
 
     // Upload Engine Event Listeners (#77)
     document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFileUpload(e.target.files));
@@ -1888,6 +1962,70 @@ class FileBrowser {
     }
   }
 
+  async executeSearch(query) {
+    if (!query || !query.trim()) {
+      this.loadDirectory(this.currentPath || '/');
+      return;
+    }
+    const q = query.trim();
+    this.currentViewType = 'search';
+    this.clearSelection();
+
+    if (this.breadcrumb) {
+      this.breadcrumb.innerHTML = `<span class="breadcrumb-item active">🔍 Search results for "${q}"</span>`;
+    }
+
+    try {
+      const res = await fetch(`/api/search/universal?q=${encodeURIComponent(q)}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Search failed');
+      }
+
+      const data = await res.json();
+      const files = (data.results && data.results.files) || [];
+      const shares = (data.results && data.results.shares) || [];
+      const tags = (data.results && data.results.tags) || [];
+      const eco = (data.results && data.results.ecosystem) || [];
+
+      // Format items for file container display
+      this.items = files.map(f => ({
+        name: f.title || f.filename || (f.path ? f.path.split('/').pop() : 'File'),
+        path: f.path,
+        size: 0,
+        isDirectory: false,
+        isSearchItem: true,
+        deepLink: f.deepLink
+      }));
+
+      this.render();
+
+      // If additional results exist in shares, tags, or ecosystem, append summary badge section below container
+      if (shares.length > 0 || tags.length > 0 || eco.length > 0) {
+        const extraSection = document.createElement('div');
+        extraSection.className = 'search-extra-results';
+        extraSection.style.cssText = 'grid-column: 1 / -1; margin-top: 1rem; padding: 12px; background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-card);';
+        
+        let extraHtml = `<h4 style="font-size: 13px; font-weight: 600; color: var(--ink-muted); margin-bottom: 8px;">Matched Entities & Deep Links</h4><div style="display: flex; flex-direction: column; gap: 6px;">`;
+
+        data.deepLinks.forEach(dl => {
+          extraHtml += `<a href="${dl.url}" target="_blank" class="search-deep-link" style="font-size: 12px; color: var(--accent); text-decoration: none; display: flex; align-items: center; gap: 6px;">
+            <span>🔗 [${dl.type}]</span>
+            <span style="word-break: break-all;">${dl.url}</span>
+          </a>`;
+        });
+        extraHtml += `</div>`;
+        extraSection.innerHTML = extraHtml;
+        this.container.appendChild(extraSection);
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      if (this.container) {
+        this.container.innerHTML = `<div class="placeholder-card"><p style="color: var(--danger);">${err.message}</p></div>`;
+      }
+    }
+  }
+
   renderBreadcrumb() {
     if (!this.breadcrumb) return;
 
@@ -2022,10 +2160,14 @@ class FileBrowser {
     if (!this.container) return;
 
     if (this.items.length === 0) {
-      const msg = this.currentViewType === 'trash' ? 'Trash is empty.' : (this.currentViewType === 'shared' ? 'No files shared with you yet.' : 'Upload files or create a folder to get started.');
+      let msg = 'Upload files or create a folder to get started.';
+      if (this.currentViewType === 'trash') msg = 'Trash is empty.';
+      else if (this.currentViewType === 'shared') msg = 'No files shared with you yet.';
+      else if (this.currentViewType === 'search') msg = 'No matching files or items found.';
+
       this.container.innerHTML = `
         <div class="placeholder-card" style="grid-column: 1 / -1;">
-          <span style="font-size: 3rem;">${this.currentViewType === 'trash' ? '🗑️' : '📂'}</span>
+          <span style="font-size: 3rem;">${this.currentViewType === 'trash' ? '🗑️' : (this.currentViewType === 'search' ? '🔍' : '📂')}</span>
           <h3 style="margin-top: 0.5rem; color: var(--ink-muted);">${msg}</h3>
         </div>
       `;
@@ -2777,6 +2919,13 @@ class FileBrowser {
     const activeEl = document.activeElement;
     const tag = activeEl ? activeEl.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || activeEl?.isContentEditable) {
+      return;
+    }
+
+    // Keyboard Shortcut for Collapsible Navigation Sidebar (Ctrl+[ or Cmd+[) (#86)
+    if ((e.ctrlKey || e.metaKey) && (e.key === '[' || e.code === 'BracketLeft')) {
+      e.preventDefault();
+      this.toggleSidebar();
       return;
     }
 

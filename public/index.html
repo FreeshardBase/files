@@ -62,12 +62,15 @@
           <span class="shard-diamond">◆</span>
           <span class="shard-id">FreeShard Files</span>
         </div>
+        <button id="btnToggleSidebar" class="btn-toggle-sidebar" title="Seitenleiste einklappen/ausklappen" aria-label="Seitenleiste einklappen/ausklappen" aria-expanded="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
       </div>
       <ul class="nav-list">
-        <li class="nav-item active" id="navHome"><a href="#/files"><span class="nav-icon">🏠</span> <span class="fs-label" data-i18n="nav.home">Home</span></a></li>
-        <li class="nav-item" id="navShared"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label" data-i18n="nav.shared">Shared with me</span></a></li>
-        <li class="nav-item" id="navTrash"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label" data-i18n="nav.trash">Trash</span></a></li>
-        <li class="nav-item" id="navActivity"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label" data-i18n="nav.activity">Activity</span></a></li>
+        <li class="nav-item active" id="navHome"><a href="#/files"><span class="nav-icon">🏠</span> <span class="fs-label nav-text" data-i18n="nav.home">Home</span></a></li>
+        <li class="nav-item" id="navShared"><a href="#/shared"><span class="nav-icon">🔗</span> <span class="fs-label nav-text" data-i18n="nav.shared">Shared with me</span></a></li>
+        <li class="nav-item" id="navTrash"><a href="#/trash"><span class="nav-icon">🗑️</span> <span class="fs-label nav-text" data-i18n="nav.trash">Trash</span></a></li>
+        <li class="nav-item" id="navActivity"><a href="#/activity"><span class="nav-icon">🕒</span> <span class="fs-label nav-text" data-i18n="nav.activity">Activity</span></a></li>
       </ul>
 
       <div class="sidebar-section-header" id="sectionExternalStorageHeader">
@@ -81,14 +84,14 @@
       </ul>
 
       <ul class="nav-list" style="margin-top: var(--space-3);">
-        <li class="nav-item" id="navSettings"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label" data-i18n="nav.settings">Settings</span></a></li>
+        <li class="nav-item" id="navSettings"><a href="#/settings"><span class="nav-icon">⚙️</span> <span class="fs-label nav-text" data-i18n="nav.settings">Settings</span></a></li>
       </ul>
       
       <!-- Theme Switcher Footer -->
       <div class="sidebar-footer">
         <div class="theme-toggle-box">
-          <span class="fs-label">Theme</span>
-          <button id="btnThemeToggle" class="fs-btn text-sm">🌗 Switch</button>
+          <span class="fs-label nav-text">Theme</span>
+          <button id="btnThemeToggle" class="fs-btn text-sm">🌗 <span class="nav-text">Switch</span></button>
         </div>
       </div>
     </aside>

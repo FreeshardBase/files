@@ -148,10 +148,103 @@ body {
   display: flex;
   flex-direction: column;
   padding: var(--space-4);
+  transition: width 0.25s ease-in-out, padding 0.25s ease-in-out, margin 0.25s ease-in-out;
 }
 
 .brand {
   margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-toggle-sidebar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  background: transparent;
+  border: 1px solid var(--border-cool);
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btn-toggle-sidebar:hover {
+  background-color: var(--bg);
+  color: var(--ink);
+}
+
+.btn-toggle-sidebar svg {
+  transition: transform 0.25s ease-in-out;
+}
+
+/* Collapsible Navigation Sidebar (#86) */
+.sidebar.sidebar-collapsed,
+#app.sidebar-collapsed .sidebar {
+  width: 64px;
+  padding: var(--space-4) var(--space-2);
+}
+
+.sidebar-collapsed .sidebar-section-title,
+.sidebar-collapsed .nav-text,
+.sidebar-collapsed .sidebar-quota-text,
+.sidebar-collapsed .quota-text,
+.sidebar-collapsed .sidebar-quota-container,
+.sidebar-collapsed .user-details,
+.sidebar-collapsed .shard-id,
+.sidebar-collapsed .fs-label {
+  display: none !important;
+  opacity: 0;
+}
+
+.sidebar-collapsed .brand {
+  margin-bottom: var(--space-4);
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sidebar-collapsed .shard-badge {
+  padding: 6px;
+  justify-content: center;
+}
+
+.sidebar-collapsed .nav-item a {
+  justify-content: center;
+  padding: var(--space-2) 0;
+  gap: 0;
+}
+
+.sidebar-collapsed .nav-icon {
+  margin: 0 auto;
+  font-size: 18px;
+}
+
+.sidebar-collapsed .sidebar-section-header {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar-collapsed .btn-sidebar-add {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-footer {
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.sidebar-collapsed .theme-toggle-box {
+  justify-content: center;
+}
+
+.sidebar-collapsed #btnToggleSidebar svg,
+.sidebar-collapsed .btn-toggle-sidebar svg {
+  transform: rotate(180deg);
 }
 
 /* Shard identity badge: Brand diamond + 6-digit id, IBM Plex Mono */
