@@ -456,6 +456,7 @@ class FileBrowser {
     activeTab.path = path;
     activeTab.providerId = providerId;
     activeTab.providerName = providerName;
+    this.store.dispatch('UPDATE_TAB_STATE', { title, viewType, path, providerId, providerName });
     this.saveTabsToSession();
     this.renderTabBar();
   }
@@ -498,6 +499,8 @@ class FileBrowser {
     if (wrapper) wrapper.classList.toggle('split-view-active', isSplit);
     if (secPane) secPane.style.display = isSplit ? 'flex' : 'none';
     if (btn) btn.classList.toggle('active', isSplit);
+
+    this.setActivePane('primary');
 
     this.saveTabsToSession();
 
@@ -3629,9 +3632,24 @@ class FileBrowser {
 
   showContextMenu(x, y) {
     if (!this.contextMenu) return;
-    this.contextMenu.style.left = `${x}px`;
-    this.contextMenu.style.top = `${y}px`;
     this.contextMenu.style.display = 'block';
+
+    const menuWidth = this.contextMenu.offsetWidth || 200;
+    const menuHeight = this.contextMenu.offsetHeight || 260;
+    const padding = 10;
+
+    let left = x;
+    let top = y;
+
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = Math.max(padding, window.innerWidth - menuWidth - padding);
+    }
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = Math.max(padding, window.innerHeight - menuHeight - padding);
+    }
+
+    this.contextMenu.style.left = `${left}px`;
+    this.contextMenu.style.top = `${top}px`;
   }
 
   hideContextMenu() {
@@ -3895,6 +3913,13 @@ class FileBrowser {
       activeTab.secondaryViewType = viewType;
       activeTab.secondaryProviderId = normProviderId;
       activeTab.secondaryProviderName = providerName;
+      this.store.dispatch('UPDATE_TAB_STATE', {
+        isSecondary: true,
+        path,
+        viewType,
+        providerId: normProviderId,
+        providerName
+      });
       this.saveTabsToSession();
     }
 

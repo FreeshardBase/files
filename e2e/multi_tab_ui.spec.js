@@ -118,5 +118,56 @@ test.describe('Issue #76: Multi-Tab Visual & Functional Consistency Suite', () =
       await expect(firstTab).toHaveClass(/active/);
     }
   });
+
+  test('Issue #84: Switching between Tab A (dual-pane view) and Tab B (single-pane view) preserves each tab\'s individual layout state', async ({ page }) => {
+    const btnNewTab = page.locator('#btnNewTab');
+    await btnNewTab.click();
+    await page.waitForTimeout(300);
+
+    const tabItems = page.locator('#tabBarList .tab-item');
+    const count = await tabItems.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    const tabA = tabItems.nth(0);
+    const tabB = tabItems.nth(1);
+
+    // Switch to Tab A and activate split view
+    await tabA.click();
+    await page.waitForTimeout(300);
+
+    const wrapper = page.locator('#panesWrapper');
+    const btnSplitView = page.locator('#btnToggleSplitView');
+    await expect(btnSplitView).toBeVisible();
+
+    const isAlreadySplit = await wrapper.evaluate(el => el.classList.contains('split-view-active'));
+    if (!isAlreadySplit) {
+      await btnSplitView.click();
+      await page.waitForTimeout(300);
+    }
+    await expect(wrapper).toHaveClass(/split-view-active/);
+    await expect(page.locator('#secondaryPane')).toBeVisible();
+
+    // Switch to Tab B (single pane view)
+    await tabB.click();
+    await page.waitForTimeout(300);
+
+    await expect(wrapper).not.toHaveClass(/split-view-active/);
+    await expect(page.locator('#secondaryPane')).not.toBeVisible();
+
+    // Switch back to Tab A (restores dual pane view)
+    await tabA.click();
+    await page.waitForTimeout(300);
+
+    await expect(wrapper).toHaveClass(/split-view-active/);
+    await expect(page.locator('#secondaryPane')).toBeVisible();
+
+    // Switch back to Tab B (preserves single pane view)
+    await tabB.click();
+    await page.waitForTimeout(300);
+
+    await expect(wrapper).not.toHaveClass(/split-view-active/);
+    await expect(page.locator('#secondaryPane')).not.toBeVisible();
+  });
 });
+
 
