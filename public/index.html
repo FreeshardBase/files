@@ -325,6 +325,14 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="#0061FF" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L0 6l6 4 6-4-6-4zm12 0l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4l-6 4 6 4 6-4-6-4zM6 19.5l6 4 6-4-6-3.5-6 3.5z"/></svg>
             Connect Dropbox (OAuth 2.0)
           </a>
+          <a href="/api/providers/onedrive/auth" class="fs-btn provider-oauth-btn" data-provider="onedrive" style="justify-content: center; padding: 10px; font-weight: 600; background: rgba(0, 120, 212, 0.1); border-color: #0078d4; color: #0078d4; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#0078d4" xmlns="http://www.w3.org/2000/svg"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+            Connect Microsoft OneDrive (OAuth 2.0)
+          </a>
+          <a href="/api/providers/sharepoint/auth" class="fs-btn provider-oauth-btn" data-provider="sharepoint" style="justify-content: center; padding: 10px; font-weight: 600; background: rgba(3, 131, 135, 0.1); border-color: #038387; color: #038387; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#038387" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.8L19.2 8 12 11.2 4.8 8 12 4.8z"/></svg>
+            Connect Microsoft SharePoint (OAuth 2.0)
+          </a>
         </div>
       </div>
 
@@ -384,6 +392,46 @@
               <input type="password" id="inputMoveitPassword" class="fs-input" placeholder="••••••••" required>
             </div>
             <button type="submit" id="btnConnectMoveit" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect MOVEit Storage</button>
+          </form>
+        </div>
+
+        <!-- Microsoft OneDrive Connection Form -->
+        <div class="provider-form-section" data-provider-type="onedrive" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 0.75rem;">
+          <h5 style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink-muted);">Microsoft OneDrive (Direct Credentials)</h5>
+          <form id="formAddOneDriveProvider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+            <div class="fs-field">
+              <label class="fs-label" for="inputOneDriveName">Provider Name / Label</label>
+              <input type="text" id="inputOneDriveName" class="fs-input" placeholder="e.g. Work OneDrive" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputOneDriveRefreshToken">Refresh Token</label>
+              <input type="password" id="inputOneDriveRefreshToken" class="fs-input" placeholder="OAuth Refresh Token" required>
+            </div>
+            <button type="submit" id="btnConnectOneDrive" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect OneDrive Storage</button>
+          </form>
+        </div>
+
+        <!-- Microsoft SharePoint Connection Form -->
+        <div class="provider-form-section" data-provider-type="sharepoint" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 0.75rem;">
+          <h5 style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink-muted);">Microsoft SharePoint Document Library</h5>
+          <form id="formAddSharePointProvider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+            <div class="fs-field">
+              <label class="fs-label" for="inputSharePointName">Provider Name / Label</label>
+              <input type="text" id="inputSharePointName" class="fs-input" placeholder="e.g. Team SharePoint" required>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputSharePointSiteId">Site ID / Domain</label>
+              <input type="text" id="inputSharePointSiteId" class="fs-input" placeholder="contoso.sharepoint.com,site-id">
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputSharePointDriveId">Drive ID</label>
+              <input type="text" id="inputSharePointDriveId" class="fs-input" placeholder="Drive / Document Library ID">
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="inputSharePointRefreshToken">Refresh Token</label>
+              <input type="password" id="inputSharePointRefreshToken" class="fs-input" placeholder="OAuth Refresh Token">
+            </div>
+            <button type="submit" id="btnConnectSharePoint" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect SharePoint Library</button>
           </form>
         </div>
       </div>

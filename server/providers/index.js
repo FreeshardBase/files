@@ -5,6 +5,8 @@ const DropboxProvider = require('./dropbox');
 const MOVEitProvider = require('./MOVEitProvider');
 const FailoverProvider = require('./failover');
 const S3Provider = require('./s3');
+const OneDriveProvider = require('./onedrive');
+const SharePointProvider = require('./sharepoint');
 
 const providers = {
   local: LocalProvider,
@@ -12,12 +14,14 @@ const providers = {
   dropbox: DropboxProvider,
   moveit: MOVEitProvider,
   failover: FailoverProvider,
-  s3: S3Provider
+  s3: S3Provider,
+  onedrive: OneDriveProvider,
+  sharepoint: SharePointProvider
 };
 
 /**
  * Factory function to instantiate provider by type
- * @param {string} type - Provider type identifier (e.g. 'local', 'gdrive', 'dropbox', 'moveit', 's3')
+ * @param {string} type - Provider type identifier (e.g. 'local', 'gdrive', 'dropbox', 'moveit', 's3', 'onedrive', 'sharepoint')
  * @param {object} config - Configuration object
  * @returns {BaseProvider}
  */
@@ -37,7 +41,10 @@ module.exports = {
   MOVEitProvider,
   FailoverProvider,
   S3Provider,
+  OneDriveProvider,
+  SharePointProvider,
   providers,
   getProvider
 };
+
 

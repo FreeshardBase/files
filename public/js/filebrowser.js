@@ -1,3 +1,187 @@
+class FileBrowserStore {
+  constructor(initialState = {}) {
+    this.state = {
+      fsmState: 'INITIALIZING',
+      tabs: [],
+      activeTabId: null,
+      isSplitViewActive: false,
+      activePane: 'primary',
+      primaryTabId: null,
+      secondaryTabId: null,
+      viewMode: 'grid',
+      clickNavigationMode: 'double',
+      isLoading: false,
+      error: null,
+      selectedPaths: new Set(),
+      items: [],
+      ...initialState
+    };
+    this.listeners = new Set();
+  }
+
+  getState() {
+    return this.state;
+  }
+
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  dispatch(action, payload = {}) {
+    const prevState = { ...this.state };
+    this.state = this.reducer(this.state, action, payload);
+    this.notify(action, prevState);
+  }
+
+  notify(action, prevState) {
+    for (const listener of this.listeners) {
+      try {
+        listener(this.state, action, prevState);
+      } catch (err) {
+        console.error('State store listener error:', err);
+      }
+    }
+  }
+
+  reducer(state, action, payload = {}) {
+    switch (action) {
+      case 'INIT_TABS':
+        return {
+          ...state,
+          tabs: payload.tabs || state.tabs,
+          activeTabId: payload.activeTabId || (payload.tabs && payload.tabs[0] ? payload.tabs[0].id : state.activeTabId),
+          primaryTabId: payload.activeTabId || (payload.tabs && payload.tabs[0] ? payload.tabs[0].id : state.primaryTabId),
+          fsmState: 'IDLE'
+        };
+      case 'SWITCH_TAB': {
+        const targetTab = state.tabs.find(t => t.id === payload.tabId);
+        if (!targetTab) return state;
+        return {
+          ...state,
+          activeTabId: payload.tabId,
+          primaryTabId: payload.tabId,
+          activePane: 'primary',
+          fsmState: state.isSplitViewActive ? 'SPLIT_VIEW' : 'IDLE'
+        };
+      }
+      case 'CREATE_TAB': {
+        const newId = payload.id || ('tab_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+        const newTab = {
+          id: newId,
+          title: payload.title || 'Home',
+          viewType: payload.viewType || 'local',
+          path: payload.path || '/',
+          providerId: payload.providerId || null,
+          providerName: payload.providerName || null
+        };
+        const updatedTabs = [...state.tabs, newTab];
+        return {
+          ...state,
+          tabs: updatedTabs,
+          activeTabId: newId,
+          primaryTabId: newId,
+          activePane: 'primary',
+          fsmState: state.isSplitViewActive ? 'SPLIT_VIEW' : 'IDLE'
+        };
+      }
+      case 'CLOSE_TAB': {
+        if (state.tabs.length <= 1) {
+          const firstTab = { ...state.tabs[0], title: 'Home', viewType: 'local', path: '/', providerId: null, providerName: null };
+          return {
+            ...state,
+            tabs: [firstTab],
+            activeTabId: firstTab.id,
+            primaryTabId: firstTab.id
+          };
+        }
+        const filteredTabs = state.tabs.filter(t => t.id !== payload.tabId);
+        let nextActiveId = state.activeTabId;
+        if (state.activeTabId === payload.tabId) {
+          const closedIdx = state.tabs.findIndex(t => t.id === payload.tabId);
+          const nextTab = filteredTabs[Math.max(0, closedIdx - 1)];
+          nextActiveId = nextTab ? nextTab.id : filteredTabs[0].id;
+        }
+        return {
+          ...state,
+          tabs: filteredTabs,
+          activeTabId: nextActiveId,
+          primaryTabId: nextActiveId
+        };
+      }
+      case 'UPDATE_TAB_STATE': {
+        const updatedTabs = state.tabs.map(t => {
+          if (t.id === state.activeTabId) {
+            return {
+              ...t,
+              title: payload.title !== undefined ? payload.title : t.title,
+              viewType: payload.viewType !== undefined ? payload.viewType : t.viewType,
+              path: payload.path !== undefined ? payload.path : t.path,
+              providerId: payload.providerId !== undefined ? payload.providerId : t.providerId,
+              providerName: payload.providerName !== undefined ? payload.providerName : t.providerName
+            };
+          }
+          return t;
+        });
+        return {
+          ...state,
+          tabs: updatedTabs
+        };
+      }
+      case 'REORDER_TABS':
+        return {
+          ...state,
+          tabs: payload.tabs
+        };
+      case 'TOGGLE_SPLIT_VIEW': {
+        const nextSplit = !state.isSplitViewActive;
+        let secId = state.secondaryTabId;
+        if (nextSplit) {
+          const targetTab = payload.targetTab || state.tabs.find(t => t.id !== state.activeTabId) || state.tabs[0];
+          secId = targetTab ? targetTab.id : state.activeTabId;
+        }
+        return {
+          ...state,
+          isSplitViewActive: nextSplit,
+          primaryTabId: state.activeTabId,
+          secondaryTabId: secId,
+          activePane: nextSplit ? 'secondary' : 'primary',
+          fsmState: nextSplit ? 'SPLIT_VIEW' : 'IDLE'
+        };
+      }
+      case 'SET_ACTIVE_PANE':
+        return {
+          ...state,
+          activePane: payload.pane
+        };
+      case 'SET_SECONDARY_TAB':
+        return {
+          ...state,
+          secondaryTabId: payload.tabId
+        };
+      case 'SET_VIEW_MODE':
+        return {
+          ...state,
+          viewMode: payload.viewMode
+        };
+      case 'SET_LOADING':
+        return {
+          ...state,
+          isLoading: payload.isLoading,
+          fsmState: payload.isLoading ? 'LOADING' : (state.isSplitViewActive ? 'SPLIT_VIEW' : 'IDLE')
+        };
+      case 'SET_ERROR':
+        return {
+          ...state,
+          error: payload.error,
+          fsmState: payload.error ? 'ERROR' : 'IDLE'
+        };
+      default:
+        return state;
+    }
+  }
+}
+
 class FileBrowser {
   constructor(initialViewMode = 'grid') {
     this.currentPath = '/';
@@ -31,9 +215,22 @@ class FileBrowser {
     this.springLoadTimer = null; // Spring-loaded folder hover timer (#59)
     this.springLoadTarget = null;
 
-    // Multi-Tab UI System (#60)
+    // Multi-Tab UI System (#60) & Unidirectional FSM Store (#81)
     this.tabs = [];
     this.activeTabId = null;
+
+    this.store = new FileBrowserStore({
+      viewMode: this.viewMode,
+      clickNavigationMode: this.clickNavigationMode
+    });
+    this.store.subscribe((state) => {
+      this.activeTabId = state.activeTabId;
+      this.tabs = state.tabs;
+      this.isSplitViewActive = state.isSplitViewActive;
+      this.activePane = state.activePane;
+      this.primaryTabId = state.primaryTabId;
+      this.secondaryTabId = state.secondaryTabId;
+    });
 
     // Mouse Side-Button Folder History Navigation (#65)
     this.historyStack = [];
@@ -139,6 +336,7 @@ class FileBrowser {
         if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
           this.tabs = parsed.tabs;
           this.activeTabId = parsed.activeTabId || this.tabs[0].id;
+          this.store.dispatch('INIT_TABS', { tabs: this.tabs, activeTabId: this.activeTabId });
           return;
         }
       }
@@ -155,6 +353,7 @@ class FileBrowser {
     };
     this.tabs = [defaultTab];
     this.activeTabId = defaultTab.id;
+    this.store.dispatch('INIT_TABS', { tabs: this.tabs, activeTabId: this.activeTabId });
     this.saveTabsToSession();
   }
 
@@ -222,15 +421,14 @@ class FileBrowser {
       title = 'Activity';
     }
 
-    const newTab = {
+    this.store.dispatch('CREATE_TAB', {
       id: newId,
       title,
       viewType,
       path,
       providerId,
       providerName
-    };
-    this.tabs.push(newTab);
+    });
     this.switchTab(newId);
   }
 
@@ -238,33 +436,10 @@ class FileBrowser {
     const targetTab = this.tabs.find(t => t.id === tabId);
     if (!targetTab) return;
 
-    if (this.isSplitViewActive) {
-      if (tabId === this.secondaryTabId) {
-        this.setActivePane('secondary');
-        this.renderTabBar();
-        return;
-      } else if (tabId === this.primaryTabId) {
-        this.setActivePane('primary');
-        this.renderTabBar();
-        return;
-      }
+    this.store.dispatch('SWITCH_TAB', { tabId });
 
-      if (this.activePane === 'secondary') {
-        this.secondaryTabId = tabId;
-        this.loadSecondaryDirectory(
-          targetTab.path || '/',
-          targetTab.viewType,
-          targetTab.providerId,
-          targetTab.providerName
-        );
-        this.renderTabBar();
-        return;
-      } else {
-        this.primaryTabId = tabId;
-        this.activeTabId = tabId;
-      }
-    } else {
-      this.activeTabId = tabId;
+    if (this.isSplitViewActive) {
+      this.setActivePane('primary');
     }
 
     this.saveTabsToSession();
@@ -289,28 +464,11 @@ class FileBrowser {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (this.tabs.length <= 1) {
-      const lastTab = this.tabs[0];
-      lastTab.title = 'Home';
-      lastTab.viewType = 'local';
-      lastTab.path = '/';
-      lastTab.providerId = null;
-      lastTab.providerName = null;
-      this.switchTab(lastTab.id);
-      return;
-    }
-
-    const index = this.tabs.findIndex(t => t.id === tabId);
-    if (index === -1) return;
-
-    this.tabs.splice(index, 1);
-    if (this.activeTabId === tabId) {
-      const nextTab = this.tabs[Math.max(0, index - 1)];
-      this.activeTabId = nextTab.id;
-      this.switchTab(nextTab.id);
-    } else {
-      this.saveTabsToSession();
-      this.renderTabBar();
+    this.store.dispatch('CLOSE_TAB', { tabId });
+    this.saveTabsToSession();
+    const activeTab = this.getActiveTab();
+    if (activeTab) {
+      this.switchTab(activeTab.id);
     }
   }
 
@@ -408,8 +566,10 @@ class FileBrowser {
           const fromIdx = this.tabs.findIndex(t => t.id === this.draggingTabId);
           const toIdx = this.tabs.findIndex(t => t.id === id);
           if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
-            const [movedTab] = this.tabs.splice(fromIdx, 1);
-            this.tabs.splice(toIdx, 0, movedTab);
+            const reordered = [...this.tabs];
+            const [movedTab] = reordered.splice(fromIdx, 1);
+            reordered.splice(toIdx, 0, movedTab);
+            this.store.dispatch('REORDER_TABS', { tabs: reordered });
             this.saveTabsToSession();
             this.renderTabBar();
           }
@@ -1153,6 +1313,44 @@ class FileBrowser {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ display_name: displayName, host, username, password })
+        });
+        if (res.ok) {
+          this.hideModal('modalAddProvider');
+          this.loadSidebarProviders();
+        }
+      } catch (err) {}
+    });
+
+    document.getElementById('formAddOneDriveProvider')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const displayName = document.getElementById('inputOneDriveName')?.value.trim();
+      const refreshToken = document.getElementById('inputOneDriveRefreshToken')?.value.trim();
+      if (!displayName || !refreshToken) return;
+      try {
+        const res = await fetch('/api/providers/onedrive/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName, refresh_token: refreshToken })
+        });
+        if (res.ok) {
+          this.hideModal('modalAddProvider');
+          this.loadSidebarProviders();
+        }
+      } catch (err) {}
+    });
+
+    document.getElementById('formAddSharePointProvider')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const displayName = document.getElementById('inputSharePointName')?.value.trim();
+      const siteId = document.getElementById('inputSharePointSiteId')?.value.trim();
+      const driveId = document.getElementById('inputSharePointDriveId')?.value.trim();
+      const refreshToken = document.getElementById('inputSharePointRefreshToken')?.value.trim();
+      if (!displayName) return;
+      try {
+        const res = await fetch('/api/providers/sharepoint/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName, site_id: siteId, drive_id: driveId, refresh_token: refreshToken })
         });
         if (res.ok) {
           this.hideModal('modalAddProvider');
@@ -3437,7 +3635,7 @@ class FileBrowser {
   }
 
   setActivePane(paneName) {
-    this.activePane = paneName;
+    this.store.dispatch('SET_ACTIVE_PANE', { pane: paneName });
     const priPane = document.getElementById('primaryPane');
     const secPane = document.getElementById('secondaryPane');
 
@@ -3456,17 +3654,14 @@ class FileBrowser {
     const btn = document.getElementById('btnToggleSplitView');
     if (!wrapper || !secPane) return;
 
-    this.isSplitViewActive = !this.isSplitViewActive;
+    this.store.dispatch('TOGGLE_SPLIT_VIEW', { targetTab });
 
     if (this.isSplitViewActive) {
       wrapper.classList.add('split-view-active');
       secPane.style.display = 'flex';
       if (btn) btn.classList.add('active');
 
-      this.primaryTabId = this.activeTabId;
-
       const secondaryTabObj = targetTab || this.tabs.find(t => t.id !== this.activeTabId) || this.tabs[0];
-      this.secondaryTabId = secondaryTabObj ? secondaryTabObj.id : this.activeTabId;
 
       this.loadSecondaryDirectory(
         secondaryTabObj ? secondaryTabObj.path : '/',
@@ -4002,4 +4197,11 @@ class FileBrowser {
   }
 }
 
-window.FileBrowser = FileBrowser;
+if (typeof window !== 'undefined') {
+  window.FileBrowser = FileBrowser;
+  window.FileBrowserStore = FileBrowserStore;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { FileBrowser, FileBrowserStore };
+}
+

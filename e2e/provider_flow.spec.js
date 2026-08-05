@@ -19,12 +19,16 @@ test.describe('Issue #74: Provider Authentication Flow Audit & UI Mapping (OAuth
     await expect(oauthSection).toBeVisible();
     await expect(oauthSection.locator('a[data-provider="gdrive"]')).toBeVisible();
     await expect(oauthSection.locator('a[data-provider="dropbox"]')).toBeVisible();
+    await expect(oauthSection.locator('a[data-provider="onedrive"]')).toBeVisible();
+    await expect(oauthSection.locator('a[data-provider="sharepoint"]')).toBeVisible();
 
     // Verify Credential section and form inputs
     const credSection = modal.locator('.provider-auth-section[data-flow="credentials"]');
     await expect(credSection).toBeVisible();
     await expect(credSection.locator('#formAddS3Provider')).toBeVisible();
     await expect(credSection.locator('#formAddMoveitProvider')).toBeVisible();
+    await expect(credSection.locator('#formAddOneDriveProvider')).toBeVisible();
+    await expect(credSection.locator('#formAddSharePointProvider')).toBeVisible();
 
     // Close modal
     const btnCancel = modal.locator('#btnCancelAddProvider');

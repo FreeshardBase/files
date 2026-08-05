@@ -10,6 +10,8 @@ const GoogleDriveProvider = require('../providers/gdrive');
 const DropboxProvider = require('../providers/dropbox');
 const S3Provider = require('../providers/s3');
 const MOVEitProvider = require('../providers/MOVEitProvider');
+const OneDriveProvider = require('../providers/onedrive');
+const SharePointProvider = require('../providers/sharepoint');
 const { decodeUtf8Filename } = require('../utils/utf8');
 
 // ── PUBLIC PROVIDER WEBHOOK ENDPOINTS (#57) ───────────────────────────────────
@@ -62,7 +64,7 @@ function getRedirectUri(req) {
 }
 
 /**
- * Helper to get initialized Provider instance from connection ID (#7, #56)
+ * Helper to get initialized Provider instance from connection ID (#7, #56, #82)
  */
 async function getProviderInstanceForUser(connectionId, userId) {
   const connections = await getProviderConnections(userId);
@@ -79,6 +81,10 @@ async function getProviderInstanceForUser(connectionId, userId) {
     return { provider: new S3Provider(conn.credentials), connection: conn };
   } else if (conn.provider_type === 'moveit') {
     return { provider: new MOVEitProvider(conn.credentials), connection: conn };
+  } else if (conn.provider_type === 'onedrive') {
+    return { provider: new OneDriveProvider(conn.credentials), connection: conn };
+  } else if (conn.provider_type === 'sharepoint') {
+    return { provider: new SharePointProvider(conn.credentials), connection: conn };
   }
 
   throw new Error(`Provider type "${conn.provider_type}" not supported`);
@@ -379,6 +385,262 @@ router.get('/dropbox/callback', async (req, res) => {
 });
 
 /**
+ * GET /api/providers/onedrive/auth (#82)
+ * Initiates Microsoft OneDrive OAuth 2.0 Auth-Code Flow
+ */
+router.get('/onedrive/auth', (req, res) => {
+  const clientId = process.env.ONEDRIVE_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID || 'mock_onedrive_client_id';
+  const tenantId = process.env.MSGRAPH_TENANT_ID || 'common';
+  const state = crypto.randomBytes(16).toString('hex');
+  if (!req.session.oauthStates) req.session.oauthStates = {};
+  req.session.oauthStates[state] = true;
+
+  const protocol = req.protocol || 'https';
+  const host = req.get('host') || 'fs-files.gryzia.de';
+  const redirectUri = `${protocol}://${host}/api/providers/onedrive/callback`;
+
+  const authUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?` +
+    `client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent('offline_access Files.ReadWrite.All User.Read')}` +
+    `&state=${state}`;
+
+  res.redirect(authUrl);
+});
+
+/**
+ * GET /api/providers/onedrive/callback (#82)
+ * Handles OAuth 2.0 authorization code callback from Microsoft OneDrive
+ */
+router.get('/onedrive/callback', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { code, state, error } = req.query;
+
+    if (error) return res.status(400).send(`OneDrive OAuth Authorization Denied: ${error}`);
+    if (!code) return res.status(400).send('Missing authorization code from OneDrive OAuth.');
+    if (!req.session.oauthStates || !req.session.oauthStates[state]) {
+      return res.status(403).send('Invalid OAuth state parameter.');
+    }
+    delete req.session.oauthStates[state];
+
+    const clientId = process.env.ONEDRIVE_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID;
+    const clientSecret = process.env.ONEDRIVE_CLIENT_SECRET || process.env.MSGRAPH_CLIENT_SECRET;
+    const tenantId = process.env.MSGRAPH_TENANT_ID || 'common';
+    const protocol = req.protocol || 'https';
+    const host = req.get('host') || 'fs-files.gryzia.de';
+    const redirectUri = `${protocol}://${host}/api/providers/onedrive/callback`;
+
+    const postData = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+      scope: 'offline_access Files.ReadWrite.All User.Read'
+    }).toString();
+
+    const tokenRes = await new Promise((resolve, reject) => {
+      const request = https.request({
+        hostname: 'login.microsoftonline.com',
+        path: `/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, (resStream) => {
+        let body = '';
+        resStream.on('data', chunk => body += chunk);
+        resStream.on('end', () => resolve({ statusCode: resStream.statusCode, body }));
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    const tokens = JSON.parse(tokenRes.body);
+    if (!tokens.refresh_token && !tokens.access_token) {
+      return res.status(400).send(`Failed to exchange OneDrive OAuth code: ${tokens.error_description || tokenRes.body}`);
+    }
+
+    const credentials = {
+      clientId,
+      clientSecret,
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token,
+      tenantId
+    };
+
+    const displayName = 'Microsoft OneDrive';
+    const connId = await addProviderConnection(userId, 'onedrive', displayName, credentials);
+    res.redirect(`/?onedrive_connected=true&connection_id=${connId}`);
+  } catch (err) {
+    res.status(500).send(`OneDrive OAuth Callback Error: ${err.message}`);
+  }
+});
+
+/**
+ * POST /api/providers/onedrive/connect & POST /api/providers/onedrive (#82)
+ */
+const handleOneDriveConnect = async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { display_name, displayName, refresh_token, refreshToken, client_id, client_secret, tenant_id } = req.body || {};
+    const name = displayName || display_name || 'Microsoft OneDrive';
+    const refToken = refreshToken || refresh_token;
+
+    if (!refToken) {
+      return res.status(400).json({ error: 'refresh_token is required' });
+    }
+
+    const credentials = {
+      clientId: client_id || process.env.ONEDRIVE_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID,
+      clientSecret: client_secret || process.env.ONEDRIVE_CLIENT_SECRET || process.env.MSGRAPH_CLIENT_SECRET,
+      refreshToken: refToken,
+      tenantId: tenant_id || process.env.MSGRAPH_TENANT_ID || 'common'
+    };
+
+    const connectionId = await addProviderConnection(userId, 'onedrive', name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name: name, provider_type: 'onedrive' });
+  } catch (err) {
+    res.status(400).json({ error: `OneDrive connection failed: ${err.message}` });
+  }
+};
+router.post('/onedrive/connect', handleOneDriveConnect);
+router.post('/onedrive', handleOneDriveConnect);
+
+/**
+ * GET /api/providers/sharepoint/auth (#82)
+ * Initiates Microsoft SharePoint OAuth 2.0 Auth-Code Flow
+ */
+router.get('/sharepoint/auth', (req, res) => {
+  const clientId = process.env.SHAREPOINT_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID || 'mock_sharepoint_client_id';
+  const tenantId = process.env.MSGRAPH_TENANT_ID || 'common';
+  const state = crypto.randomBytes(16).toString('hex');
+  if (!req.session.oauthStates) req.session.oauthStates = {};
+  req.session.oauthStates[state] = true;
+
+  const protocol = req.protocol || 'https';
+  const host = req.get('host') || 'fs-files.gryzia.de';
+  const redirectUri = `${protocol}://${host}/api/providers/sharepoint/callback`;
+
+  const authUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?` +
+    `client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent('offline_access Sites.ReadWrite.All Files.ReadWrite.All User.Read')}` +
+    `&state=${state}`;
+
+  res.redirect(authUrl);
+});
+
+/**
+ * GET /api/providers/sharepoint/callback (#82)
+ * Handles OAuth 2.0 authorization code callback from Microsoft SharePoint
+ */
+router.get('/sharepoint/callback', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { code, state, error } = req.query;
+
+    if (error) return res.status(400).send(`SharePoint OAuth Authorization Denied: ${error}`);
+    if (!code) return res.status(400).send('Missing authorization code from SharePoint OAuth.');
+    if (!req.session.oauthStates || !req.session.oauthStates[state]) {
+      return res.status(403).send('Invalid OAuth state parameter.');
+    }
+    delete req.session.oauthStates[state];
+
+    const clientId = process.env.SHAREPOINT_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID;
+    const clientSecret = process.env.SHAREPOINT_CLIENT_SECRET || process.env.MSGRAPH_CLIENT_SECRET;
+    const tenantId = process.env.MSGRAPH_TENANT_ID || 'common';
+    const protocol = req.protocol || 'https';
+    const host = req.get('host') || 'fs-files.gryzia.de';
+    const redirectUri = `${protocol}://${host}/api/providers/sharepoint/callback`;
+
+    const postData = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+      scope: 'offline_access Sites.ReadWrite.All Files.ReadWrite.All User.Read'
+    }).toString();
+
+    const tokenRes = await new Promise((resolve, reject) => {
+      const request = https.request({
+        hostname: 'login.microsoftonline.com',
+        path: `/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, (resStream) => {
+        let body = '';
+        resStream.on('data', chunk => body += chunk);
+        resStream.on('end', () => resolve({ statusCode: resStream.statusCode, body }));
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    const tokens = JSON.parse(tokenRes.body);
+    if (!tokens.refresh_token && !tokens.access_token) {
+      return res.status(400).send(`Failed to exchange SharePoint OAuth code: ${tokens.error_description || tokenRes.body}`);
+    }
+
+    const credentials = {
+      clientId,
+      clientSecret,
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token,
+      tenantId
+    };
+
+    const displayName = 'Microsoft SharePoint';
+    const connId = await addProviderConnection(userId, 'sharepoint', displayName, credentials);
+    res.redirect(`/?sharepoint_connected=true&connection_id=${connId}`);
+  } catch (err) {
+    res.status(500).send(`SharePoint OAuth Callback Error: ${err.message}`);
+  }
+});
+
+/**
+ * POST /api/providers/sharepoint/connect & POST /api/providers/sharepoint (#82)
+ */
+const handleSharePointConnect = async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { display_name, displayName, site_id, siteId, drive_id, driveId, refresh_token, refreshToken, client_id, client_secret, tenant_id } = req.body || {};
+    const name = displayName || display_name || 'Microsoft SharePoint';
+    const refToken = refreshToken || refresh_token;
+
+    if (!name) {
+      return res.status(400).json({ error: 'displayName is required' });
+    }
+
+    const credentials = {
+      clientId: client_id || process.env.SHAREPOINT_CLIENT_ID || process.env.MSGRAPH_CLIENT_ID,
+      clientSecret: client_secret || process.env.SHAREPOINT_CLIENT_SECRET || process.env.MSGRAPH_CLIENT_SECRET,
+      siteId: siteId || site_id || null,
+      driveId: driveId || drive_id || null,
+      refreshToken: refToken || null,
+      tenantId: tenant_id || process.env.MSGRAPH_TENANT_ID || 'common'
+    };
+
+    const connectionId = await addProviderConnection(userId, 'sharepoint', name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name: name, provider_type: 'sharepoint' });
+  } catch (err) {
+    res.status(400).json({ error: `SharePoint connection failed: ${err.message}` });
+  }
+};
+router.post('/sharepoint/connect', handleSharePointConnect);
+router.post('/sharepoint', handleSharePointConnect);
+
+/**
  * POST /api/providers/gdrive/connect
  * Manual/Direct credential connection endpoint (#3, #7)
  */
@@ -408,18 +670,22 @@ router.post('/gdrive/connect', async (req, res) => {
 });
 
 /**
- * GET /api/providers/supported-flows (#74)
+ * GET /api/providers/supported-flows (#74, #82)
  * Returns classified lists of OAuth 2.0 and Credential-based providers
  */
 router.get('/supported-flows', (req, res) => {
   res.json({
     oauth_providers: [
       { type: 'gdrive', name: 'Google Drive', flow: 'oauth2', auth_url: '/api/providers/gdrive/auth' },
-      { type: 'dropbox', name: 'Dropbox', flow: 'oauth2', auth_url: '/api/providers/dropbox/auth' }
+      { type: 'dropbox', name: 'Dropbox', flow: 'oauth2', auth_url: '/api/providers/dropbox/auth' },
+      { type: 'onedrive', name: 'Microsoft OneDrive', flow: 'oauth2', auth_url: '/api/providers/onedrive/auth' },
+      { type: 'sharepoint', name: 'Microsoft SharePoint', flow: 'oauth2', auth_url: '/api/providers/sharepoint/auth' }
     ],
     credential_providers: [
       { type: 's3', name: 'S3 / MinIO / Wasabi', flow: 'credentials', fields: ['name', 'endpoint', 'bucket', 'accessKey', 'secretKey'] },
-      { type: 'moveit', name: 'MOVEit / SFTP', flow: 'credentials', fields: ['name', 'host', 'username', 'password'] }
+      { type: 'moveit', name: 'MOVEit / SFTP', flow: 'credentials', fields: ['name', 'host', 'username', 'password'] },
+      { type: 'onedrive', name: 'OneDrive (Credentials)', flow: 'credentials', fields: ['name', 'refreshToken'] },
+      { type: 'sharepoint', name: 'SharePoint (Credentials)', flow: 'credentials', fields: ['name', 'siteId', 'driveId', 'refreshToken'] }
     ]
   });
 });

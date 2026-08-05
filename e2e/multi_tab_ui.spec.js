@@ -25,15 +25,15 @@ test.describe('Issue #76: Multi-Tab Visual & Functional Consistency Suite', () =
     const secondTab = tabItems.nth(1);
 
     // Click second tab to activate
-    await secondTab.click();
+    await page.locator('#tabBarList .tab-item').nth(1).click();
     await page.waitForTimeout(200);
-    await expect(secondTab).toHaveClass(/active/);
-    await expect(firstTab).not.toHaveClass(/active/);
+    await expect(page.locator('#tabBarList .tab-item').nth(1)).toHaveClass(/active/);
+    await expect(page.locator('#tabBarList .tab-item').nth(0)).not.toHaveClass(/active/);
 
     // Click first tab back
-    await firstTab.click();
+    await page.locator('#tabBarList .tab-item').nth(0).click();
     await page.waitForTimeout(200);
-    await expect(firstTab).toHaveClass(/active/);
+    await expect(page.locator('#tabBarList .tab-item').nth(0)).toHaveClass(/active/);
   });
 
   test('Closes tabs using tab close button and verifies fallback', async ({ page }) => {
@@ -96,4 +96,27 @@ test.describe('Issue #76: Multi-Tab Visual & Functional Consistency Suite', () =
       expect(newBox.height).toBe(initialBox.height);
     }
   });
+
+  test('Issue #81: Top-level tab switching dispatches globally without secondary pane interception when split view is active', async ({ page }) => {
+    const btnNewTab = page.locator('#btnNewTab');
+    await btnNewTab.click();
+    await page.waitForTimeout(200);
+
+    const btnSplitView = page.locator('#btnToggleSplitView');
+    if (await btnSplitView.isVisible()) {
+      await btnSplitView.click();
+      await page.waitForTimeout(300);
+
+      const tabItems = page.locator('#tabBarList .tab-item');
+      const firstTab = tabItems.nth(0);
+
+      // Click first top-level tab
+      await firstTab.click();
+      await page.waitForTimeout(200);
+
+      // Verify top-level active tab switched to firstTab globally
+      await expect(firstTab).toHaveClass(/active/);
+    }
+  });
 });
+
