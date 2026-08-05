@@ -118,6 +118,7 @@
           <button class="fs-btn fs-btn--danger" id="btnEmptyTrash" style="display: none;">🗑️ <span>Empty Trash</span></button>
           <button class="fs-btn" id="btnFileDetails" style="display: none;">ℹ️ <span>Details</span></button>
           <button class="fs-btn" id="btnNewFolder">➕ <span data-i18n="files.new_folder">New Folder</span></button>
+          <button class="fs-btn" id="btnNewSmartFolder">🔍 <span data-i18n="files.new_smart_folder">Smart Folder</span></button>
           <label class="fs-btn fs-btn--primary" id="lblUpload" style="margin: 0; cursor: pointer;">
             📤 <span data-i18n="files.upload">Upload</span>
             <input type="file" id="fileInput" multiple style="display: none;">
@@ -302,6 +303,58 @@
         </a>
       </div>
 
+      <!-- S3 / MinIO / Wasabi Storage Connection Form -->
+      <div class="provider-form-section" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink);">S3 / MinIO / Wasabi Storage</h4>
+        <form id="formAddS3Provider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+          <div class="fs-field">
+            <label class="fs-label" for="inputS3Name">Provider Name / Label</label>
+            <input type="text" id="inputS3Name" class="fs-input" placeholder="e.g. My S3 Bucket" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputS3Endpoint">Endpoint URL</label>
+            <input type="text" id="inputS3Endpoint" class="fs-input" placeholder="https://s3.amazonaws.com or http://localhost:9000" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputS3Bucket">Bucket Name</label>
+            <input type="text" id="inputS3Bucket" class="fs-input" placeholder="my-bucket" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputS3AccessKey">Access Key</label>
+            <input type="text" id="inputS3AccessKey" class="fs-input" placeholder="Access Key ID" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputS3SecretKey">Secret Key</label>
+            <input type="password" id="inputS3SecretKey" class="fs-input" placeholder="Secret Access Key" required>
+          </div>
+          <button type="submit" id="btnConnectS3" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect S3 Storage</button>
+        </form>
+      </div>
+
+      <!-- MOVEit Transfer Connection Form -->
+      <div class="provider-form-section" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: var(--ink);">MOVEit Transfer Storage</h4>
+        <form id="formAddMoveitProvider" style="display: flex; flex-direction: column; gap: 8px;" onsubmit="return false;">
+          <div class="fs-field">
+            <label class="fs-label" for="inputMoveitName">Provider Name / Label</label>
+            <input type="text" id="inputMoveitName" class="fs-input" placeholder="e.g. Corporate MOVEit" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputMoveitHost">MOVEit Host / Endpoint</label>
+            <input type="text" id="inputMoveitHost" class="fs-input" placeholder="moveit.example.com" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputMoveitUsername">Username</label>
+            <input type="text" id="inputMoveitUsername" class="fs-input" placeholder="moveit_user" required>
+          </div>
+          <div class="fs-field">
+            <label class="fs-label" for="inputMoveitPassword">Password</label>
+            <input type="password" id="inputMoveitPassword" class="fs-input" placeholder="••••••••" required>
+          </div>
+          <button type="submit" id="btnConnectMoveit" class="fs-btn fs-btn--primary text-sm" style="margin-top: 4px; justify-content: center;">Connect MOVEit Storage</button>
+        </form>
+      </div>
+
       <div class="modal-actions" style="margin-top: 1.5rem;">
         <button class="fs-btn" id="btnCancelAddProvider">Close</button>
       </div>
@@ -316,6 +369,25 @@
       <div class="modal-actions" style="margin-top: 1rem;">
         <button class="fs-btn" id="btnCancelNewFolder">Cancel</button>
         <button class="fs-btn fs-btn--primary" id="btnConfirmNewFolder">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: New Smart Folder (#46) -->
+  <div id="modalSmartFolder" class="modal" style="display: none;">
+    <div class="modal-content fs-sheet">
+      <h3 style="margin-bottom: 1rem; font-size: var(--fs-h3);">Create Smart Folder</h3>
+      <div class="fs-field" style="margin-bottom: 10px;">
+        <label class="fs-label">Smart Folder Name</label>
+        <input type="text" id="inputSmartFolderName" class="fs-input" placeholder="e.g. Recent Documents">
+      </div>
+      <div class="fs-field" style="margin-bottom: 10px;">
+        <label class="fs-label">Search Query / Extension</label>
+        <input type="text" id="inputSmartFolderQuery" class="fs-input" placeholder="e.g. pdf or report">
+      </div>
+      <div class="modal-actions" style="margin-top: 1rem;">
+        <button class="fs-btn" id="btnCancelSmartFolder">Cancel</button>
+        <button class="fs-btn fs-btn--primary" id="btnConfirmSmartFolder">Create Smart Folder</button>
       </div>
     </div>
   </div>
@@ -341,6 +413,7 @@
         <label class="fs-label">Username / Display Name</label>
         <input type="text" id="inputShareeUsername" class="fs-input" placeholder="e.g. aaron" list="userAutocompleteList">
         <datalist id="userAutocompleteList"></datalist>
+        <div id="userSearchAutocomplete" class="user-search-results" style="display: none; margin-top: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); max-height: 120px; overflow-y: auto;"></div>
       </div>
       <div class="fs-field" style="margin-top: 0.5rem;">
         <label class="fs-label">Permission</label>

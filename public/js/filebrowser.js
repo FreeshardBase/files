@@ -991,6 +991,26 @@ class FileBrowser {
     document.getElementById('btnCancelNewFolder')?.addEventListener('click', () => this.hideModal('modalNewFolder'));
     document.getElementById('btnConfirmNewFolder')?.addEventListener('click', () => this.createFolder());
 
+    // Smart Folder Modal (#46, #73)
+    document.getElementById('btnNewSmartFolder')?.addEventListener('click', () => this.showModal('modalSmartFolder'));
+    document.getElementById('btnCancelSmartFolder')?.addEventListener('click', () => this.hideModal('modalSmartFolder'));
+    document.getElementById('btnConfirmSmartFolder')?.addEventListener('click', async () => {
+      const name = document.getElementById('inputSmartFolderName')?.value.trim();
+      const query = document.getElementById('inputSmartFolderQuery')?.value.trim();
+      if (!name || !query) return;
+      try {
+        const res = await fetch('/api/files/local/smart-folders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, search_query: query })
+        });
+        if (res.ok) {
+          this.hideModal('modalSmartFolder');
+          this.loadDirectory(this.currentPath);
+        }
+      } catch (err) {}
+    });
+
     // Rename Modal
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.hideModal('modalRename'));
     document.getElementById('btnConfirmRename')?.addEventListener('click', () => this.renameSelectedItem());
@@ -1003,15 +1023,68 @@ class FileBrowser {
     shareeInput?.addEventListener('input', async (e) => {
       const q = e.target.value.trim();
       const datalist = document.getElementById('userAutocompleteList');
-      if (!datalist || q.length < 1) return;
+      const container = document.getElementById('userSearchAutocomplete');
+      if (q.length < 1) {
+        if (datalist) datalist.innerHTML = '';
+        if (container) { container.innerHTML = ''; container.style.display = 'none'; }
+        return;
+      }
       try {
         const res = await fetch(`/api/shares/users/search?q=${encodeURIComponent(q)}`);
         if (!res.ok) return;
         const data = await res.json();
         if (Array.isArray(data.users)) {
-          datalist.innerHTML = data.users
-            .map(u => `<option value="${u.username}">${u.display_name && u.display_name !== u.username ? u.display_name + ' (' + u.username + ')' : u.username}</option>`)
-            .join('');
+          if (datalist) {
+            datalist.innerHTML = data.users
+              .map(u => `<option value="${u.username}">${u.display_name && u.display_name !== u.username ? u.display_name + ' (' + u.username + ')' : u.username}</option>`)
+              .join('');
+          }
+          if (container) {
+            container.innerHTML = data.users.map(u => `<div class="user-search-item" style="padding: 4px 8px; cursor: pointer;" onclick="document.getElementById('inputShareeUsername').value='${u.username}'">${u.display_name || u.username} (@${u.username})</div>`).join('');
+            container.style.display = data.users.length > 0 ? 'block' : 'none';
+          }
+        }
+      } catch (err) {}
+    });
+
+    // S3 & MOVEit Storage Connect Form Handlers (#73)
+    document.getElementById('formAddS3Provider')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const displayName = document.getElementById('inputS3Name')?.value.trim();
+      const endpoint = document.getElementById('inputS3Endpoint')?.value.trim();
+      const bucket = document.getElementById('inputS3Bucket')?.value.trim();
+      const accessKey = document.getElementById('inputS3AccessKey')?.value.trim();
+      const secretKey = document.getElementById('inputS3SecretKey')?.value.trim();
+      if (!displayName || !bucket || !accessKey || !secretKey) return;
+      try {
+        const res = await fetch('/api/providers/s3/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName, endpoint, bucket, access_key: accessKey, secret_key: secretKey })
+        });
+        if (res.ok) {
+          this.hideModal('modalAddProvider');
+          this.loadSidebarProviders();
+        }
+      } catch (err) {}
+    });
+
+    document.getElementById('formAddMoveitProvider')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const displayName = document.getElementById('inputMoveitName')?.value.trim();
+      const host = document.getElementById('inputMoveitHost')?.value.trim();
+      const username = document.getElementById('inputMoveitUsername')?.value.trim();
+      const password = document.getElementById('inputMoveitPassword')?.value.trim();
+      if (!displayName || !host || !username || !password) return;
+      try {
+        const res = await fetch('/api/providers/moveit/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName, host, username, password })
+        });
+        if (res.ok) {
+          this.hideModal('modalAddProvider');
+          this.loadSidebarProviders();
         }
       } catch (err) {}
     });

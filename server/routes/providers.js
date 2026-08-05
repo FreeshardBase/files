@@ -8,6 +8,8 @@ const { requireAuth } = require('../middleware/auth');
 const { addProviderConnection, getProviderConnections, run, get, all } = require('../db');
 const GoogleDriveProvider = require('../providers/gdrive');
 const DropboxProvider = require('../providers/dropbox');
+const S3Provider = require('../providers/s3');
+const MOVEitProvider = require('../providers/MOVEitProvider');
 const { decodeUtf8Filename } = require('../utils/utf8');
 
 // ── PUBLIC PROVIDER WEBHOOK ENDPOINTS (#57) ───────────────────────────────────
@@ -73,6 +75,10 @@ async function getProviderInstanceForUser(connectionId, userId) {
     return { provider: new GoogleDriveProvider(conn.credentials), connection: conn };
   } else if (conn.provider_type === 'dropbox') {
     return { provider: new DropboxProvider(conn.credentials), connection: conn };
+  } else if (conn.provider_type === 's3') {
+    return { provider: new S3Provider(conn.credentials), connection: conn };
+  } else if (conn.provider_type === 'moveit') {
+    return { provider: new MOVEitProvider(conn.credentials), connection: conn };
   }
 
   throw new Error(`Provider type "${conn.provider_type}" not supported`);
@@ -398,6 +404,57 @@ router.post('/gdrive/connect', async (req, res) => {
     res.status(201).json({ success: true, connectionId, display_name, provider_type: 'gdrive' });
   } catch (err) {
     res.status(400).json({ error: `Google Drive connection failed: ${err.message}` });
+  }
+});
+
+/**
+ * POST /api/providers/s3/connect (#73, #9)
+ */
+router.post('/s3/connect', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { display_name, endpoint, bucket, access_key, secret_key } = req.body;
+
+    if (!display_name || !bucket || !access_key || !secret_key) {
+      return res.status(400).json({ error: 'display_name, bucket, access_key, and secret_key are required' });
+    }
+
+    const credentials = {
+      endpoint: endpoint || null,
+      bucket,
+      accessKeyId: access_key,
+      secretAccessKey: secret_key
+    };
+
+    const connectionId = await addProviderConnection(userId, 's3', display_name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name, provider_type: 's3' });
+  } catch (err) {
+    res.status(400).json({ error: `S3 connection failed: ${err.message}` });
+  }
+});
+
+/**
+ * POST /api/providers/moveit/connect (#73, #70)
+ */
+router.post('/moveit/connect', async (req, res) => {
+  try {
+    const userId = req.userId || (req.session && (req.session.userId || (req.session.user && req.session.user.id)));
+    const { display_name, host, username, password } = req.body;
+
+    if (!display_name || !host || !username || !password) {
+      return res.status(400).json({ error: 'display_name, host, username, and password are required' });
+    }
+
+    const credentials = {
+      host,
+      username,
+      password
+    };
+
+    const connectionId = await addProviderConnection(userId, 'moveit', display_name, credentials);
+    res.status(201).json({ success: true, connectionId, display_name, provider_type: 'moveit' });
+  } catch (err) {
+    res.status(400).json({ error: `MOVEit connection failed: ${err.message}` });
   }
 });
 

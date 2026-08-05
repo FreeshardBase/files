@@ -105,4 +105,47 @@ test.describe('Freeshard Files — Advanced UI Features Suite (#72)', () => {
     // Verify search input retains value
     await expect(searchInput).toHaveValue('test query');
   });
+
+  test('UI Audit #73 — modalAddProvider contains S3 and MOVEit form fields', async ({ page }) => {
+    await page.evaluate(() => {
+      const modal = document.getElementById('modalAddProvider');
+      if (modal) modal.style.display = 'flex';
+    });
+
+    const modalAddProvider = page.locator('#modalAddProvider');
+    await expect(modalAddProvider).toBeVisible();
+
+    await expect(page.locator('#formAddS3Provider')).toBeVisible();
+    await expect(page.locator('#inputS3Endpoint')).toBeVisible();
+    await expect(page.locator('#inputS3Bucket')).toBeVisible();
+    await expect(page.locator('#inputS3AccessKey')).toBeVisible();
+    await expect(page.locator('#btnConnectS3')).toBeVisible();
+
+    await expect(page.locator('#formAddMoveitProvider')).toBeVisible();
+    await expect(page.locator('#inputMoveitHost')).toBeVisible();
+    await expect(page.locator('#btnConnectMoveit')).toBeVisible();
+  });
+
+  test('UI Audit #73 — Share Modal contains live user search autocomplete container', async ({ page }) => {
+    await page.evaluate(() => {
+      const modal = document.getElementById('modalShareInternal');
+      if (modal) modal.style.display = 'flex';
+    });
+
+    const modalShareInternal = page.locator('#modalShareInternal');
+    await expect(modalShareInternal).toBeVisible();
+    await expect(page.locator('#userSearchAutocomplete')).toBeAttached();
+  });
+
+  test('UI Audit #73 — Smart Folder creation button opens Smart Folder modal', async ({ page }) => {
+    const btnNewSmartFolder = page.locator('#btnNewSmartFolder');
+    await expect(btnNewSmartFolder).toBeVisible();
+
+    await btnNewSmartFolder.click();
+    const modalSmartFolder = page.locator('#modalSmartFolder');
+    await expect(modalSmartFolder).toBeVisible();
+
+    await page.locator('#btnCancelSmartFolder').click();
+    await expect(modalSmartFolder).toBeHidden();
+  });
 });

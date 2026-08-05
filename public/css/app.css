@@ -1159,3 +1159,43 @@ body {
   transition: width 0.2s ease;
 }
 
+/* Sync Status Badges (#57, #73) */
+.sync-status-badge, .sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  background: rgba(0, 112, 128, 0.12);
+  color: var(--data);
+  border: 1px solid rgba(0, 112, 128, 0.3);
+}
+
+.sync-status-badge.synced, .sync-badge.synced {
+  background: rgba(0, 172, 71, 0.12);
+  color: #00ac47;
+  border-color: rgba(0, 172, 71, 0.3);
+}
+
+.sync-status-badge.syncing, .sync-badge.syncing {
+  background: rgba(200, 118, 31, 0.12);
+  color: var(--accent);
+  border-color: rgba(200, 118, 31, 0.3);
+}
+
+/* Live User Search Autocomplete Container (#51, #73) */
+.user-search-results {
+  background: var(--surface);
+  border: 1px solid var(--border-cool);
+  border-radius: var(--radius-control);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.user-search-item:hover {
+  background: var(--bg);
+  color: var(--line);
+}
+
