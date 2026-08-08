@@ -1,4 +1,4 @@
-const CACHE_NAME = 'freeshard-files-v1786170279';
+const CACHE_NAME = 'freeshard-files-v1786170330';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
