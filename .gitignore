@@ -6,3 +6,4 @@ ssl/
 TUNNEL_SETUP.md
 *.log
 .DS_Store
+test-results/
