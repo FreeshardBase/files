@@ -60,4 +60,16 @@ describe('loadConfig', () => {
     expect(err).toBeInstanceOf(ConfigError);
     expect((err as ConfigError).problems.length).toBeGreaterThanOrEqual(9);
   });
+
+  it.each([
+    ['http://files.example.com'], ['ftp://files.example.com'], ['https://files.example.com/sub'],
+    ['https://files.example.com/?x=1'], ['https://files.example.com/#frag'], ['http://10.0.0.5:3005'],
+  ])('refuses FILES_PUBLIC_URL %s', (url) => {
+    expect(() => loadConfig({ ...valid, FILES_PUBLIC_URL: url })).toThrow(/FILES_PUBLIC_URL/);
+  });
+
+  it.each([['https://files.example.com'], ['https://files.example.com/'], ['http://localhost:3005'], ['http://127.0.0.1:3005'], ['http://[::1]:3005']])(
+    'accepts FILES_PUBLIC_URL %s', (url) => {
+      expect(loadConfig({ ...valid, FILES_PUBLIC_URL: url }).publicUrl.href).toBe(new URL(url).href);
+    });
 });

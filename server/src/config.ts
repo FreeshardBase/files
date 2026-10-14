@@ -7,13 +7,17 @@ export class ConfigError extends Error {
 }
 
 const loopback = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const issuerUrl = z.url().transform((s) => new URL(s)).refine(
-  (u) => u.protocol === 'https:' || (u.protocol === 'http:' && loopback.has(u.hostname)),
-  'must be https (http only for loopback)',
-);
+const secureOrLoopback = (u: URL) => u.protocol === 'https:' || (u.protocol === 'http:' && loopback.has(u.hostname));
+const issuerUrl = z.url().transform((s) => new URL(s)).refine(secureOrLoopback, 'must be https (http only for loopback)');
+// The public URL is an origin: cookies, CSRF and redirects are built from it, so no path, query or fragment.
+const publicUrl = z.url()
+  .refine((s) => !/[?#]/.test(s), 'must not have a query or fragment')
+  .transform((s) => new URL(s))
+  .refine(secureOrLoopback, 'must be https (http only for loopback)')
+  .refine((u) => u.pathname === '/', 'must not have a path');
 
 const Schema = z.object({
-  FILES_PUBLIC_URL: z.url().transform((s) => new URL(s)),
+  FILES_PUBLIC_URL: publicUrl,
   FILES_DATA_DIR: z.string().min(1),
   FILES_SESSION_SECRET: z.string().min(32, 'must be at least 32 characters'),
   FILES_ENCRYPTION_KEY: z.string()
