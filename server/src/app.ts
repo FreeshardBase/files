@@ -1,5 +1,9 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import fastifyStatic from '@fastify/static';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import helmet from '@fastify/helmet';
 import type { Config } from './config.ts';
 import type { Db } from './db.ts';
@@ -55,6 +59,21 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
   app.addHook('onClose', async () => clearInterval(purge));
 
   app.get('/healthz', { config: { public: true } }, async () => ({ status: 'ok' }));
+
+  // SPA: static assets plus an index.html fallback for client-side routes. FILES_WEB_DIST is a layout
+  // override (the container sets it), not a security setting. Registered last so every API route wins.
+  const webDist = process.env.FILES_WEB_DIST ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist');
+  if (existsSync(webDist)) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    app.get('/*', { config: { public: true } }, (req, reply) => {
+      // Decide on the decoded path: the router matches the raw URL, so /%61pi/... lands here.
+      let path: string;
+      try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
+      catch { return reply.callNotFound(); } // malformed escape: not a page, answer through the not-found handler
+      if (path.startsWith('/api/') || path.startsWith('/auth/')) return reply.callNotFound();
+      return reply.sendFile('index.html');
+    });
+  }
 
   extend?.(app);
   return app;

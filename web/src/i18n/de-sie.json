@@ -1,0 +1,42 @@
+{
+  "app": { "name": "Dateien" },
+  "nav": { "home": "Mein Speicher", "breadcrumbRoot": "Mein Speicher" },
+  "folder": {
+    "empty": "Dieser Ordner ist leer.",
+    "loading": "Wird geladen …",
+    "columns": { "name": "Name", "size": "Größe", "modified": "Geändert" },
+    "newFolder": "Neuer Ordner",
+    "newFolderPrompt": "Wie soll der Ordner heißen?",
+    "create": "Erstellen",
+    "cancel": "Abbrechen"
+  },
+  "upload": {
+    "button": "Hochladen",
+    "progress": "{name}: {percent} %",
+    "done": "{name} hochgeladen",
+    "exists": "{name} gibt es hier schon. Wählen Sie einen anderen Namen oder laden Sie die Datei als Kopie hoch.",
+    "keepBoth": "Als Kopie hochladen",
+    "replace": "Ersetzen",
+    "skip": "Überspringen"
+  },
+  "errors": {
+    "UNAUTHENTICATED": "Sie sind nicht mehr angemeldet.",
+    "FORBIDDEN": "Dafür fehlt Ihnen die Berechtigung.",
+    "CSRF": "Die Anfrage wurde aus Sicherheitsgründen abgelehnt. Bitte laden Sie die Seite neu.",
+    "VALIDATION": "Die Eingabe ist ungültig.",
+    "NOT_FOUND": "Das gibt es nicht (mehr).",
+    "FILE_EXISTS": "Ein Eintrag mit diesem Namen existiert bereits.",
+    "PATH_INVALID": "Dieser Name oder Pfad ist nicht erlaubt.",
+    "PATH_SYMLINK": "Verknüpfungen werden aus Sicherheitsgründen nicht geöffnet.",
+    "NOT_A_DIRECTORY": "Das ist kein Ordner.",
+    "IS_A_DIRECTORY": "Das ist ein Ordner, keine Datei.",
+    "PAYLOAD_TOO_LARGE": "Die Datei ist zu groß.",
+    "UNSUPPORTED_MEDIA_TYPE": "Dieses Dateiformat wird hier nicht angenommen.",
+    "RANGE_NOT_SATISFIABLE": "Dieser Teil der Datei existiert nicht.",
+    "STORAGE_FULL": "Der Speicher ist voll.",
+    "LOGIN_FAILED": "Die Anmeldung hat nicht geklappt. Bitte versuchen Sie es erneut.",
+    "INTERNAL": "Etwas ist schiefgelaufen. Bitte versuchen Sie es später erneut.",
+    "NETWORK": "Keine Verbindung zum Shard."
+  },
+  "a11y": { "fileList": "Dateien in {folder}", "breadcrumbs": "Pfad" }
+}

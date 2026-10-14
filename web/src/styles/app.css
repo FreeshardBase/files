@@ -1,0 +1,23 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import './tokens.css';
+@import './components.css';
+
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 400 var(--fs-body)/1.5 var(--font-ui);
+}
+/* Focus ring: teal hairline outline, never amber, never a fill (design guide, keyboard navigation). */
+:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+
+.app-shell { display: flex; flex-direction: column; min-height: 100%; }
+.app-header {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface); border-bottom: var(--border-w) solid var(--border);
+}
+.app-title { font-size: var(--fs-h3); font-weight: 600; color: var(--ink); }
+main { flex: 1; padding: var(--space-5); }

@@ -47,7 +47,7 @@ describe('deny by default', () => {
   });
   it('returns 404 for unknown routes when authenticated', async () => {
     const s = await login(t);
-    expect((await t.app.inject({ url: '/nope', headers: { cookie: s.cookie } })).statusCode).toBe(404);
+    expect((await t.app.inject({ url: '/api/v1/nope', headers: { cookie: s.cookie } })).statusCode).toBe(404);
   });
 });
 
