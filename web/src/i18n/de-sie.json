@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Dateien",
-    "retry": "Erneut versuchen"
+    "retry": "Erneut versuchen",
+    "signInAgain": "Erneut anmelden"
   },
   "nav": {
     "home": "Mein Speicher",

@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { AppError } from '../errors.ts';
 import { challengeFor, createOidc, randomNonce, randomState, randomVerifier } from './oidc.ts';
 import { createLoginAttempt, createSession, deleteSession, takeLoginAttempt, SESSION_TTL_MS, LOGIN_TTL_MS } from './sessions.ts';
 import { upsertUserFromClaims } from '../users.ts';
 import { cookieNames } from './cookies.ts';
 import { requireUser } from './guard.ts';
+
+export const LOGIN_FAILED_URL = '/?loginError=1';
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps;
@@ -41,11 +42,17 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const id = req.cookies[names.login];
     const attempt = id ? takeLoginAttempt(db, id) : undefined;
     reply.clearCookie(names.login, loginCookie);
-    if (!attempt) throw new AppError('LOGIN_FAILED');
+    // A failed login goes back to the SPA, which shows LOGIN_FAILED and a link to sign in again.
+    // Only a flag travels in the URL; the reason is logged here, never shown to the browser.
+    const failed = (reason: string, err?: unknown) => {
+      req.log.warn({ err, reason }, 'login failed');
+      return reply.redirect(LOGIN_FAILED_URL);
+    };
+    if (!attempt) return failed('missing or expired login attempt');
     const callbackUrl = new URL(req.url, config.publicUrl);
     let claims;
     try { claims = await oidc.exchange(callbackUrl, attempt); }
-    catch (err) { throw new AppError('LOGIN_FAILED', undefined, { cause: err }); }
+    catch (err) { return failed('code exchange rejected', err); } // handled: state mismatch, IdP error=, bad code
     const roleValue = claims[config.oidc.roleClaim];
     const isAdmin = Array.isArray(roleValue) ? roleValue.includes(config.oidc.adminValue) : roleValue === config.oidc.adminValue;
     const user = upsertUserFromClaims(db, { iss: claims.iss, sub: claims.sub, isAdmin,

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useSessionStore } from './stores/session.ts';
+import { loginFailed } from './api/client.ts';
 const session = useSessionStore();
+const showLoginFailed = loginFailed();
 onMounted(() => session.load());
 </script>
 
@@ -15,6 +17,18 @@ onMounted(() => session.load());
       class="app-main"
     >
       <RouterView />
+    </main>
+    <main
+      v-else-if="session.error && session.error.code === 'UNAUTHENTICATED' && showLoginFailed"
+      class="app-main"
+    >
+      <p role="alert">
+        {{ $t('errors.LOGIN_FAILED') }}
+      </p>
+      <a
+        class="button"
+        href="/auth/login"
+      >{{ $t('app.signInAgain') }}</a>
     </main>
     <main
       v-else-if="session.error"

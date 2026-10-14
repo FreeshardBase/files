@@ -35,6 +35,22 @@ describe('startup failure', () => {
   });
 });
 
+describe('failed login', () => {
+  it('shows LOGIN_FAILED with a sign-in-again link instead of redirecting to login', async () => {
+    const loc = { href: 'http://x/home?loginError=1', pathname: '/home', search: '?loginError=1' };
+    vi.stubGlobal('location', loc);
+    vi.stubGlobal('fetch', vi.fn(async () => json({ code: 'UNAUTHENTICATED' }, 401)));
+    const router = mk(); await router.push('/');
+    const w = mount(App, { global: { plugins: [i18n(), router] } });
+    await flushPromises();
+    expect(w.find('[role=alert]').text()).toBe(en.errors.LOGIN_FAILED);
+    const again = w.find('a[href="/auth/login"]');
+    expect(again.text()).toBe(en.app.signInAgain);
+    expect(loc.href).toBe('http://x/home?loginError=1');
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('FolderView uploads', () => {
   it('summarises a mixed batch, lists the failure, relists exactly once, keeps the list mounted', async () => {
     const listCalls: string[] = [];

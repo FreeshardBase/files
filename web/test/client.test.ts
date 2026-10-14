@@ -12,6 +12,13 @@ describe('api client', () => {
     await expect(api.get('/api/v1/me')).rejects.toBeInstanceOf(ApiFailure);
     expect(loc.href).toBe('/auth/login?returnTo=%2FFotos');
   });
+  it('does not redirect to login again while a failed login is being shown', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'UNAUTHENTICATED' }), { status: 401 })));
+    const loc = { href: 'http://x/home?loginError=1', pathname: '/home', search: '?loginError=1' };
+    vi.stubGlobal('location', loc);
+    await expect(api.get('/api/v1/me')).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(loc.href).toBe('http://x/home?loginError=1');
+  });
   it('sends the CSRF token on mutating requests', async () => {
     const f = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}', { status: 201 }));
     vi.stubGlobal('fetch', f);

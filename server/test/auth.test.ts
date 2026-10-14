@@ -12,6 +12,12 @@ afterAll(() => t.close());
 
 const names = () => cookieNames(t.config);
 
+// A failed login lands back in the app with a flag only: no code, reason or IdP text in the URL.
+function expectLoginFailed(r: { statusCode: number; headers: Record<string, unknown> }) {
+  expect(r.statusCode).toBe(302);
+  expect(r.headers.location).toBe('/?loginError=1');
+}
+
 // Starts a login and returns the login cookie plus the callback URL the IdP would redirect to.
 async function startAttempt(user = 'testuser') {
   const start = await t.app.inject(`/auth/login?login_hint=${user}`);
@@ -70,28 +76,25 @@ describe('OIDC login', () => {
     const u = new URL(a.url, 'https://files.example.com');
     u.searchParams.set('state', 'forged');
     const r = await t.app.inject({ url: u.pathname + u.search, headers: { cookie: a.cookie } });
-    expect(r.statusCode).toBe(400);
-    expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+    expectLoginFailed(r);
   });
   it('does not let login cookie A complete callback B', async () => {
     const a = await startAttempt();
     const b = await startAttempt();
     const r = await t.app.inject({ url: b.url, headers: { cookie: a.cookie } });
-    expect(r.statusCode).toBe(400);
-    expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+    expectLoginFailed(r);
   });
   it('rejects a replayed callback', async () => {
     const a = await startAttempt();
     expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(302);
     expect((t.db.prepare('SELECT count(*) AS n FROM login_attempts WHERE state = ?').get(a.params.get('state')) as { n: number }).n).toBe(0);
-    expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(400);
+    expectLoginFailed(await t.app.inject({ url: a.url, headers: { cookie: a.cookie } }));
   });
   it('rejects a callback for an expired login attempt', async () => {
     const a = await startAttempt();
     t.db.prepare("UPDATE login_attempts SET expires_at = '2000-01-01T00:00:00.000Z'").run();
     const r = await t.app.inject({ url: a.url, headers: { cookie: a.cookie } });
-    expect(r.statusCode).toBe(400);
-    expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+    expectLoginFailed(r);
   });
   it('invalidates a pre-existing session on re-login (fixation hygiene)', async () => {
     const old = await login(t);
@@ -110,8 +113,24 @@ describe('OIDC login', () => {
     expect(c).not.toMatch(/Domain=/i);
   });
   it('rejects a callback without a login cookie even if state is supplied', async () => {
-    const r = await t.app.inject('/auth/callback?code=x&state=anything');
-    expect(r.statusCode).toBe(400);
+    expectLoginFailed(await t.app.inject('/auth/callback?code=x&state=anything'));
+  });
+  it('sends an IdP error= callback back to the app without the details', async () => {
+    const a = await startAttempt();
+    const st = a.params.get('state')!;
+    const r = await t.app.inject({ url: `/auth/callback?error=access_denied&error_description=${encodeURIComponent('<b>nope</b>')}&state=${st}`,
+      headers: { cookie: a.cookie } });
+    expectLoginFailed(r);
+    expect(r.body).not.toContain('nope');
+  });
+  it('does not create a session on a failed callback', async () => {
+    const a = await startAttempt();
+    const u = new URL(a.url, 'https://files.example.com');
+    u.searchParams.set('state', 'forged');
+    const r = await t.app.inject({ url: u.pathname + u.search, headers: { cookie: a.cookie } });
+    expectLoginFailed(r);
+    const set = ([] as string[]).concat(r.headers['set-cookie'] ?? []);
+    expect(set.some((c) => c.startsWith(`${names().sid}=`))).toBe(false);
   });
   it.each([
     ['https://evil.example/'], ['//evil.example'], ['/\\evil.example'], ['/\t/evil.example/'], ['/\r/evil.example/'],
@@ -145,6 +164,11 @@ describe('sessions', () => {
     const out = await t.app.inject({ method: 'POST', url: '/auth/logout',
       headers: { cookie: s.cookie, 'x-csrf-token': s.csrf, origin: 'https://files.example.com' } });
     expect(out.statusCode).toBe(204);
+    const cleared = ([] as string[]).concat(out.headers['set-cookie'] ?? []).find((c) => c.startsWith(`${names().sid}=`));
+    expect(cleared).toBeDefined();
+    expect(cleared).toMatch(new RegExp(`^${names().sid}=;`));
+    expect(cleared).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
+    expect(cleared).toMatch(/Path=\/(;|$)/);
     expect((await t.app.inject({ url: '/api/v1/me', headers: { cookie: s.cookie } })).statusCode).toBe(401);
   });
   it('an expired session is rejected', async () => {
