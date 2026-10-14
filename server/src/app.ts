@@ -10,12 +10,14 @@ declare module 'fastify' {
   interface FastifyInstance { deps: { config: Config; db: Db } }
 }
 
-export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void };
+export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
+  logStream?: NodeJS.WritableStream };
 
-export async function buildApp({ config, db, extend }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, db, extend, logStream }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
+      ...(logStream ? { stream: logStream } : {}),
       redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
       serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0], id: req.id }) },
     },

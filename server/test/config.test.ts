@@ -14,7 +14,7 @@ const valid = {
 };
 
 function thrownBy(fn: () => unknown): unknown {
-  try { fn(); } catch (e) { return e; }
+  try { fn(); } catch (e) { return e; } // handled: the caller asserts on the returned error
   return undefined;
 }
 

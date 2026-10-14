@@ -16,8 +16,10 @@ export function errorHandler(err: FastifyError | AppError, req: FastifyRequest, 
   if ((err as FastifyError).code === 'FST_REQ_FILE_TOO_LARGE' || (err as FastifyError).statusCode === 413) {
     return reply.status(413).send({ code: 'PAYLOAD_TOO_LARGE' });
   }
-  if ((err as FastifyError).validation) {
-    return reply.status(400).send({ code: 'VALIDATION' });
+  const status = (err as FastifyError).statusCode;
+  if ((err as FastifyError).validation || (status !== undefined && status >= 400 && status < 500)) {
+    req.log.warn({ err }, 'client error');
+    return reply.status(status ?? 400).send({ code: 'VALIDATION' });
   }
   req.log.error({ err }, 'unhandled error');
   return reply.status(500).send({ code: 'INTERNAL' });

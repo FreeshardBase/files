@@ -12,6 +12,7 @@ export type TestApp = { app: FastifyInstance; config: Config; db: Db; dataDir: s
 export async function startTestApp(
   overrides: Record<string, string> = {},
   extend?: (app: FastifyInstance) => void,
+  logStream?: NodeJS.WritableStream,
 ): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
   const idp = await startFakeIdp();
@@ -30,7 +31,7 @@ export async function startTestApp(
     ...overrides,
   });
   const db = openDb(join(dataDir, 'files.db'));
-  const app = await buildApp({ config, db, extend });
+  const app = await buildApp({ config, db, extend, logStream });
   await app.ready();
   return {
     app, config, db, dataDir, idp,
