@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Readable } from 'node:stream';
 import { CollisionPolicy } from '@files/shared';
@@ -76,8 +76,11 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
   // buffered up to the body limit first. No route bodyLimit: Fastify only enforces it in its built-in
   // buffering parsers, never for our raw-stream parser; the size cap is the declared-length check
   // below plus maxBytes in the backend write.
-  const requireOctetStream = async (req: FastifyRequest) => {
-    if (!req.headers['content-type']?.toLowerCase().startsWith('application/octet-stream')) {
+  // Early rejections send `connection: close` so Node stops draining the unread upload body.
+  const requireOctetStream = async (req: FastifyRequest, reply: FastifyReply) => {
+    const base = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+    if (base !== 'application/octet-stream') {
+      reply.header('connection', 'close');
       throw new AppError('UNSUPPORTED_MEDIA_TYPE');
     }
   };
@@ -85,7 +88,10 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     const q = z.object({ path: z.string().min(1), onCollision: CollisionPolicy }).parse(req.query);
     const max = app.deps.config.maxUploadBytes;
     const declared = Number(req.headers['content-length'] ?? NaN);
-    if (Number.isFinite(declared) && declared > max) throw new AppError('PAYLOAD_TOO_LARGE');
+    if (Number.isFinite(declared) && declared > max) {
+      reply.header('connection', 'close');
+      throw new AppError('PAYLOAD_TOO_LARGE');
+    }
     const entry = await backendFor(app, req).write(q.path, req.body as Readable, { onCollision: q.onCollision, maxBytes: max });
     return reply.status(201).send(entry);
   });

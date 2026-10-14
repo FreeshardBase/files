@@ -106,6 +106,32 @@ describe('sources/home', () => {
     expect(r.statusCode).toBe(415);
     expect(r.json()).toEqual({ code: 'UNSUPPORTED_MEDIA_TYPE' });
   });
+  it('compares the exact base media type, not a prefix', async () => {
+    const r = await t.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fct2.txt&onCollision=fail',
+      headers: { cookie: a.cookie, 'x-csrf-token': a.csrf, origin: ORIGIN, 'content-type': 'application/octet-streamx' }, payload: 'x' });
+    expect(r.statusCode).toBe(415);
+    expect(r.json()).toEqual({ code: 'UNSUPPORTED_MEDIA_TYPE' });
+  });
+  it('accepts the octet-stream type with parameters and any case', async () => {
+    const r = await t.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fct3.txt&onCollision=fail',
+      headers: { cookie: a.cookie, 'x-csrf-token': a.csrf, origin: ORIGIN, 'content-type': 'Application/Octet-Stream; charset=binary' }, payload: 'x' });
+    expect(r.statusCode).toBe(201);
+  });
+  it('closes the connection on an early 415 rejection', async () => {
+    const r = await t.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fct4.txt&onCollision=fail',
+      headers: { cookie: a.cookie, 'x-csrf-token': a.csrf, origin: ORIGIN, 'content-type': 'text/plain' }, payload: 'x' });
+    expect(r.statusCode).toBe(415);
+    expect(r.headers.connection).toBe('close');
+  });
+  it('closes the connection on an early 413 rejection', async () => {
+    const small = await startTestApp({ FILES_MAX_UPLOAD_BYTES: '10' });
+    const s = await login(small);
+    const r = await small.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fbig2.bin&onCollision=fail',
+      headers: { cookie: s.cookie, 'x-csrf-token': s.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream' }, payload: Buffer.alloc(11) });
+    expect(r.statusCode).toBe(413);
+    expect(r.headers.connection).toBe('close');
+    await small.close();
+  });
   it('rejects an upload larger than FILES_MAX_UPLOAD_BYTES', async () => {
     const small = await startTestApp({ FILES_MAX_UPLOAD_BYTES: '10' });
     const s = await login(small);
