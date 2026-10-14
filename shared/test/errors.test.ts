@@ -11,9 +11,20 @@ describe('error codes', () => {
     expect(errorStatus.UNAUTHENTICATED).toBe(401);
     expect(errorStatus.CSRF).toBe(403);
   });
+  it('pins INTERNAL and NOT_FOUND statuses', () => {
+    expect(errorStatus.INTERNAL).toBe(500);
+    expect(errorStatus.NOT_FOUND).toBe(404);
+  });
 });
 
 describe('EntrySchema', () => {
+  const base = { path: '/a', name: 'a', type: 'file', size: 1, modified: '2026-10-14T00:00:00.000Z' };
+  it('accepts a valid entry', () => {
+    expect(EntrySchema.safeParse(base).success).toBe(true);
+  });
+  it('rejects a relative path', () => {
+    expect(EntrySchema.safeParse({ ...base, path: 'a' }).success).toBe(false);
+  });
   it('rejects an entry without a name', () => {
     expect(EntrySchema.safeParse({ path: '/a', type: 'file', size: 1, modified: '2026-10-14T00:00:00.000Z' }).success).toBe(false);
   });

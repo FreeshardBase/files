@@ -6,6 +6,8 @@ import vueI18n from '@intlify/eslint-plugin-vue-i18n';
 const bannedBuffering = [
   { selector: "CallExpression[callee.property.name='arrayBuffer']", message: 'Stream instead of buffering (spec 3.2).' },
   { selector: "CallExpression[callee.object.name='Buffer'][callee.property.name='concat']", message: 'Stream instead of buffering (spec 3.2).' },
+  { selector: "CallExpression[callee.name='readFile']", message: 'Stream instead of buffering (spec 3.2).' },
+  { selector: "CallExpression[callee.property.name='readFile']", message: 'Stream instead of buffering (spec 3.2).' },
 ];
 
 export default tseslint.config(
@@ -26,6 +28,7 @@ export default tseslint.config(
         { object: 'process', property: 'exit', message: 'Only main.ts may exit.' }],
     },
   },
+  { files: ['web/src/**/*.ts'], rules: { 'no-alert': 'error' } },
   { files: ['server/src/main.ts'], rules: { 'no-restricted-properties': 'off' } },
   ...vue.configs['flat/recommended'],
   {
