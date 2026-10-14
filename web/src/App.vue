@@ -10,7 +10,10 @@ onMounted(() => session.load());
     <header class="app-header">
       <span class="app-title">{{ $t('app.name') }}</span>
     </header>
-    <main v-if="session.me" class="app-main">
+    <main
+      v-if="session.me"
+      class="app-main"
+    >
       <RouterView />
     </main>
   </div>

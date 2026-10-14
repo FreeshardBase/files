@@ -29,6 +29,8 @@ export default tseslint.config(
     },
   },
   { files: ['web/src/**/*.ts'], rules: { 'no-alert': 'error' } },
+  // Browser globals (File, HTMLElement, ...) are checked by vue-tsc; eslint's no-undef only adds false positives here.
+  { files: ['web/**/*.{ts,vue}'], rules: { 'no-undef': 'off' } },
   { files: ['server/src/main.ts'], rules: { 'no-restricted-properties': 'off' } },
   ...vue.configs['flat/recommended'],
   {
@@ -38,6 +40,7 @@ export default tseslint.config(
     settings: { 'vue-i18n': { localeDir: './web/src/i18n/*.json', messageSyntaxVersion: '^11.0.0' } },
     rules: {
       'vue/no-v-html': 'error',
+      'vue/multi-word-component-names': ['error', { ignores: ['Breadcrumbs'] }],
       '@intlify/vue-i18n/no-raw-text': ['error', { ignorePattern: '^[\\s/·…–—|()\\-:]+$' }],
       '@intlify/vue-i18n/no-missing-keys': 'error',
       'no-alert': 'error',
