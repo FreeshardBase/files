@@ -18,6 +18,7 @@ await app.listen({ port: config.port, host: '0.0.0.0' });
 
 let shuttingDown = false;
 function shutdown(signal: string): void {
+  app.log.info({ signal }, 'shutdown signal received');
   if (shuttingDown) { console.error(`${signal} received again, forcing exit`); process.exit(1); }
   shuttingDown = true;
   setTimeout(() => { console.error('shutdown timed out after 10s, forcing exit'); process.exit(1); }, 10_000).unref();

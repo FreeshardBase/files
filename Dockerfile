@@ -22,5 +22,5 @@ COPY --from=build /src/server/migrations server/migrations
 COPY --from=build /src/web/dist web
 USER node
 EXPOSE 3005
-HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:3005/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:'+process.env.FILES_PORT+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 CMD ["node", "server/dist/main.js"]
