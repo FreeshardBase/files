@@ -46,7 +46,7 @@ The foundations are what is broken: auth, paths, persistence, storage and tests.
 
 ### 2.2 Deferred until after v1
 
-Legal hold, the "E2E vaults", malware scan, OCR, media transcription, full-text content index, federation across shards, presence, bandwidth throttling, the PDF and image editors, WOPI/Office editing, auto-filing and automation rules, webhooks, PATs, smart folders, tags, comments, file requests, the duplicate finder, the bitrot scanner, the failover provider, branding, S3, MOVEit, the outgoing WebDAV client, Paperless and Immich hand-off, dual-pane view and browser-style tabs.
+Legal hold, the "E2E vaults", malware scan, OCR, media transcription, full-text content index, federation across shards, presence, bandwidth throttling, the PDF and image editors, WOPI/Office editing, auto-filing and automation rules, webhooks, PATs, smart folders, tags, comments, file requests, the duplicate finder, the bitrot scanner, the failover provider, branding, S3, MOVEit, the outgoing WebDAV client, Paperless and Immich hand-off, dual-pane view, browser-style tabs, batch rename, and URL import (only with no server-side fetch of user-supplied URLs, i.e. browser-side or via an allowlisted fetcher).
 
 These are **deferred, not rejected**: the owner wants them reconsidered after v1. They are removed from the code now because the current implementations are fake or unsafe, and kept visible in one tracking issue (label `deferred`) that links each feature to its old issue. When one is picked up, it gets a new spec section and new issues; old code from the archive tag is reference only. S3 and WebDAV as sources are the most likely first.
 
