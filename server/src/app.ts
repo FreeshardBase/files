@@ -4,6 +4,9 @@ import helmet from '@fastify/helmet';
 import type { Config } from './config.ts';
 import type { Db } from './db.ts';
 import { errorHandler } from './errors.ts';
+import { registerGuard } from './auth/guard.ts';
+import { registerAuthRoutes } from './auth/routes.ts';
+import { purgeExpired } from './auth/sessions.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -36,6 +39,18 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
     crossOriginEmbedderPolicy: false,
   });
   app.decorate('deps', { config, db });
+
+  registerGuard(app);
+  await registerAuthRoutes(app);
+  app.setNotFoundHandler((req, reply) => {
+    if (!req.user && (req.url.startsWith('/api/') || req.url.startsWith('/auth/'))) {
+      return reply.status(401).send({ code: 'UNAUTHENTICATED' });
+    }
+    return reply.status(404).send({ code: 'NOT_FOUND' });
+  });
+  const purge = setInterval(() => purgeExpired(db), 3600_000);
+  purge.unref();
+  app.addHook('onClose', async () => clearInterval(purge));
 
   app.get('/healthz', { config: { public: true } }, async () => ({ status: 'ok' }));
 

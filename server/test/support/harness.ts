@@ -38,3 +38,17 @@ export async function startTestApp(
     async close() { await app.close(); db.close(); await idp.close(); rmSync(dataDir, { recursive: true, force: true }); },
   };
 }
+
+export async function login(t: TestApp, user = 'testuser'): Promise<{ cookie: string; csrf: string }> {
+  const start = await t.app.inject(`/auth/login?login_hint=${encodeURIComponent(user)}`);
+  if (start.statusCode !== 302) throw new Error(`login start ${start.statusCode}`);
+  const loginCookie = String(start.headers['set-cookie']).split(';')[0]!;
+  const idpRes = await fetch(String(start.headers.location), { redirect: 'manual' });
+  const back = new URL(idpRes.headers.get('location')!);
+  const cb = await t.app.inject({ url: back.pathname + back.search, headers: { cookie: loginCookie } });
+  if (cb.statusCode !== 302) throw new Error(`callback ${cb.statusCode} ${cb.body}`);
+  const setCookies = ([] as string[]).concat(cb.headers['set-cookie'] as string | string[]);
+  const sid = setCookies.find((c) => c.startsWith('fs_sid='))!.split(';')[0]!;
+  const me = await t.app.inject({ url: '/api/v1/me', headers: { cookie: sid } });
+  return { cookie: sid, csrf: me.json().csrfToken };
+}
