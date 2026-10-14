@@ -44,11 +44,11 @@ The foundations are what is broken: auth, paths, persistence, storage and tests.
 | i18n | "Deutsch (Du)" (default), "Deutsch (Sie)", English. Resolution order: user setting > platform preference (freeshard#168) > browser > Deutsch (Du). Covers the UI, API error texts (the client renders them from error codes), the public share page (in the visitor's language), and `Intl` formats for dates, numbers and sizes. Uses ICU plurals and gender-neutral wording. Adding a language means adding one JSON file. |
 | Look | The "Daylight Instrument" design guide is binding (`Freeshard/design-guide.pdf`, tokens from the guide bundle). Light and dark themes. Line icons, no emoji, no glass or blur. Inter and IBM Plex Mono are self-hosted. Mobile is fully usable. |
 
-### 2.2 Removed (not planned)
+### 2.2 Deferred until after v1
 
 Legal hold, the "E2E vaults", malware scan, OCR, media transcription, full-text content index, federation across shards, presence, bandwidth throttling, the PDF and image editors, WOPI/Office editing, auto-filing and automation rules, webhooks, PATs, smart folders, tags, comments, file requests, the duplicate finder, the bitrot scanner, the failover provider, branding, S3, MOVEit, the outgoing WebDAV client, Paperless and Immich hand-off, dual-pane view and browser-style tabs.
 
-Any of these can come back later as a new, separately specified issue. S3 and WebDAV as sources are the most likely next additions.
+These are **deferred, not rejected**: the owner wants them reconsidered after v1. They are removed from the code now because the current implementations are fake or unsafe, and kept visible in one tracking issue (label `deferred`) that links each feature to its old issue. When one is picked up, it gets a new spec section and new issues; old code from the archive tag is reference only. S3 and WebDAV as sources are the most likely first.
 
 ## 3. Architecture
 
@@ -177,10 +177,10 @@ Moving between sources means copy, then verify (size, plus a hash where both sid
 ## 4. Migration of the repo and the tracker
 
 1. Tag the current `main` as `archive/gemini-2026-10-14`. Remove the old tree in one commit, then build the new skeleton.
-2. Self-closed issues (#1–#86) each get a comment: "closed by the earlier pipeline without verification; superseded by the rebuild (spec link)", or "removed, see spec §2.2".
+2. Self-closed issues (#1–#86) each get a comment: "closed by the earlier pipeline without verification; superseded by the rebuild (spec link)", or "deferred until after v1, see spec §2.2 and the deferred tracker".
 3. Open issues #87–#127:
    - Issues that still apply become acceptance criteria or regression tests for rebuild issues, and are linked from there.
-   - Issues that cannot occur in the new design (removed feature) are closed as *not planned* with the reason.
+   - Issues about a deferred feature (§2.2) are closed with label `deferred` and linked from the deferred-features tracking issue, so they stay findable.
    - The reviewer closes the remaining ones once the rebuild issue lands.
 4. New issues are created from this spec, labelled `rebuild` and `phase-N`. #128 stays the tracker.
 5. Local `data/` (the developer database, which has accumulated test pollution) is not touched without asking the owner.
