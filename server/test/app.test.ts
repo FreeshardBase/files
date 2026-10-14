@@ -8,6 +8,9 @@ beforeAll(async () => {
   t = await startTestApp({}, (app) => {
     app.get('/__boom', { config: { public: true } }, async () => { throw new Error('secret detail'); });
     app.post('/__post', { config: { public: true } }, async () => ({ ok: true }));
+    app.get('/__status/:n', { config: { public: true } }, async (req) => {
+      throw Object.assign(new Error('fastify-style'), { statusCode: Number((req.params as { n: string }).n) });
+    });
     app.get('/__exists', { config: { public: true } }, async () => { throw new AppError('FILE_EXISTS', { name: 'a.txt' }); });
   });
 });
@@ -53,10 +56,24 @@ describe('app', () => {
     expect(r.json()).toEqual({ code: 'VALIDATION' });
   });
 
-  it('keeps an unsupported content type a 415 VALIDATION, not a 500', async () => {
+  it('maps a Fastify 415 to UNSUPPORTED_MEDIA_TYPE, not a 500', async () => {
     const r = await t.app.inject({ method: 'POST', url: '/__post', headers: { 'content-type': 'application/xml' }, payload: '<x/>' });
     expect(r.statusCode).toBe(415);
-    expect(r.json()).toEqual({ code: 'VALIDATION' });
+    expect(r.json()).toEqual({ code: 'UNSUPPORTED_MEDIA_TYPE' });
+  });
+
+  it('maps a Fastify 4xx status to the one code that has it, else VALIDATION', async () => {
+    const r416 = await t.app.inject('/__status/416');
+    expect(r416.statusCode).toBe(416);
+    expect(r416.json()).toEqual({ code: 'RANGE_NOT_SATISFIABLE' });
+    const r404 = await t.app.inject('/__status/404');
+    expect(r404.statusCode).toBe(404);
+    expect(r404.json()).toEqual({ code: 'NOT_FOUND' });
+    // 403 belongs to both FORBIDDEN and CSRF, 418 to none: neither may be guessed.
+    expect((await t.app.inject('/__status/403')).json()).toEqual({ code: 'VALIDATION' });
+    const r418 = await t.app.inject('/__status/418');
+    expect(r418.statusCode).toBe(418);
+    expect(r418.json()).toEqual({ code: 'VALIDATION' });
   });
 
   it('does not log the query string', async () => {
