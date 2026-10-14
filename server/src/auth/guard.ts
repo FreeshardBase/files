@@ -34,11 +34,10 @@ export function registerGuard(app: FastifyInstance): void {
       const u = s && getUser(db, s.userId);
       if (s && u) { req.user = u; req.session = { idHash: s.idHash, csrfToken: s.csrfToken }; }
     }
-    // Decide on the matched route pattern, never the raw URL (the router decodes %61pi etc.).
-    // Unmatched requests have no pattern and fall through to the not-found handler.
-    const pattern = req.routeOptions.url;
-    const protectedRoute = pattern !== undefined && (pattern.startsWith('/api/') || pattern.startsWith('/auth/'))
-      && req.routeOptions.config?.public !== true;
+    // Decide on the matched route, never the raw URL (the router decodes %61pi etc.). Every matched
+    // route needs a session unless it is on the explicit allowlist (`config: { public: true }`).
+    // Unmatched requests have no pattern and fall through to the not-found handler (401 without a user).
+    const protectedRoute = req.routeOptions.url !== undefined && req.routeOptions.config?.public !== true;
     if (!protectedRoute) return;
     if (!req.user) throw new AppError('UNAUTHENTICATED');
     if (!SAFE.has(req.method)) {

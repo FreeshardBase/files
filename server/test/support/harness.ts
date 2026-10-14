@@ -1,14 +1,16 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, RouteOptions } from 'fastify';
 import { buildApp } from '../../src/app.ts';
 import { loadConfig, type Config } from '../../src/config.ts';
 import { openDb, type Db } from '../../src/db.ts';
 import { cookieNames } from '../../src/auth/cookies.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
-export type TestApp = { app: FastifyInstance; config: Config; db: Db; dataDir: string; idp: FakeIdp; close(): Promise<void> };
+/** `routes` holds the live route options of every registered route (read `config.public` after `ready`). */
+export type TestApp = { app: FastifyInstance; config: Config; db: Db; dataDir: string; idp: FakeIdp; routes: RouteOptions[];
+  close(): Promise<void> };
 
 export async function startTestApp(
   overrides: Record<string, string> = {},
@@ -35,10 +37,11 @@ export async function startTestApp(
     ...overrides,
   });
   const db = openDb(join(dataDir, 'files.db'));
-  const app = await buildApp({ config, db, extend, logStream });
+  const routes: RouteOptions[] = [];
+  const app = await buildApp({ config, db, extend, logStream, onRoute: (r) => { routes.push(r); } });
   await app.ready();
   return {
-    app, config, db, dataDir, idp,
+    app, config, db, dataDir, idp, routes,
     async close() {
       if (setDefaultDist && process.env.FILES_WEB_DIST === join(dataDir, 'no-web-dist')) delete process.env.FILES_WEB_DIST;
       await app.close(); db.close(); await idp.close(); rmSync(dataDir, { recursive: true, force: true }); },

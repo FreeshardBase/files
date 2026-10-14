@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type RouteOptions } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
@@ -19,9 +19,11 @@ declare module 'fastify' {
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
-  logStream?: NodeJS.WritableStream };
+  logStream?: NodeJS.WritableStream;
+  /** Observes every registered route (the test harness builds the route inventory from it). */
+  onRoute?: (route: RouteOptions) => void };
 
-export async function buildApp({ config, db, extend, logStream }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, db, extend, logStream, onRoute }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -32,6 +34,7 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
     trustProxy: (_address, hop) => hop < 1, // trust exactly one proxy hop (number form is not in the typings)
     bodyLimit: 1024 * 1024,
   });
+  if (onRoute) app.addHook('onRoute', onRoute);
   app.setErrorHandler(errorHandler);
   await app.register(cookie, { secret: config.sessionSecret });
   await app.register(helmet, {
@@ -65,14 +68,18 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
   // override (the container sets it), not a security setting. Registered last so every API route wins.
   const webDist = process.env.FILES_WEB_DIST ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist');
   if (existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist, wildcard: false });
-    app.get('/*', { config: { public: true } }, (req, reply) => {
-      // Decide on the decoded path: the router matches the raw URL, so /%61pi/... lands here.
-      let path: string;
-      try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
-      catch { return reply.callNotFound(); } // malformed escape: not a page, answer through the not-found handler
-      if (path.startsWith('/api/') || path.startsWith('/auth/')) return reply.callNotFound();
-      return reply.sendFile('index.html');
+    // Encapsulated so its onRoute hook marks exactly the static asset routes public (the bundle is not secret).
+    await app.register(async (spa) => {
+      spa.addHook('onRoute', (route) => { route.config = { ...route.config, public: true }; });
+      await spa.register(fastifyStatic, { root: webDist, wildcard: false });
+      spa.get('/*', { config: { public: true } }, (req, reply) => {
+        // Decide on the decoded path: the router matches the raw URL, so /%61pi/... lands here.
+        let path: string;
+        try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
+        catch { return reply.callNotFound(); } // malformed escape: not a page, answer through the not-found handler
+        if (path.startsWith('/api/') || path.startsWith('/auth/')) return reply.callNotFound();
+        return reply.sendFile('index.html');
+      });
     });
   }
 
