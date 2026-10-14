@@ -16,8 +16,9 @@ const Schema = z.object({
   FILES_PUBLIC_URL: z.url().transform((s) => new URL(s)),
   FILES_DATA_DIR: z.string().min(1),
   FILES_SESSION_SECRET: z.string().min(32, 'must be at least 32 characters'),
-  FILES_ENCRYPTION_KEY: z.string().transform((s) => Buffer.from(s, 'base64'))
-    .refine((b) => b.length === 32, 'must be 32 bytes, base64-encoded'),
+  FILES_ENCRYPTION_KEY: z.string()
+    .regex(/^[A-Za-z0-9+/]{43}=$/, 'must be 32 bytes, base64-encoded')
+    .transform((s) => Buffer.from(s, 'base64')),
   FILES_OIDC_ISSUER: issuerUrl,
   FILES_OIDC_CLIENT_ID: z.string().min(1),
   FILES_OIDC_CLIENT_SECRET: z.string().min(1),

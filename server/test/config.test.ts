@@ -13,6 +13,11 @@ const valid = {
   FILES_OIDC_ADMIN_VALUE: 'admin',
 };
 
+function thrownBy(fn: () => unknown): unknown {
+  try { fn(); } catch (e) { return e; }
+  return undefined;
+}
+
 describe('loadConfig', () => {
   it('accepts a complete production config', () => {
     const c = loadConfig({ ...valid, NODE_ENV: 'production' });
@@ -25,6 +30,7 @@ describe('loadConfig', () => {
     const env: Record<string, string> = { ...valid };
     delete env[key];
     expect(() => loadConfig(env)).toThrow(ConfigError);
+    expect(() => loadConfig(env)).toThrow(new RegExp(key));
   });
 
   it('refuses a short session secret', () => {
@@ -33,6 +39,12 @@ describe('loadConfig', () => {
 
   it('refuses an encryption key that is not 32 bytes', () => {
     expect(() => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') })).toThrow(/FILES_ENCRYPTION_KEY/);
+  });
+
+  it('refuses an encryption key with an invalid base64 character', () => {
+    // Node's lenient decoder would accept url-safe '-' and still yield 32 bytes.
+    const bad = Buffer.alloc(32, 0xfb).toString('base64').replace('+', '-');
+    expect(() => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: bad })).toThrow(/FILES_ENCRYPTION_KEY/);
   });
 
   it('refuses a plain-http issuer on a non-loopback host', () => {
@@ -44,7 +56,8 @@ describe('loadConfig', () => {
   });
 
   it('reports every problem at once', () => {
-    try { loadConfig({}); throw new Error('no throw'); }
-    catch (e) { expect((e as ConfigError).problems.length).toBeGreaterThanOrEqual(9); }
+    const err = thrownBy(() => loadConfig({}));
+    expect(err).toBeInstanceOf(ConfigError);
+    expect((err as ConfigError).problems.length).toBeGreaterThanOrEqual(9);
   });
 });

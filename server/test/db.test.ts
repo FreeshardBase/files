@@ -12,13 +12,17 @@ describe('openDb', () => {
     const file = join(tmp(), 'f.db');
     openDb(file).close();
     const again = openDb(file);
-    expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }]);
+    try {
+      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }]);
+    } finally { again.close(); }
   });
 
   it('enables WAL and foreign keys', () => {
     const db = openDb(join(tmp(), 'f.db'));
-    expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
-    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    try {
+      expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+      expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    } finally { db.close(); }
   });
 
   it('rolls back a failing migration completely', () => {
@@ -29,7 +33,9 @@ describe('openDb', () => {
     const file = join(dir, 'f.db');
     expect(() => openDb(file, join(dir, 'm'))).toThrow(/002_bad\.sql/);
     const raw = new Database(file);
-    expect(raw.prepare("SELECT name FROM sqlite_master WHERE name='b'").get()).toBeUndefined();
-    expect(raw.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_ok.sql' }]);
+    try {
+      expect(raw.prepare("SELECT name FROM sqlite_master WHERE name='b'").get()).toBeUndefined();
+      expect(raw.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_ok.sql' }]);
+    } finally { raw.close(); }
   });
 });
