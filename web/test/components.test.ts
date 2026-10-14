@@ -55,3 +55,30 @@ describe('UploadButton', () => {
     expect(input.classes()).toContain('visually-hidden');
   });
 });
+
+describe('FileList accessibility and focus', () => {
+  const many = Array.from({ length: 4 }, (_, i) => ({ name: `f${i}`, path: `/f${i}`, type: 'directory' as const, size: 0, modified: '2026-10-14T00:00:00.000Z' }));
+  it('declares table semantics explicitly', () => {
+    const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
+    expect(w.find('table').attributes('role')).toBe('table');
+    expect(w.findAll('[role=row]')).toHaveLength(3);
+    expect(w.findAll('[role=columnheader]')).toHaveLength(3);
+    expect(w.findAll('[role=cell]')).toHaveLength(6);
+  });
+  it('a click moves the tab stop to that row', async () => {
+    const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
+    await w.findAll('tbody tr')[1]!.trigger('click');
+    expect(w.findAll('tbody tr').map((r) => r.attributes('tabindex'))).toEqual(['-1', '0']);
+  });
+  it('Space opens a directory', async () => {
+    const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
+    await w.findAll('tbody tr')[0]!.trigger('keydown', { key: ' ' });
+    expect(w.emitted('open')![0]).toEqual([entries[0]]);
+  });
+  it('keeps the tab stop in range when the list shrinks', async () => {
+    const w = mount(FileList, { props: { entries: many, folderName: 'x' }, global: { plugins: [i18n] } });
+    await w.findAll('tbody tr')[3]!.trigger('click');
+    await w.setProps({ entries: many.slice(0, 2) });
+    expect(w.findAll('tbody tr').map((r) => r.attributes('tabindex'))).toEqual(['-1', '0']);
+  });
+});

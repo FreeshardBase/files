@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiFailure, setCsrf } from '../src/api/client.ts';
+import { installFakeXhr } from './fakeXhr.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -21,5 +22,29 @@ describe('api client', () => {
   it('turns a network error into code NETWORK', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     await expect(api.get('/api/v1/me')).rejects.toMatchObject({ code: 'NETWORK' });
+  });
+});
+
+describe('api client robustness', () => {
+  it('rejects a 2xx whose body is not JSON with INTERNAL', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 200 })));
+    await expect(api.get('/api/v1/me')).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+  it('maps an error JSON without code to INTERNAL', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"x"}', { status: 500 })));
+    await expect(api.get('/api/v1/me')).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+  it('put: 2xx non-JSON is INTERNAL, abort and timeout are NETWORK, 409 carries code and params', async () => {
+    const blob = new Blob(['x']);
+    installFakeXhr(() => ({ status: 201, text: 'ok' }));
+    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'INTERNAL' });
+    installFakeXhr(() => 'abort');
+    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'NETWORK' });
+    installFakeXhr(() => 'timeout');
+    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'NETWORK' });
+    installFakeXhr(() => ({ status: 409, text: '{"code":"FILE_EXISTS","params":{"name":"a"}}' }));
+    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'FILE_EXISTS', params: { name: 'a' } });
+    installFakeXhr(() => ({ status: 500, text: '{}' }));
+    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });

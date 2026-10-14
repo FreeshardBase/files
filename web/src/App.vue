@@ -16,5 +16,20 @@ onMounted(() => session.load());
     >
       <RouterView />
     </main>
+    <main
+      v-else-if="session.error"
+      class="app-main"
+    >
+      <p role="alert">
+        {{ $t(`errors.${session.error.code}`) }}
+      </p>
+      <button
+        type="button"
+        class="button"
+        @click="session.load()"
+      >
+        {{ $t('app.retry') }}
+      </button>
+    </main>
   </div>
 </template>

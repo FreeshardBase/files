@@ -22,15 +22,25 @@ const folderName = computed(() => path.value === '/' ? t('nav.home') : path.valu
 function open(e: Entry) {
   if (e.type === 'directory') router.push(e.path.split('/').map(encodeURIComponent).join('/'));
 }
+type Failure = { name: string; reason: string };
+const failures = ref<Failure[]>([]);
 async function upload(files: File[]) {
-  for (const f of files) {
-    try {
-      await folder.upload(f, 'fail', (x) => { status.value = t('upload.progress', { name: f.name, percent: Math.round(x * 100) }); });
-      status.value = t('upload.done', { name: f.name });
-    } catch (e) {
-      if (!(e instanceof ApiFailure)) throw e;
-      status.value = e.code === 'FILE_EXISTS' ? t('upload.exists', { name: f.name }) : t(`errors.${e.code}`);
+  const dir = folder.path; // captured: navigating away mid-batch must not redirect the remaining files
+  failures.value = [];
+  let done = 0;
+  try {
+    for (const f of files) {
+      try {
+        await folder.upload(f, dir, 'fail', (x) => { status.value = t('upload.progress', { name: f.name, percent: Math.round(x * 100) }); });
+        done++;
+      } catch (e) {
+        if (!(e instanceof ApiFailure)) throw e;
+        failures.value.push({ name: f.name, reason: t('upload.failedItem', { name: f.name, reason: t(`errors.${e.code}`) }) });
+      }
     }
+    status.value = t('upload.summary', { done, total: files.length });
+  } finally {
+    if (dir === folder.path) await folder.open(dir, { refresh: true }); // once per batch, list stays mounted
   }
 }
 </script>
@@ -48,6 +58,20 @@ async function upload(files: File[]) {
     >
       {{ status }}
     </p>
+    <div
+      v-if="failures.length"
+      class="upload-failures"
+    >
+      <p>{{ $t('upload.failedHeading') }}</p>
+      <ul>
+        <li
+          v-for="f in failures"
+          :key="f.name"
+        >
+          {{ f.reason }}
+        </li>
+      </ul>
+    </div>
     <p v-if="folder.loading">
       {{ $t('folder.loading') }}
     </p>

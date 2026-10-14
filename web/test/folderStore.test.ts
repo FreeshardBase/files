@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useFolderStore } from '../src/stores/folder.ts';
+import { installFakeXhr } from './fakeXhr.ts';
 
 const entry = (i: number) => ({ name: `f${i}`, path: `/f${i}`, type: 'file', size: 1, modified: '2026-10-14T00:00:00.000Z' });
 
@@ -49,5 +50,64 @@ describe('folder store writes', () => {
     await s.mkdir('neu');
     const post = calls().find(([, i]) => i.method === 'POST')!;
     expect(JSON.parse(post[1].body as string)).toEqual({ path: '/neu' });
+  });
+});
+
+describe('folder store races and upload target', () => {
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+  it('a slow failing listing cannot clobber a newer successful one', async () => {
+    let failFirst!: () => void;
+    const first = new Promise<Response>((res) => { failFirst = () => res(json({ code: 'INTERNAL' }, 500)); });
+    vi.stubGlobal('fetch', vi.fn((url: string) =>
+      new URL(url, 'http://x').searchParams.get('path') === '/slow' ? first : Promise.resolve(json({ entries: [entry(9)] }))));
+    const s = useFolderStore();
+    const p1 = s.open('/slow');
+    const p2 = s.open('/fast');
+    await p2;
+    expect(s.entries.map((e) => e.name)).toEqual(['f9']);
+    expect(s.loading).toBe(false);
+    failFirst();
+    await p1;
+    expect(s.error).toBeNull();
+    expect(s.entries.map((e) => e.name)).toEqual(['f9']);
+    expect(s.path).toBe('/fast');
+  });
+  it('loading stays true until the newest request settles', async () => {
+    let finishSecond!: () => void;
+    const second = new Promise<Response>((res) => { finishSecond = () => res(json({ entries: [] })); });
+    vi.stubGlobal('fetch', vi.fn((url: string) =>
+      new URL(url, 'http://x').searchParams.get('path') === '/b' ? second : Promise.resolve(json({ entries: [] }))));
+    const s = useFolderStore();
+    const p2pre = s.open('/a');
+    const p2 = s.open('/b');
+    await p2pre;
+    expect(s.loading).toBe(true);
+    finishSecond();
+    await p2;
+    expect(s.loading).toBe(false);
+  });
+  it('refresh keeps the entries visible and sets refreshing, not loading', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let n = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => { if (++n === 2) await gate; return json({ entries: [entry(1)] }); }));
+    const s = useFolderStore();
+    await s.open('/');
+    const p = s.open('/', { refresh: true });
+    expect(s.loading).toBe(false);
+    expect(s.refreshing).toBe(true);
+    expect(s.entries).toHaveLength(1);
+    release();
+    await p;
+    expect(s.refreshing).toBe(false);
+  });
+  it('upload joins with the given dir even after the store path moved', async () => {
+    const x = installFakeXhr(() => ({ status: 201, text: JSON.stringify(entry(1)) }));
+    vi.stubGlobal('fetch', vi.fn(async () => json({ entries: [] })));
+    const s = useFolderStore();
+    await s.open('/A');
+    await s.open('/B');
+    await s.upload(new File(['x'], 'n.txt'), '/A');
+    expect(new URL(x.puts[0]!.url, 'http://x').searchParams.get('path')).toBe('/A/n.txt');
   });
 });

@@ -1,10 +1,20 @@
 {
-  "app": { "name": "Dateien" },
-  "nav": { "home": "Mein Speicher", "breadcrumbRoot": "Mein Speicher" },
+  "app": {
+    "name": "Dateien",
+    "retry": "Erneut versuchen"
+  },
+  "nav": {
+    "home": "Mein Speicher",
+    "breadcrumbRoot": "Mein Speicher"
+  },
   "folder": {
     "empty": "Dieser Ordner ist leer.",
     "loading": "Wird geladen …",
-    "columns": { "name": "Name", "size": "Größe", "modified": "Geändert" },
+    "columns": {
+      "name": "Name",
+      "size": "Größe",
+      "modified": "Geändert"
+    },
     "newFolder": "Neuer Ordner",
     "newFolderPrompt": "Wie soll der Ordner heißen?",
     "create": "Erstellen",
@@ -17,7 +27,10 @@
     "exists": "{name} gibt es hier schon. Wählen Sie einen anderen Namen oder laden Sie die Datei als Kopie hoch.",
     "keepBoth": "Als Kopie hochladen",
     "replace": "Ersetzen",
-    "skip": "Überspringen"
+    "skip": "Überspringen",
+    "summary": "{done} von {total} hochgeladen",
+    "failedHeading": "Nicht hochgeladen:",
+    "failedItem": "{name}: {reason}"
   },
   "errors": {
     "UNAUTHENTICATED": "Sie sind nicht mehr angemeldet.",
@@ -38,5 +51,8 @@
     "INTERNAL": "Etwas ist schiefgelaufen. Bitte versuchen Sie es später erneut.",
     "NETWORK": "Keine Verbindung zum Shard."
   },
-  "a11y": { "fileList": "Dateien in {folder}", "breadcrumbs": "Pfad" }
+  "a11y": {
+    "fileList": "Dateien in {folder}",
+    "breadcrumbs": "Pfad"
+  }
 }

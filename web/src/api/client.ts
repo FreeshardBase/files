@@ -25,16 +25,18 @@ async function request<T>(method: string, path: string, init: { query?: Record<s
   }
   if (res.status === 401) { redirectToLogin(); throw new ApiFailure('UNAUTHENTICATED'); }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ code: 'INTERNAL' })) as { code: ErrorCode; params?: Record<string, string | number> };
-    throw new ApiFailure(body.code, body.params);
+    const body = await res.json().catch(() => ({} as ErrorBody)) as ErrorBody; // handled: non-JSON error body becomes INTERNAL
+    throw new ApiFailure(body.code ?? 'INTERNAL', body.params);
   }
-  return (res.status === 204 ? undefined : await res.json()) as T;
+  if (res.status === 204) return undefined as T;
+  try { return await res.json() as T; }
+  catch { throw new ApiFailure('INTERNAL'); } // handled: a 2xx whose body is not JSON is a broken response
 }
 
 type ErrorBody = { code?: ErrorCode; params?: Record<string, string | number> };
-function parseBody(text: string): ErrorBody {
+function parseBody(text: string): ErrorBody | null {
   try { return JSON.parse(text) as ErrorBody; }
-  catch { return { code: 'INTERNAL' }; } // handled: non-JSON body is reported as INTERNAL
+  catch { return null; } // handled: callers report a non-JSON body as INTERNAL
 }
 
 export const api = {
@@ -48,11 +50,15 @@ export const api = {
       xhr.setRequestHeader('x-csrf-token', csrf);
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
       xhr.onerror = () => reject(new ApiFailure('NETWORK'));
+      xhr.onabort = () => reject(new ApiFailure('NETWORK'));
+      xhr.ontimeout = () => reject(new ApiFailure('NETWORK'));
       xhr.onload = () => {
         if (xhr.status === 401) { redirectToLogin(); return reject(new ApiFailure('UNAUTHENTICATED')); }
         const parsed = parseBody(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300) resolve(parsed as T);
-        else reject(new ApiFailure(parsed.code ?? 'INTERNAL', parsed.params));
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (parsed === null) reject(new ApiFailure('INTERNAL'));
+          else resolve(parsed as T);
+        } else reject(new ApiFailure(parsed?.code ?? 'INTERNAL', parsed?.params));
       };
       xhr.send(body);
     });

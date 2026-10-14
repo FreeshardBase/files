@@ -1,10 +1,20 @@
 {
-  "app": { "name": "Files" },
-  "nav": { "home": "My storage", "breadcrumbRoot": "My storage" },
+  "app": {
+    "name": "Files",
+    "retry": "Try again"
+  },
+  "nav": {
+    "home": "My storage",
+    "breadcrumbRoot": "My storage"
+  },
   "folder": {
     "empty": "This folder is empty.",
     "loading": "Loading …",
-    "columns": { "name": "Name", "size": "Size", "modified": "Modified" },
+    "columns": {
+      "name": "Name",
+      "size": "Size",
+      "modified": "Modified"
+    },
     "newFolder": "New folder",
     "newFolderPrompt": "What should the folder be called?",
     "create": "Create",
@@ -17,7 +27,10 @@
     "exists": "{name} already exists here. Pick another name or upload it as a copy.",
     "keepBoth": "Upload as copy",
     "replace": "Replace",
-    "skip": "Skip"
+    "skip": "Skip",
+    "summary": "{done} of {total} uploaded",
+    "failedHeading": "Not uploaded:",
+    "failedItem": "{name}: {reason}"
   },
   "errors": {
     "UNAUTHENTICATED": "You are no longer signed in.",
@@ -38,5 +51,8 @@
     "INTERNAL": "Something went wrong. Please try again later.",
     "NETWORK": "No connection to the shard."
   },
-  "a11y": { "fileList": "Files in {folder}", "breadcrumbs": "Path" }
+  "a11y": {
+    "fileList": "Files in {folder}",
+    "breadcrumbs": "Path"
+  }
 }
