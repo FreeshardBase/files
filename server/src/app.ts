@@ -37,7 +37,8 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"], imgSrc: ["'self'", 'blob:', 'data:'], mediaSrc: ["'self'", 'blob:'],
+        defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'"], connectSrc: ["'self'"], imgSrc: ["'self'", 'blob:', 'data:'], mediaSrc: ["'self'", 'blob:'],
         frameAncestors: ["'none'"], objectSrc: ["'none'"], baseUri: ["'none'"], formAction: ["'self'"],
       },
     },

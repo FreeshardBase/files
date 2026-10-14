@@ -1,7 +1,11 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-ext-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-ext-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-ext-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-ext-400.css';
 @import './tokens.css';
 @import './components.css';
 
@@ -20,4 +24,4 @@ body {
   background: var(--surface); border-bottom: var(--border-w) solid var(--border);
 }
 .app-title { font-size: var(--fs-h3); font-weight: 600; color: var(--ink); }
-main { flex: 1; padding: var(--space-5); }
+.app-main { flex: 1; padding: var(--space-5); }

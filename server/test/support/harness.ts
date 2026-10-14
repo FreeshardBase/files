@@ -16,6 +16,9 @@ export async function startTestApp(
   logStream?: NodeJS.WritableStream,
 ): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
+  // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
+  const setDefaultDist = process.env.FILES_WEB_DIST === undefined;
+  if (setDefaultDist) process.env.FILES_WEB_DIST = join(dataDir, 'no-web-dist');
   const idp = await startFakeIdp();
   const config = loadConfig({
     NODE_ENV: 'production',
@@ -36,7 +39,9 @@ export async function startTestApp(
   await app.ready();
   return {
     app, config, db, dataDir, idp,
-    async close() { await app.close(); db.close(); await idp.close(); rmSync(dataDir, { recursive: true, force: true }); },
+    async close() {
+      if (setDefaultDist && process.env.FILES_WEB_DIST === join(dataDir, 'no-web-dist')) delete process.env.FILES_WEB_DIST;
+      await app.close(); db.close(); await idp.close(); rmSync(dataDir, { recursive: true, force: true }); },
   };
 }
 

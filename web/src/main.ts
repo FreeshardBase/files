@@ -3,6 +3,8 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import { router } from './router.ts';
 import { i18n } from './i18n/index.ts';
+import { syncHtmlLang } from './i18n/htmlLang.ts';
 import './styles/app.css';
 
+syncHtmlLang(i18n.global.locale);
 createApp(App).use(createPinia()).use(router).use(i18n).mount('#app');

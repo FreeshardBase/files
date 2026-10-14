@@ -26,6 +26,14 @@ describe('app', () => {
     expect(String(r.headers['content-security-policy'])).toContain("frame-ancestors 'none'");
   });
 
+  it('pins font, script and connect sources to self, with no https: wildcard', async () => {
+    const csp = String((await t.app.inject('/healthz')).headers['content-security-policy']);
+    expect(csp).toContain("font-src 'self'");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).not.toContain('https:');
+  });
+
   it('maps AppError to code + params', async () => {
     const r = await t.app.inject('/__exists');
     expect(r.statusCode).toBe(409);
