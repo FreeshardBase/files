@@ -1,9 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cookieNames } from '../src/auth/cookies.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 let t: TestApp;
-beforeAll(async () => { t = await startTestApp(); });
+beforeAll(async () => {
+  t = await startTestApp({}, (app) => {
+    app.post('/api/v1/__mutate', async () => ({ mutated: true }));
+  });
+});
 afterAll(() => t.close());
+
+const names = () => cookieNames(t.config);
+
+// Starts a login and returns the login cookie plus the callback URL the IdP would redirect to.
+async function startAttempt(user = 'testuser') {
+  const start = await t.app.inject(`/auth/login?login_hint=${user}`);
+  const cookie = String(start.headers['set-cookie']).split(';')[0]!;
+  const idp = await fetch(String(start.headers.location), { redirect: 'manual' });
+  const back = new URL(idp.headers.get('location')!);
+  return { cookie, url: back.pathname + back.search, params: back.searchParams };
+}
 
 describe('deny by default', () => {
   it('rejects /api/v1/me without a session', async () => {
@@ -13,6 +29,25 @@ describe('deny by default', () => {
   });
   it('rejects an unknown route under /api with 401, not 404', async () => {
     expect((await t.app.inject('/api/v1/does-not-exist')).statusCode).toBe(401);
+  });
+  it('is not bypassed by percent-encoded paths', async () => {
+    expect((await t.app.inject('/%61pi/v1/me')).statusCode).toBe(401);
+    const r = await t.app.inject({ method: 'POST', url: '/%61pi/v1/__mutate' });
+    expect(r.statusCode).toBe(401);
+  });
+  it('enforces CSRF on percent-encoded mutating paths', async () => {
+    const s = await login(t);
+    const r = await t.app.inject({ method: 'POST', url: '/%61pi/v1/__mutate',
+      headers: { cookie: s.cookie, origin: 'https://files.example.com' } });
+    expect(r.statusCode).toBe(403);
+    expect(r.json()).toEqual({ code: 'CSRF' });
+    const ok = await t.app.inject({ method: 'POST', url: '/%61pi/v1/__mutate',
+      headers: { cookie: s.cookie, origin: 'https://files.example.com', 'x-csrf-token': s.csrf } });
+    expect(ok.statusCode).toBe(200);
+  });
+  it('returns 404 for unknown routes when authenticated', async () => {
+    const s = await login(t);
+    expect((await t.app.inject({ url: '/nope', headers: { cookie: s.cookie } })).statusCode).toBe(404);
   });
 });
 
@@ -30,22 +65,65 @@ describe('OIDC login', () => {
     expect((await me(a.cookie)).role).toBe('member');
     expect((await me(a.cookie)).id).toBe((await me(b.cookie)).id);
   });
-  it('rejects a callback whose state does not match', async () => {
-    const start = await t.app.inject('/auth/login');
-    const loginCookie = String(start.headers['set-cookie']);
-    const r = await t.app.inject({ url: '/auth/callback?code=x&state=forged', headers: { cookie: loginCookie } });
+  it('rejects a callback whose state was tampered with after a real IdP round trip', async () => {
+    const a = await startAttempt();
+    const u = new URL(a.url, 'https://files.example.com');
+    u.searchParams.set('state', 'forged');
+    const r = await t.app.inject({ url: u.pathname + u.search, headers: { cookie: a.cookie } });
     expect(r.statusCode).toBe(400);
     expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+  });
+  it('does not let login cookie A complete callback B', async () => {
+    const a = await startAttempt();
+    const b = await startAttempt();
+    const r = await t.app.inject({ url: b.url, headers: { cookie: a.cookie } });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+  });
+  it('rejects a replayed callback', async () => {
+    const a = await startAttempt();
+    expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(302);
+    expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(400);
+  });
+  it('rejects a callback for an expired login attempt', async () => {
+    const a = await startAttempt();
+    t.db.prepare("UPDATE login_attempts SET expires_at = '2000-01-01T00:00:00.000Z'").run();
+    const r = await t.app.inject({ url: a.url, headers: { cookie: a.cookie } });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({ code: 'LOGIN_FAILED' });
+  });
+  it('invalidates a pre-existing session on re-login (fixation hygiene)', async () => {
+    const old = await login(t);
+    const a = await startAttempt();
+    const r = await t.app.inject({ url: a.url, headers: { cookie: `${a.cookie}; ${old.cookie}` } });
+    expect(r.statusCode).toBe(302);
+    expect((await t.app.inject({ url: '/api/v1/me', headers: { cookie: old.cookie } })).statusCode).toBe(401);
+  });
+  it('uses __Host- prefixed, Secure, Path=/ cookies on https', async () => {
+    const start = await t.app.inject('/auth/login');
+    const c = String(start.headers['set-cookie']);
+    expect(names().sid).toBe('__Host-fs_sid');
+    expect(c).toMatch(/^__Host-fs_login=/);
+    expect(c).toMatch(/Secure/);
+    expect(c).toMatch(/Path=\//);
+    expect(c).not.toMatch(/Domain=/i);
   });
   it('rejects a callback without a login cookie even if state is supplied', async () => {
     const r = await t.app.inject('/auth/callback?code=x&state=anything');
     expect(r.statusCode).toBe(400);
   });
-  it('only allows same-origin relative returnTo', async () => {
-    const r = await t.app.inject('/auth/login?returnTo=https://evil.example/');
+  it.each([
+    ['https://evil.example/'], ['//evil.example'], ['/\\evil.example'], ['/\t/evil.example/'], ['/\r/evil.example/'],
+  ])('rejects returnTo %s', async (rt) => {
+    const r = await t.app.inject(`/auth/login?returnTo=${encodeURIComponent(rt)}`);
     const attempt = t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string };
     expect(r.statusCode).toBe(302);
     expect(attempt.return_to).toBe('/');
+  });
+  it('keeps a same-origin relative returnTo', async () => {
+    await t.app.inject(`/auth/login?returnTo=${encodeURIComponent('/Fotos?x=1')}`);
+    const attempt = t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string };
+    expect(attempt.return_to).toBe('/Fotos?x=1');
   });
 });
 

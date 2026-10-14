@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.ts';
 import { loadConfig, type Config } from '../../src/config.ts';
 import { openDb, type Db } from '../../src/db.ts';
+import { cookieNames } from '../../src/auth/cookies.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
 export type TestApp = { app: FastifyInstance; config: Config; db: Db; dataDir: string; idp: FakeIdp; close(): Promise<void> };
@@ -48,7 +49,7 @@ export async function login(t: TestApp, user = 'testuser'): Promise<{ cookie: st
   const cb = await t.app.inject({ url: back.pathname + back.search, headers: { cookie: loginCookie } });
   if (cb.statusCode !== 302) throw new Error(`callback ${cb.statusCode} ${cb.body}`);
   const setCookies = ([] as string[]).concat(cb.headers['set-cookie'] as string | string[]);
-  const sid = setCookies.find((c) => c.startsWith('fs_sid='))!.split(';')[0]!;
+  const sid = setCookies.find((c) => c.startsWith(`${cookieNames(t.config).sid}=`))!.split(';')[0]!;
   const me = await t.app.inject({ url: '/api/v1/me', headers: { cookie: sid } });
   return { cookie: sid, csrf: me.json().csrfToken };
 }

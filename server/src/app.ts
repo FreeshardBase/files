@@ -43,7 +43,7 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
   registerGuard(app);
   await registerAuthRoutes(app);
   app.setNotFoundHandler((req, reply) => {
-    if (!req.user && (req.url.startsWith('/api/') || req.url.startsWith('/auth/'))) {
+    if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });
     }
     return reply.status(404).send({ code: 'NOT_FOUND' });
