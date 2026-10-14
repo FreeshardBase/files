@@ -1,9 +1,0 @@
-node_modules/
-.env
-.env.local
-data/
-ssl/
-TUNNEL_SETUP.md
-*.log
-.DS_Store
-test-results/
