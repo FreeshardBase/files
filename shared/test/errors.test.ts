@@ -14,6 +14,9 @@ describe('error codes', () => {
   it('maps STORAGE_FULL to 507', () => {
     expect(errorStatus.STORAGE_FULL).toBe(507);
   });
+  it('maps UNSUPPORTED_MEDIA_TYPE to 415', () => {
+    expect(errorStatus.UNSUPPORTED_MEDIA_TYPE).toBe(415);
+  });
   it('pins INTERNAL and NOT_FOUND statuses', () => {
     expect(errorStatus.INTERNAL).toBe(500);
     expect(errorStatus.NOT_FOUND).toBe(404);

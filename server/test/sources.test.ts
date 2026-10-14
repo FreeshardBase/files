@@ -1,9 +1,13 @@
 import { once } from 'node:events';
+import { truncateSync } from 'node:fs';
+import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { homeRoot } from '../src/storage/local.ts';
+import { vi } from 'vitest';
+import { AppError } from '../src/errors.ts';
+import { LocalBackend, homeRoot } from '../src/storage/local.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 let t: TestApp; let a: { cookie: string; csrf: string }; let m: { cookie: string; csrf: string };
@@ -15,6 +19,8 @@ const put = (s: typeof a, path: string, payload: string | Buffer, onCollision = 
   method: 'PUT', url: `/api/v1/sources/home/content?path=${encodeURIComponent(path)}&onCollision=${onCollision}`,
   headers: { cookie: s.cookie, 'x-csrf-token': s.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream' }, payload,
 });
+const rootOf = async (tt: TestApp, s: { cookie: string }) =>
+  homeRoot(tt.config.dataDir, (await tt.app.inject({ url: '/api/v1/me', headers: { cookie: s.cookie } })).json().id);
 const get = (s: typeof a, url: string, headers: Record<string, string> = {}) =>
   t.app.inject({ url, headers: { cookie: s.cookie, ...headers } });
 
@@ -27,7 +33,7 @@ describe('sources/home', () => {
     expect(list.entries.map((e: { name: string }) => e.name)).toContain('Prüfung #1 50%.txt');
     const dl = await get(a, `/api/v1/sources/home/content?path=${encodeURIComponent(name)}&download=1`);
     expect(dl.body).toBe('hallo');
-    expect(dl.headers['content-disposition']).toBe(`attachment; filename*=UTF-8''${encodeURIComponent('Prüfung #1 50%.txt')}`);
+    expect(dl.headers['content-disposition']).toBe(`attachment; filename="Pr_fung #1 50%.txt"; filename*=UTF-8''${encodeURIComponent('Prüfung #1 50%.txt')}`);
     expect(dl.headers['x-content-type-options']).toBe('nosniff');
   });
   it('answers a Range request with 206', async () => {
@@ -98,7 +104,7 @@ describe('sources/home', () => {
     const r = await t.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fct.txt&onCollision=fail',
       headers: { cookie: a.cookie, 'x-csrf-token': a.csrf, origin: ORIGIN, 'content-type': 'text/plain' }, payload: 'x' });
     expect(r.statusCode).toBe(415);
-    expect(r.json()).toEqual({ code: 'VALIDATION' });
+    expect(r.json()).toEqual({ code: 'UNSUPPORTED_MEDIA_TYPE' });
   });
   it('rejects an upload larger than FILES_MAX_UPLOAD_BYTES', async () => {
     const small = await startTestApp({ FILES_MAX_UPLOAD_BYTES: '10' });
@@ -122,8 +128,9 @@ describe('sources/home', () => {
     const [res] = (await done) as [http.IncomingMessage];
     res.resume();
     expect(res.statusCode).toBe(413);
-    const root = homeRoot(small.config.dataDir, 'testuser');
-    const files = existsSync(root) ? readdirSync(root, { recursive: true }).map(String) : [];
+    const root = await rootOf(small, s);
+    expect(existsSync(root)).toBe(true); // the user's home exists, so the emptiness check below is not vacuous
+    const files = readdirSync(root, { recursive: true }).map(String);
     expect(files.filter((f) => !f.startsWith('.'))).toEqual([]);
     await small.close();
   });
@@ -155,5 +162,69 @@ describe('sources/home', () => {
     let after = fds();
     for (let i = 0; i < 40 && after > before; i++) { await new Promise((r) => setTimeout(r, 50)); after = fds(); }
     expect(after).toBeLessThanOrEqual(before);
+  });
+
+  it('encodes RFC 5987 specials and adds an ASCII fallback filename', async () => {
+    const name = `a'b"cX(*)!.txt`;
+    expect((await put(a, `/${name}`, 'hi')).statusCode).toBe(201);
+    const r = await get(a, `/api/v1/sources/home/content?path=${encodeURIComponent(`/${name}`)}`);
+    expect(r.headers['content-disposition']).toBe(
+      `inline; filename="a'b_cX(*)!.txt"; filename*=UTF-8''a%27b%22cX%28%2A%29%21.txt`);
+  });
+  it.each([
+    ['/x.svg', '<svg/>', 'attachment'], ['/x.html', '<p/>', 'attachment'], ['/x.json', '{}', 'attachment'],
+    ['/x.unknownext', 'q', 'attachment'], ['/x.png', 'q', 'inline'], ['/x.pdf', 'q', 'inline'],
+    ['/x.txt', 'q', 'inline'], ['/x.mp4', 'q', 'inline'], ['/x.mp3', 'q', 'inline'],
+  ])('disposition for %s', async (path, body, expected) => {
+    await put(a, path, body);
+    const r = await get(a, `/api/v1/sources/home/content?path=${encodeURIComponent(path)}`);
+    expect(String(r.headers['content-disposition'])).toMatch(new RegExp(`^${expected};`));
+    expect(r.headers['content-security-policy']).toBe("sandbox; default-src 'none'");
+  });
+  it('answers 415 before an incompatible body is read (real socket, body still streaming)', async () => {
+    const s = await startTestApp();
+    const c = await login(s);
+    await s.app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (s.app.server.address() as AddressInfo).port;
+    const req = http.request({ port, host: '127.0.0.1', method: 'PUT', path: '/api/v1/sources/home/content?path=%2Fx.txt&onCollision=fail',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf, origin: ORIGIN, 'content-type': 'text/plain', 'transfer-encoding': 'chunked' } });
+    req.on('error', () => undefined);
+    const gotResponse = once(req, 'response');
+    let written = 0;
+    const pump = setInterval(() => { if (written < 2 * 1024 * 1024) { req.write(Buffer.alloc(64 * 1024)); written += 64 * 1024; } }, 5);
+    const [res] = (await Promise.race([gotResponse, new Promise((_, rej) => setTimeout(() => rej(new Error('no early 415')), 3000))])) as [http.IncomingMessage];
+    clearInterval(pump);
+    res.resume();
+    expect(res.statusCode).toBe(415);
+    expect(written).toBeLessThan(2 * 1024 * 1024); // client still had data to send: server did not wait for the whole body
+    req.destroy();
+    await s.close();
+  });
+  it('answers 413 for a declared oversized Content-Length without receiving the body', async () => {
+    const small = await startTestApp({ FILES_MAX_UPLOAD_BYTES: '10' });
+    const c = await login(small);
+    await small.app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (small.app.server.address() as AddressInfo).port;
+    const req = http.request({ port, host: '127.0.0.1', method: 'PUT', path: '/api/v1/sources/home/content?path=%2Fd.bin&onCollision=fail',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream', 'content-length': '11' } });
+    req.on('error', () => undefined);
+    req.flushHeaders(); // headers only; the 11 body bytes are never sent
+    const [res] = (await Promise.race([once(req, 'response'), new Promise((_, rej) => setTimeout(() => rej(new Error('no 413 without body')), 3000))])) as [http.IncomingMessage];
+    res.resume();
+    expect(res.statusCode).toBe(413);
+    req.destroy();
+    await small.close();
+  });
+  it('keeps Content-Range bytes */<size> when the file shrank between stat and read', async () => {
+    await put(a, '/shrink.bin', '0123456789');
+    const root = await rootOf(t, a);
+    const spy = vi.spyOn(LocalBackend.prototype, 'read').mockImplementationOnce(async () => {
+      truncateSync(join(root, 'shrink.bin'), 4);
+      throw new AppError('RANGE_NOT_SATISFIABLE');
+    });
+    const r = await get(a, '/api/v1/sources/home/content?path=%2Fshrink.bin', { range: 'bytes=5-8' });
+    spy.mockRestore();
+    expect(r.statusCode).toBe(416);
+    expect(r.headers['content-range']).toBe('bytes */4');
   });
 });
