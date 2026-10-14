@@ -72,6 +72,21 @@ describe('folder store races and upload target', () => {
     expect(s.entries.map((e) => e.name)).toEqual(['f9']);
     expect(s.path).toBe('/fast');
   });
+  it('a slow successful stale listing cannot replace a newer one', async () => {
+    let finishFirst!: () => void;
+    const first = new Promise<Response>((res) => { finishFirst = () => res(json({ entries: [entry(1), entry(2)] })); });
+    vi.stubGlobal('fetch', vi.fn((url: string) =>
+      new URL(url, 'http://x').searchParams.get('path') === '/slow' ? first : Promise.resolve(json({ entries: [entry(9)] }))));
+    const s = useFolderStore();
+    const p1 = s.open('/slow');
+    await s.open('/fast');
+    expect(s.entries.map((e) => e.name)).toEqual(['f9']);
+    finishFirst();
+    await p1;
+    expect(s.entries.map((e) => e.name)).toEqual(['f9']);
+    expect(s.path).toBe('/fast');
+    expect(s.loading).toBe(false);
+  });
   it('loading stays true until the newest request settles', async () => {
     let finishSecond!: () => void;
     const second = new Promise<Response>((res) => { finishSecond = () => res(json({ entries: [] })); });
