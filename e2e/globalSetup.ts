@@ -34,6 +34,7 @@ export default async function globalSetup() {
         ...process.env, NODE_ENV: 'production', FILES_PORT: port, FILES_PUBLIC_URL: origin,
         FILES_DATA_DIR: dataDir, FILES_SESSION_SECRET: 'e2e-session-secret-0123456789abcdef0123',
         FILES_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString('base64'),
+        // Test hook: point the server at a bad issuer to force the startup-failure path.
         FILES_OIDC_ISSUER: process.env.E2E_OIDC_ISSUER_OVERRIDE ?? idp.issuer,
         FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
         FILES_OIDC_ROLE_CLAIM: 'groups', FILES_OIDC_ADMIN_VALUE: 'admin', FILES_LOG_LEVEL: 'warn',

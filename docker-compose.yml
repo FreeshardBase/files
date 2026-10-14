@@ -1,0 +1,10 @@
+services:
+  files:
+    build: .
+    image: freeshard-files
+    restart: unless-stopped
+    ports: ["127.0.0.1:3005:3005"]
+    env_file: .env
+    volumes: ["files-data:/data"]
+volumes:
+  files-data:
