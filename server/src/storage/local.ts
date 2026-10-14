@@ -54,11 +54,6 @@ function truncateBytes(s: string, max: number): string {
   return out;
 }
 
-
-export function homeRoot(dataDir: string, userId: string): string {
-  return join(dataDir, 'homes', userId);
-}
-
 export class LocalBackend implements StorageBackend {
   constructor(private root: string) {}
 

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, PassThrough } from 'node:stream';
 import { text } from 'node:stream/consumers';
-import { LocalBackend, homeRoot, mapFsError } from '../src/storage/local.ts';
+import { LocalBackend, mapFsError } from '../src/storage/local.ts';
 
 let root: string; let b: LocalBackend;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'files-lb-')); b = new LocalBackend(root); });
@@ -118,12 +118,6 @@ describe('internal .files area', () => {
   it('still allows names that merely start with .files', async () => {
     const e = await b.write('/.filesystem.txt', body('x'), opts);
     expect(e.name).toBe('.filesystem.txt');
-  });
-});
-
-describe('homeRoot', () => {
-  it('is DATA_DIR/homes/<userId>', () => {
-    expect(homeRoot('/data', 'u1')).toBe('/data/homes/u1');
   });
 });
 

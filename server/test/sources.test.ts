@@ -7,7 +7,8 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 import { AppError } from '../src/errors.ts';
-import { LocalBackend, homeRoot } from '../src/storage/local.ts';
+import { LocalBackend } from '../src/storage/local.ts';
+import { homeRoot } from '../src/paths.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 let t: TestApp; let a: { cookie: string; csrf: string }; let m: { cookie: string; csrf: string };

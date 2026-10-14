@@ -4,7 +4,8 @@ import type { Readable } from 'node:stream';
 import { CollisionPolicy } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
-import { LocalBackend, homeRoot } from '../storage/local.ts';
+import { LocalBackend } from '../storage/local.ts';
+import { homeRoot } from '../paths.ts';
 import type { StorageBackend } from '../storage/backend.ts';
 import { parseRange } from '../http/range.ts';
 

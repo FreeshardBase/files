@@ -6,6 +6,7 @@ import { buildApp } from '../../src/app.ts';
 import { loadConfig, type Config } from '../../src/config.ts';
 import { openDb, type Db } from '../../src/db.ts';
 import { cookieNames } from '../../src/auth/cookies.ts';
+import { dbPath } from '../../src/paths.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
 /** `routes` holds the live route options of every registered route (read `config.public` after `ready`). */
@@ -36,7 +37,7 @@ export async function startTestApp(
     FILES_LOG_LEVEL: 'fatal',
     ...overrides,
   });
-  const db = openDb(join(dataDir, 'files.db'));
+  const db = openDb(dbPath(dataDir));
   const routes: RouteOptions[] = [];
   const app = await buildApp({ config, db, extend, logStream, onRoute: (r) => { routes.push(r); } });
   await app.ready();
