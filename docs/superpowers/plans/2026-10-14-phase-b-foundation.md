@@ -2690,7 +2690,6 @@ export const api = {
   },
 };
 ```
-The `catch (err)` around `fetch` must name its variable `_err` to pass lint, and it maps every network error to `NETWORK`. That counts as handled under the lint rule. Add the comment `// handled: any fetch rejection is a network failure`.
 
 `web/src/stores/session.ts`:
 ```ts
@@ -2943,7 +2942,7 @@ await build({
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
 });
 ```
-`DEFAULT_MIGRATIONS` resolves to `dist/../migrations`, which is the existing `server/migrations` in the source tree and `/app/migrations` in the image (Task 12). The `cpSync` line is a no-op in the source tree; remove it there and copy explicitly in the Dockerfile.
+`DEFAULT_MIGRATIONS` resolves to `server/dist/../migrations` = `server/migrations`, both in the source tree and in the image (Task 12 copies it).
 
 - [ ] **Step 2: E2E config**
 
