@@ -2,11 +2,12 @@ import { lstat, realpath } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { AppError } from '../errors.ts';
 
-// eslint-disable-next-line no-control-regex
-const FORBIDDEN = /[\u0000-\u001f\u007f]/;
+// All Unicode control chars (C0, DEL, C1) plus bidi marks/embeddings/isolates.
+const FORBIDDEN = /[\p{Cc}\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+const MAX_PATH_BYTES = 4095;
 
 export function normalizeUserPath(userPath: string): string {
-  if (typeof userPath !== 'string' || userPath.length === 0 || FORBIDDEN.test(userPath)) {
+  if (typeof userPath !== 'string' || userPath.length === 0 || !userPath.isWellFormed() || FORBIDDEN.test(userPath)) {
     throw new AppError('PATH_INVALID');
   }
   const segments = userPath.normalize('NFC').split('/').filter((s) => s.length > 0);
@@ -27,12 +28,15 @@ export async function resolveInRoot(root: string, userPath: string): Promise<str
     let st;
     try { st = await lstat(current); }
     catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') break; // handled: rest does not exist yet
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') break; // handled: rest does not exist yet
+      if (code === 'ENOTDIR') throw new AppError('NOT_A_DIRECTORY');
       throw err;
     }
     if (st.isSymbolicLink()) throw new AppError('PATH_SYMLINK');
   }
   const target = join(realRoot, ...segments);
+  if (Buffer.byteLength(target) > MAX_PATH_BYTES) throw new AppError('PATH_INVALID');
   if (target !== realRoot && !target.startsWith(realRoot + sep)) throw new AppError('PATH_INVALID');
   return target;
 }

@@ -27,6 +27,24 @@ describe('resolveInRoot', () => {
   ])('rejects %j as PATH_INVALID', async (p) => {
     expect(await code(resolveInRoot(root, p))).toBe('PATH_INVALID');
   });
+  it.each([
+    '/a\u0085b', '/gpj\u202e.exe', '/a\u200eb', '/a\u2066b', '/\ud800', '/a\udc00b',
+    '/' + Array.from({ length: 20 }, () => 'x'.repeat(250)).join('/'),
+  ])('rejects control, bidi, lone surrogate and overlong %j', async (p) => {
+    expect(await code(resolveInRoot(root, p))).toBe('PATH_INVALID');
+  });
+  it('maps ENOTDIR to NOT_A_DIRECTORY when a file is used as a directory', async () => {
+    writeFileSync(join(root, 'f.txt'), 'x');
+    expect(await code(resolveInRoot(root, '/f.txt/x'))).toBe('NOT_A_DIRECTORY');
+  });
+  it('rethrows a missing root', async () => {
+    expect(await code(resolveInRoot(join(root, 'nope'), '/a'))).toBe('ENOENT');
+  });
+  it('works with a symlinked root and returns a path under its realpath', async () => {
+    const link = join(outside, 'rootlink');
+    symlinkSync(root, link);
+    expect((await resolveInRoot(link, '/docs/a.txt')).startsWith(realpathSync(root) + '/')).toBe(true);
+  });
   it('rejects a symlinked leaf', async () => {
     symlinkSync(join(outside, 'secret.txt'), join(root, 'link.txt'));
     expect(await code(resolveInRoot(root, '/link.txt'))).toBe('PATH_SYMLINK');

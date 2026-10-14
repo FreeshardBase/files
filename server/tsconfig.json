@@ -1,1 +1,1 @@
-{ "extends": "../tsconfig.base.json", "include": ["src", "test", "build.mjs"] }
+{ "extends": "../tsconfig.base.json", "compilerOptions": { "lib": ["ES2024"] }, "include": ["src", "test", "build.mjs"] }

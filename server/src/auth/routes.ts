@@ -17,9 +17,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const names = cookieNames(config);
   const safeReturnTo = (v: unknown): string => {
     // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
-    if (typeof v !== 'string' || !v.startsWith('/') || /[\x00-\x1f\x7f\\]/.test(v)) return '/';
+    if (typeof v !== 'string' || !v.startsWith('/') || v.startsWith('//') || /[\x00-\x1f\x7f\\]/.test(v)) return '/';
     if (v.split('?')[0]!.split('#')[0]!.split('/').some((seg) => seg === '.' || seg === '..')) return '/';
-    const u = new URL(v, config.publicUrl);
+    let u: URL;
+    try { u = new URL(v, config.publicUrl); }
+    catch { return '/'; } // handled: unparsable returnTo falls back to /
     if (u.origin !== config.publicUrl.origin) return '/';
     const out = u.pathname + u.search + u.hash;
     return out.startsWith('/') && !out.startsWith('//') ? out : '/';
@@ -31,7 +33,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const loginCookie = names.prefixed ? cookieBase : { ...cookieBase, path: '/auth/callback' };
 
   app.get('/auth/login', { config: { public: true } }, async (req, reply) => {
-    const q = z.object({ returnTo: z.string().optional(), login_hint: z.string().max(200).optional() }).parse(req.query);
+    const q = z.object({ returnTo: z.string().optional().transform((v) => (v !== undefined && v.length > 2048 ? undefined : v)), login_hint: z.string().max(200).optional() }).parse(req.query);
     const state = randomState(); const nonce = randomNonce(); const verifier = randomVerifier();
     const id = createLoginAttempt(db, { state, nonce, verifier, returnTo: safeReturnTo(q.returnTo) });
     reply.setCookie(names.login, id, { ...loginCookie, maxAge: LOGIN_TTL_MS / 1000 });

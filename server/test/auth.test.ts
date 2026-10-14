@@ -116,6 +116,7 @@ describe('OIDC login', () => {
   it.each([
     ['https://evil.example/'], ['//evil.example'], ['/\\evil.example'], ['/\t/evil.example/'], ['/\r/evil.example/'],
     ['/..//evil.example/'], ['/.//evil.example'], ['/a/../..//evil.example'], ['/%2e%2e//evil.example/'],
+    ['//'], ['///'], ['//['], ['/' + 'a'.repeat(3000)],
   ])('rejects returnTo %s', async (rt) => {
     const r = await t.app.inject(`/auth/login?returnTo=${encodeURIComponent(rt)}`);
     const attempt = t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string };
