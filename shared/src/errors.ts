@@ -1,0 +1,15 @@
+export const ERROR_CODES = [
+  'UNAUTHENTICATED', 'FORBIDDEN', 'CSRF', 'VALIDATION', 'NOT_FOUND', 'FILE_EXISTS',
+  'PATH_INVALID', 'PATH_SYMLINK', 'NOT_A_DIRECTORY', 'IS_A_DIRECTORY',
+  'PAYLOAD_TOO_LARGE', 'RANGE_NOT_SATISFIABLE', 'LOGIN_FAILED', 'INTERNAL',
+] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+export const errorStatus: Record<ErrorCode, number> = {
+  UNAUTHENTICATED: 401, FORBIDDEN: 403, CSRF: 403, VALIDATION: 400, NOT_FOUND: 404,
+  FILE_EXISTS: 409, PATH_INVALID: 400, PATH_SYMLINK: 400, NOT_A_DIRECTORY: 409,
+  IS_A_DIRECTORY: 409, PAYLOAD_TOO_LARGE: 413, RANGE_NOT_SATISFIABLE: 416,
+  LOGIN_FAILED: 400, INTERNAL: 500,
+};
+
+export interface ApiError { code: ErrorCode; params?: Record<string, string | number> }
