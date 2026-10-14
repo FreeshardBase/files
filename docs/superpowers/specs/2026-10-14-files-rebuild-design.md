@@ -68,7 +68,7 @@ The repo is a pnpm workspace. The server serves the built SPA. It runs as one co
 - **App passwords.** Used for WebDAV. They are hashed with argon2id (`@node-rs/argon2`), shown once, and stored with a prefix so lookup does not need a hash scan.
 - **Deny by default.** A global hook requires a session. Public routes are an explicit allowlist: `/s/:token/*`, the OIDC callback, `/healthz`, static assets.
 - **CSRF.** Mutating requests must pass an `Origin`/`Sec-Fetch-Site` check and carry a double-submit token.
-- **Local accounts.** Only for development and tests, behind `FILES_DEV_LOCAL_AUTH=1`. When `NODE_ENV=production`, the server refuses to start with that flag set.
+- **No local accounts and no auth bypass.** Development, tests and E2E sign in through a small fake OIDC provider (`server/test/support/fakeIdp.ts`) using the real login flow. The issuer may be `http://` only for `127.0.0.1` or `localhost`; any other `http://` issuer is refused at startup.
 - **Fail fast.** At startup, Zod validates the config (session secret, encryption key, OIDC issuer, client id and secret, public URL). Anything invalid stops the process with `exit(1)`. There are no fallback defaults.
 
 ### 3.2 Storage
@@ -158,7 +158,7 @@ Moving between sources means copy, then verify (size, plus a hash where both sid
 
 ### 3.9 Testing
 
-- **Unit and integration tests (Vitest).** Each test file boots the real Fastify app on port 0, with a temporary `DATA_DIR` and a temporary database, and cleans up afterwards. Config is loaded with `NODE_ENV=production`, except for the dev-auth flag, which test helpers set explicitly. Nothing ever touches `data/`.
+- **Unit and integration tests (Vitest).** Each test file boots the real Fastify app on port 0, with a temporary `DATA_DIR` and a temporary database, and cleans up afterwards. Config is loaded with `NODE_ENV=production`; sign-in goes through the fake OIDC provider. Nothing ever touches `data/`.
 - **Fake provider servers.** HTTP servers that implement the subset of the Drive, Dropbox and Graph protocol in use: pagination, 401 → refresh, rotated refresh tokens, 429 with `Retry-After`, upload sessions, and 302 for content downloads. Backends are tested against them.
 - **Live provider tests (`pnpm test:live`).** They run when `LIVE_*` refresh tokens are present in an untracked env file. Without tokens they report skipped. They are never counted as passed.
 - **Security regression tests.** Every finding in #91–#127 that still applies to the new design gets a named test. Each test is mutation-checked: removing the guard must turn it red.
@@ -187,7 +187,7 @@ Moving between sources means copy, then verify (size, plus a hash where both sid
 
 ## 5. Delivery
 
-- **Phase B: foundation.** Done interactively: skeleton, config, auth, `resolveInRoot`, LocalBackend, migrations, error handling and logging, the test harness with a fake-provider scaffold, a Vue shell with tokens and i18n, and local gates (`pnpm typecheck lint test e2e`). Exit criterion: log in through OIDC against a local test IdP; then browse, upload and download in the shard home, fully tested.
+- **Phase B: foundation.** Done interactively: skeleton, config, auth, `resolveInRoot`, LocalBackend, migrations, error handling and logging, the test harness with a fake-provider scaffold, a Vue shell with tokens and i18n, and local gates (`pnpm typecheck lint test e2e`). Exit criterion: log in through OIDC against the fake IdP; then browse, upload and download in the shard home, fully tested.
 - **Phase C: pipeline.** `vacation_framework/issue_driver.py` gains repo profiles (`--profile files`). The profile defines the suites, forbidden paths (plus `data/`, `*.db`, `.env*`), allowed tools, and the path to the CLAUDE.md. Gates: red/green on the declared tests, all suites green, typecheck and lint clean, and for UI issues, screenshots attached to the PR. Merge with `--merge squash` on local gates. The queue lives in `queue-files.txt`.
 - **Phase D: autonomous.** The queue runs in this order:
   1. security regressions
