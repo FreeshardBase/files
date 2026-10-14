@@ -1,15 +1,11 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../errors.ts';
 import { challengeFor, createOidc, randomNonce, randomState, randomVerifier } from './oidc.ts';
 import { createLoginAttempt, createSession, deleteSession, takeLoginAttempt, SESSION_TTL_MS, LOGIN_TTL_MS } from './sessions.ts';
-import { upsertUserFromClaims, type User } from '../users.ts';
+import { upsertUserFromClaims } from '../users.ts';
 import { cookieNames } from './cookies.ts';
-
-const requireUser = (req: FastifyRequest): { user: User; session: { idHash: string; csrfToken: string } } => {
-  if (!req.user || !req.session) throw new AppError('UNAUTHENTICATED');
-  return { user: req.user, session: req.session };
-};
+import { requireUser } from './guard.ts';
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps;

@@ -6,6 +6,7 @@ import type { Db } from './db.ts';
 import { errorHandler } from './errors.ts';
 import { registerGuard } from './auth/guard.ts';
 import { registerAuthRoutes } from './auth/routes.ts';
+import { registerSourceRoutes } from './routes/sources.ts';
 import { purgeExpired } from './auth/sessions.ts';
 
 declare module 'fastify' {
@@ -42,6 +43,7 @@ export async function buildApp({ config, db, extend, logStream }: AppDeps): Prom
 
   registerGuard(app);
   await registerAuthRoutes(app);
+  await registerSourceRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

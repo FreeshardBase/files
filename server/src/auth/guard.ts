@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { AppError } from '../errors.ts';
 import { cookieNames } from './cookies.ts';
 import { findSession } from './sessions.ts';
@@ -13,6 +13,11 @@ const safeEqual = (a: unknown, b: string): boolean => {
   if (typeof a !== 'string') return false;
   const x = Buffer.from(a); const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+};
+
+export const requireUser = (req: FastifyRequest): { user: User; session: { idHash: string; csrfToken: string } } => {
+  if (!req.user || !req.session) throw new AppError('UNAUTHENTICATED');
+  return { user: req.user, session: req.session };
 };
 
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
