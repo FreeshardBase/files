@@ -11,19 +11,19 @@ import UploadButton from '../components/UploadButton.vue';
 
 const route = useRoute(); const router = useRouter(); const { t } = useI18n();
 const folder = useFolderStore();
+type Failure = { name: string; reason: string };
 const status = ref('');
 const path = computed(() => {
   const p = route.params.path; const segs = Array.isArray(p) ? p : p ? [p] : [];
   return '/' + segs.join('/');
 });
-watch(path, (p) => folder.open(p), { immediate: true });
+const failures = ref<Failure[]>([]);
+watch(path, (p) => { status.value = ''; failures.value = []; void folder.open(p); }, { immediate: true });
 
 const folderName = computed(() => path.value === '/' ? t('nav.home') : path.value.split('/').pop()!);
 function open(e: Entry) {
   if (e.type === 'directory') router.push(e.path.split('/').map(encodeURIComponent).join('/'));
 }
-type Failure = { name: string; reason: string };
-const failures = ref<Failure[]>([]);
 async function upload(files: File[]) {
   const dir = folder.path; // captured: navigating away mid-batch must not redirect the remaining files
   failures.value = [];
@@ -65,8 +65,8 @@ async function upload(files: File[]) {
       <p>{{ $t('upload.failedHeading') }}</p>
       <ul>
         <li
-          v-for="f in failures"
-          :key="f.name"
+          v-for="(f, i) in failures"
+          :key="i"
         >
           {{ f.reason }}
         </li>

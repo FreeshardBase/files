@@ -24,7 +24,6 @@
     "button": "Hochladen",
     "progress": "{name}: {percent} %",
     "done": "{name} hochgeladen",
-    "exists": "{name} gibt es hier schon. Wähle einen anderen Namen oder lade sie als Kopie hoch.",
     "keepBoth": "Als Kopie hochladen",
     "replace": "Ersetzen",
     "skip": "Überspringen",

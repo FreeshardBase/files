@@ -24,7 +24,6 @@
     "button": "Upload",
     "progress": "{name}: {percent} %",
     "done": "{name} uploaded",
-    "exists": "{name} already exists here. Pick another name or upload it as a copy.",
     "keepBoth": "Upload as copy",
     "replace": "Replace",
     "skip": "Skip",

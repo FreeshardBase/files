@@ -59,6 +59,23 @@ describe('FolderView uploads', () => {
     expect(listCalls).toHaveLength(2);
     expect(w.find('table').exists()).toBe(true);
   });
+  it('clears status and failures when the folder changes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ entries: [] })));
+    installFakeXhr(() => ({ status: 409, text: '{"code":"FILE_EXISTS"}' }));
+    const router = mk(); await router.push('/A');
+    const w = mount(FolderView, { global: { plugins: [i18n(), router] } });
+    await flushPromises();
+    const input = w.find('input[type=file]');
+    Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.txt')], configurable: true });
+    await input.trigger('change');
+    await flushPromises();
+    expect(w.find('[role=status]').text()).toBe('0 of 1 uploaded');
+    expect(w.find('.upload-failures').exists()).toBe(true);
+    await router.push('/B');
+    await flushPromises();
+    expect(w.find('[role=status]').text()).toBe('');
+    expect(w.find('.upload-failures').exists()).toBe(false);
+  });
   it('keeps uploading to the original folder when the route changes mid-batch', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ entries: [] })));
     let release!: () => void;
