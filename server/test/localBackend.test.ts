@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -223,10 +223,18 @@ describe('keyset cursor', () => {
 });
 
 describe('etag', () => {
-  it('changes when a file is replaced', async () => {
+  it('changes when a file is replaced with identical size and mtime (inode differs)', async () => {
     await b.write('/e.txt', body('same'), opts);
+    const fixed = 1_700_000_000; // whole seconds: exact mtime on both files
+    utimesSync(join(root, 'e.txt'), fixed, fixed);
+    const before = statSync(join(root, 'e.txt'));
     const first = (await b.read('/e.txt')).etag;
     await b.write('/e.txt', body('same'), { ...opts, onCollision: 'replace' });
+    utimesSync(join(root, 'e.txt'), fixed, fixed);
+    const after = statSync(join(root, 'e.txt'));
+    expect(after.size).toBe(before.size);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    expect(after.ino).not.toBe(before.ino);
     expect((await b.read('/e.txt')).etag).not.toBe(first);
   });
 });
