@@ -1,0 +1,12 @@
+import { startFakeIdp } from '../test/support/fakeIdp.ts';
+const idp = await startFakeIdp({ port: 4000 });
+process.env.FILES_OIDC_ISSUER ??= idp.issuer;
+process.env.FILES_OIDC_CLIENT_ID ??= 'files';
+process.env.FILES_OIDC_CLIENT_SECRET ??= 'files-secret';
+process.env.FILES_OIDC_ROLE_CLAIM ??= 'groups';
+process.env.FILES_OIDC_ADMIN_VALUE ??= 'admin';
+process.env.FILES_PUBLIC_URL ??= 'http://localhost:5173';
+process.env.FILES_DATA_DIR ??= new URL('../../data/dev', import.meta.url).pathname;
+process.env.FILES_SESSION_SECRET ??= 'dev-only-session-secret-0123456789abcdef';
+process.env.FILES_ENCRYPTION_KEY ??= Buffer.alloc(32, 9).toString('base64');
+await import('./main.ts');
