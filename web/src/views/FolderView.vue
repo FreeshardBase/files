@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { useFolderStore } from '../stores/folder.ts';
 import { ApiFailure } from '../api/client.ts';
+import { folderRoute } from '../api/paths.ts';
 import FileList from '../components/FileList.vue';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
@@ -13,25 +14,26 @@ const route = useRoute(); const router = useRouter(); const { t } = useI18n();
 const folder = useFolderStore();
 type Failure = { name: string; reason: string };
 const status = ref('');
+const source = computed(() => String(route.params.source));
 const path = computed(() => {
   const p = route.params.path; const segs = Array.isArray(p) ? p : p ? [p] : [];
   return '/' + segs.join('/');
 });
 const failures = ref<Failure[]>([]);
-watch(path, (p) => { status.value = ''; failures.value = []; void folder.open(p); }, { immediate: true });
+watch([source, path], ([s, p]) => { status.value = ''; failures.value = []; void folder.open(p, { source: s }); }, { immediate: true });
 
 const folderName = computed(() => path.value === '/' ? t('nav.home') : path.value.split('/').pop()!);
 function open(e: Entry) {
-  if (e.type === 'directory') router.push(e.path.split('/').map(encodeURIComponent).join('/'));
+  if (e.type === 'directory') void router.push(folderRoute(source.value, e.path));
 }
 async function upload(files: File[]) {
-  const dir = folder.path; // captured: navigating away mid-batch must not redirect the remaining files
+  const at = { source: folder.source, dir: folder.path }; // captured: navigating away mid-batch must not redirect the remaining files
   failures.value = [];
   let done = 0;
   try {
     for (const f of files) {
       try {
-        await folder.upload(f, dir, 'fail', (x) => { status.value = t('upload.progress', { name: f.name, percent: Math.round(x * 100) }); });
+        await folder.upload(f, at, 'fail', (x) => { status.value = t('upload.progress', { name: f.name, percent: Math.round(x * 100) }); });
         done++;
       } catch (e) {
         if (!(e instanceof ApiFailure)) throw e;
@@ -40,7 +42,7 @@ async function upload(files: File[]) {
     }
     status.value = t('upload.summary', { done, total: files.length });
   } finally {
-    if (dir === folder.path) await folder.open(dir, { refresh: true }); // once per batch, list stays mounted
+    if (at.dir === folder.path && at.source === folder.source) await folder.open(at.dir, { refresh: true }); // once per batch, list stays mounted
   }
 }
 </script>
@@ -48,7 +50,10 @@ async function upload(files: File[]) {
 <template>
   <section class="folder">
     <div class="toolbar">
-      <Breadcrumbs :path="path" />
+      <Breadcrumbs
+        :source="source"
+        :path="path"
+      />
       <UploadButton @files="upload" />
     </div>
     <p
@@ -88,6 +93,7 @@ async function upload(files: File[]) {
       v-else
       :entries="folder.entries"
       :folder-name="folderName"
+      :source="source"
       @open="open"
     />
   </section>

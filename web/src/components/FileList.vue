@@ -3,8 +3,9 @@ import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
+import { sourceApi } from '../api/paths.ts';
 
-const props = defineProps<{ entries: Entry[]; folderName: string }>();
+const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string }>(), { source: 'home' });
 const emit = defineEmits<{ open: [Entry] }>();
 const { locale } = useI18n();
 const active = ref(0);
@@ -33,7 +34,7 @@ function onKey(e: KeyboardEvent, i: number) {
   }
 }
 const sizeText = (e: Entry) => (e.type === 'file' ? formatSize(e.size, intlLocale(locale.value)) : '');
-const downloadHref = (e: Entry) => `/api/v1/sources/home/content?path=${encodeURIComponent(e.path)}&download=1`;
+const downloadHref = (e: Entry) => `${sourceApi(props.source)}/content?path=${encodeURIComponent(e.path)}&download=1`;
 </script>
 
 <template>

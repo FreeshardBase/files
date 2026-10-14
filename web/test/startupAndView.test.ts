@@ -5,14 +5,15 @@ import { createI18n } from 'vue-i18n';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import en from '../src/i18n/en.json';
 import App from '../src/App.vue';
-import FolderView from '../src/views/FolderView.vue';
 import { installFakeXhr } from './fakeXhr.ts';
+import { routes } from '../src/router.ts';
+import FolderView from '../src/views/FolderView.vue';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 const me = { id: 'u', displayName: 'Test User', role: 'admin', csrfToken: 'tok' };
 const i18n = () => createI18n({ legacy: false, locale: 'en', messages: { en } });
 const mk = () => {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:path(.*)*', component: FolderView }] });
+  const router = createRouter({ history: createMemoryHistory(), routes });
   return router;
 };
 
@@ -78,7 +79,7 @@ describe('FolderView uploads', () => {
   it('clears status and failures when the folder changes', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ entries: [] })));
     installFakeXhr(() => ({ status: 409, text: '{"code":"FILE_EXISTS"}' }));
-    const router = mk(); await router.push('/A');
+    const router = mk(); await router.push('/home/A');
     const w = mount(FolderView, { global: { plugins: [i18n(), router] } });
     await flushPromises();
     const input = w.find('input[type=file]');
@@ -87,7 +88,7 @@ describe('FolderView uploads', () => {
     await flushPromises();
     expect(w.find('[role=status]').text()).toBe('0 of 1 uploaded');
     expect(w.find('.upload-failures').exists()).toBe(true);
-    await router.push('/B');
+    await router.push('/home/B');
     await flushPromises();
     expect(w.find('[role=status]').text()).toBe('');
     expect(w.find('.upload-failures').exists()).toBe(false);
@@ -97,14 +98,14 @@ describe('FolderView uploads', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const x = installFakeXhr(async () => { await gate; return { status: 201, text: '{}' }; });
-    const router = mk(); await router.push('/A');
+    const router = mk(); await router.push('/home/A');
     const w = mount(FolderView, { global: { plugins: [i18n(), router] } });
     await flushPromises();
     const files = ['1.txt', '2.txt'].map((n) => new File(['x'], n));
     const input = w.find('input[type=file]');
     Object.defineProperty(input.element, 'files', { value: files, configurable: true });
     const done = input.trigger('change');
-    await router.push('/B');
+    await router.push('/home/B');
     await flushPromises();
     release();
     await done;

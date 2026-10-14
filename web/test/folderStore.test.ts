@@ -31,6 +31,29 @@ describe('folder store', () => {
   });
 });
 
+describe('folder store sources', () => {
+  const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
+  it('defaults to the home source', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ entries: [] }), { status: 200 })));
+    const s = useFolderStore();
+    expect(s.source).toBe('home');
+    await s.open('/');
+    expect(calls()[0]![0]).toMatch(/^\/api\/v1\/sources\/home\/list\?/);
+  });
+  it('lists, creates folders and uploads in the store source', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ entries: [] }), { status: 200 })));
+    const x = installFakeXhr(() => ({ status: 201, text: JSON.stringify(entry(1)) }));
+    const s = useFolderStore();
+    await s.open('/', { source: 'conn:1' });
+    expect(s.source).toBe('conn:1');
+    await s.mkdir('neu');
+    await s.upload(new File(['x'], 'n.txt'), { source: s.source, dir: '/' });
+    expect(calls()[0]![0]).toMatch(/^\/api\/v1\/sources\/conn%3A1\/list\?/);
+    expect(calls().find(([, i]) => i.method === 'POST')![0]).toBe('/api/v1/sources/conn%3A1/mkdir');
+    expect(x.puts[0]!.url).toMatch(/^\/api\/v1\/sources\/conn%3A1\/content\?/);
+  });
+});
+
 describe('folder store writes', () => {
   const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
   it('mkdir posts the joined path and relists', async () => {
@@ -122,7 +145,7 @@ describe('folder store races and upload target', () => {
     const s = useFolderStore();
     await s.open('/A');
     await s.open('/B');
-    await s.upload(new File(['x'], 'n.txt'), '/A');
+    await s.upload(new File(['x'], 'n.txt'), { source: 'home', dir: '/A' });
     expect(new URL(x.puts[0]!.url, 'http://x').searchParams.get('path')).toBe('/A/n.txt');
   });
 });

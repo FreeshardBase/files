@@ -6,7 +6,7 @@ const input = { mimeType: 'text/plain' };
 test('log in, upload a real file, see it, download the same bytes', async ({ page }, info) => {
   const fileName = `Prüfung #1 50% ${info.project.name}.txt`;
   await page.goto('/');
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
 
   await page.getByTestId('upload-input').setInputFiles({ name: fileName, ...input, buffer: Buffer.from('hallo welt') });
@@ -62,4 +62,39 @@ test('file list is keyboard reachable and operable', async ({ page }, info) => {
   expect(await rowName()).toContain(fileName);
   const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
   expect(download.suggestedFilename()).toBe(fileName);
+});
+
+test('a folder named like a server route survives a reload', async ({ page, baseURL }, info) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const origin = new URL(baseURL!).origin;
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin };
+  const mk = await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: '/api' } });
+  expect([201, 409]).toContain(mk.status()); // 409: the other project already created it
+  const fileName = `inside-api-${info.project.name}.txt`;
+  const up = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/api/${fileName}`)}&onCollision=replace`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from('in api') });
+  expect(up.status()).toBe(201);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'api', exact: true }).click();
+  await expect(page).toHaveURL(/\/home\/api$/);
+  await expect(page.getByRole('link', { name: fileName })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText('api');
+  await expect(page.getByRole('link', { name: fileName })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('"code"');
+});
+
+test('a failed login shows the error and a way to sign in again, without a redirect loop', async ({ page }) => {
+  await page.goto('/auth/callback?code=bogus&state=bogus');
+  await expect(page).toHaveURL(/\/home\?loginError=1$/);
+  await expect(page.getByRole('alert')).toContainText(/Anmeldung|sign/i);
+  const again = page.getByRole('link', { name: /Erneut anmelden|Sign in again/ });
+  await expect(again).toBeVisible();
+  await again.click();
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
 });

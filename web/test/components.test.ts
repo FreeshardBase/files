@@ -8,7 +8,7 @@ import Breadcrumbs from '../src/components/Breadcrumbs.vue';
 import UploadButton from '../src/components/UploadButton.vue';
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } });
-const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:path(.*)*', component: { template: '<div />' } }] });
+const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:source(home)/:path(.*)*', component: { template: '<div />' } }] });
 const entries = [
   { name: 'Fotos', path: '/Fotos', type: 'directory' as const, size: 0, modified: '2026-10-14T00:00:00.000Z' },
   { name: 'a b.txt', path: '/a b.txt', type: 'file' as const, size: 1500, modified: '2026-10-14T00:00:00.000Z' },
@@ -18,6 +18,10 @@ describe('FileList', () => {
   it('links files to the download endpoint with an encoded path', () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
     expect(w.find('a').attributes('href')).toBe('/api/v1/sources/home/content?path=%2Fa%20b.txt&download=1');
+  });
+  it('links downloads to the given source', () => {
+    const w = mount(FileList, { props: { entries, folderName: 'x', source: 'conn:1' }, global: { plugins: [i18n] } });
+    expect(w.find('a').attributes('href')).toBe('/api/v1/sources/conn%3A1/content?path=%2Fa%20b.txt&download=1');
   });
   it('has exactly one tab stop and moves it with the arrow keys; Enter opens', async () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, attachTo: document.body, global: { plugins: [i18n] } });
@@ -41,8 +45,8 @@ describe('FileList', () => {
 
 describe('Breadcrumbs', () => {
   it('encodes each segment in the link target', () => {
-    const w = mount(Breadcrumbs, { props: { path: '/a b/c' }, global: { plugins: [i18n, router] } });
-    expect(w.findAll('a').map((a) => a.attributes('href'))).toEqual(['/', '/a%20b', '/a%20b/c']);
+    const w = mount(Breadcrumbs, { props: { source: 'home', path: '/a b/c' }, global: { plugins: [i18n, router] } });
+    expect(w.findAll('a').map((a) => a.attributes('href'))).toEqual(['/home', '/home/a%20b', '/home/a%20b/c']);
   });
 });
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-const props = defineProps<{ path: string }>();
+import { folderRoute } from '../api/paths.ts';
+const props = defineProps<{ source: string; path: string }>();
 const parts = computed(() => {
   const segs = props.path.split('/').filter(Boolean);
-  return segs.map((name, i) => ({ name, to: '/' + segs.slice(0, i + 1).map(encodeURIComponent).join('/') }));
+  return segs.map((name, i) => ({ name, to: folderRoute(props.source, '/' + segs.slice(0, i + 1).join('/')) }));
 });
 </script>
 <template>
@@ -11,7 +12,7 @@ const parts = computed(() => {
     :aria-label="$t('a11y.breadcrumbs')"
     class="breadcrumbs"
   >
-    <RouterLink to="/">
+    <RouterLink :to="folderRoute(source, '/')">
       {{ $t('nav.breadcrumbRoot') }}
     </RouterLink>
     <template
