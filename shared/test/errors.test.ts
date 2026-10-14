@@ -11,6 +11,9 @@ describe('error codes', () => {
     expect(errorStatus.UNAUTHENTICATED).toBe(401);
     expect(errorStatus.CSRF).toBe(403);
   });
+  it('maps STORAGE_FULL to 507', () => {
+    expect(errorStatus.STORAGE_FULL).toBe(507);
+  });
   it('pins INTERNAL and NOT_FOUND statuses', () => {
     expect(errorStatus.INTERNAL).toBe(500);
     expect(errorStatus.NOT_FOUND).toBe(404);

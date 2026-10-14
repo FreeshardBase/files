@@ -28,7 +28,7 @@ describe('resolveInRoot', () => {
     expect(await code(resolveInRoot(root, p))).toBe('PATH_INVALID');
   });
   it.each([
-    '/a\u0085b', '/gpj\u202e.exe', '/a\u200eb', '/a\u2066b', '/\ud800', '/a\udc00b',
+    '/a\u0085b', '/gpj\u202e.exe', '/a\u200eb', '/a\u061cb', '/a\u2066b', '/\ud800', '/a\udc00b',
     '/' + Array.from({ length: 20 }, () => 'x'.repeat(250)).join('/'),
   ])('rejects control, bidi, lone surrogate and overlong %j', async (p) => {
     expect(await code(resolveInRoot(root, p))).toBe('PATH_INVALID');
@@ -44,6 +44,13 @@ describe('resolveInRoot', () => {
     const link = join(outside, 'rootlink');
     symlinkSync(root, link);
     expect((await resolveInRoot(link, '/docs/a.txt')).startsWith(realpathSync(root) + '/')).toBe(true);
+  });
+  it('rejects an overlong path under a deep existing prefix with PATH_INVALID, not ENAMETOOLONG', async () => {
+    const seg = 'y'.repeat(200);
+    let dir = root; let len = Buffer.byteLength(root);
+    while (len + 201 < 4000) { dir = join(dir, seg); len += 201; mkdirSync(dir); }
+    const deep = '/' + Array.from({ length: Math.floor((len - Buffer.byteLength(root)) / 201) }, () => seg).join('/');
+    expect(await code(resolveInRoot(root, deep + '/' + 'z'.repeat(200) + '/' + 'z'.repeat(200)))).toBe('PATH_INVALID');
   });
   it('rejects a symlinked leaf', async () => {
     symlinkSync(join(outside, 'secret.txt'), join(root, 'link.txt'));
