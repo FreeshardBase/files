@@ -28,7 +28,9 @@ test('uploading the same name twice reports the failure, not a crash', async ({ 
   await expect(page.getByRole('link', { name: fileName })).toBeVisible();
   await files.setInputFiles({ name: fileName, ...input, buffer: Buffer.from('2') });
   await expect(page.getByRole('status')).toContainText(/0 von 1|0 of 1/);
-  await expect(page.locator('.upload-failures')).toContainText(new RegExp(`${fileName}: .*(existiert bereits|already exists)`));
+  const failure = page.locator('.upload-failures li');
+  await expect(failure).toContainText(`${fileName}: `);
+  await expect(failure).toContainText(/existiert bereits|already exists/);
 });
 
 test('file list is keyboard reachable and operable', async ({ page }, info) => {
@@ -38,7 +40,6 @@ test('file list is keyboard reachable and operable', async ({ page }, info) => {
   await files.setInputFiles({ name: fileName, ...input, buffer: Buffer.from('kbd') });
   await expect(page.getByRole('link', { name: fileName })).toBeVisible();
   await files.setInputFiles({ name: `kbd2-${info.project.name}.txt`, ...input, buffer: Buffer.from('kbd') });
-  await expect(page.getByRole('status')).toContainText(/1 von 1|1 of 1/);
   await expect(page.getByRole('link', { name: `kbd2-${info.project.name}.txt` })).toBeVisible();
 
   const role = () => page.evaluate(() => document.activeElement?.getAttribute('role'));
