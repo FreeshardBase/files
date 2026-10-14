@@ -37,9 +37,10 @@ export function registerGuard(app: FastifyInstance): void {
     if (!protectedRoute) return;
     if (!req.user) throw new AppError('UNAUTHENTICATED');
     if (!SAFE.has(req.method)) {
+      if (!req.session) throw new AppError('UNAUTHENTICATED');
       const origin = req.headers.origin;
       if (origin !== config.publicUrl.origin) throw new AppError('CSRF');
-      if (!safeEqual(req.headers['x-csrf-token'], req.session!.csrfToken)) throw new AppError('CSRF');
+      if (!safeEqual(req.headers['x-csrf-token'], req.session.csrfToken)) throw new AppError('CSRF');
     }
   });
 }

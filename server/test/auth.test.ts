@@ -83,6 +83,7 @@ describe('OIDC login', () => {
   it('rejects a replayed callback', async () => {
     const a = await startAttempt();
     expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(302);
+    expect((t.db.prepare('SELECT count(*) AS n FROM login_attempts WHERE state = ?').get(a.params.get('state')) as { n: number }).n).toBe(0);
     expect((await t.app.inject({ url: a.url, headers: { cookie: a.cookie } })).statusCode).toBe(400);
   });
   it('rejects a callback for an expired login attempt', async () => {
@@ -105,7 +106,7 @@ describe('OIDC login', () => {
     expect(names().sid).toBe('__Host-fs_sid');
     expect(c).toMatch(/^__Host-fs_login=/);
     expect(c).toMatch(/Secure/);
-    expect(c).toMatch(/Path=\//);
+    expect(c).toMatch(/Path=\/(;|$)/);
     expect(c).not.toMatch(/Domain=/i);
   });
   it('rejects a callback without a login cookie even if state is supplied', async () => {
@@ -114,11 +115,21 @@ describe('OIDC login', () => {
   });
   it.each([
     ['https://evil.example/'], ['//evil.example'], ['/\\evil.example'], ['/\t/evil.example/'], ['/\r/evil.example/'],
+    ['/..//evil.example/'], ['/.//evil.example'], ['/a/../..//evil.example'], ['/%2e%2e//evil.example/'],
   ])('rejects returnTo %s', async (rt) => {
     const r = await t.app.inject(`/auth/login?returnTo=${encodeURIComponent(rt)}`);
     const attempt = t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string };
     expect(r.statusCode).toBe(302);
     expect(attempt.return_to).toBe('/');
+  });
+  it('redirects to / after a full login with a dot-segment returnTo', async () => {
+    const start = await t.app.inject(`/auth/login?login_hint=testuser&returnTo=${encodeURIComponent('/..//evil.example/')}`);
+    const cookie = String(start.headers['set-cookie']).split(';')[0]!;
+    const idp = await fetch(String(start.headers.location), { redirect: 'manual' });
+    const back = new URL(idp.headers.get('location')!);
+    const cb = await t.app.inject({ url: back.pathname + back.search, headers: { cookie } });
+    expect(cb.statusCode).toBe(302);
+    expect(cb.headers.location).toBe('/');
   });
   it('keeps a same-origin relative returnTo', async () => {
     await t.app.inject(`/auth/login?returnTo=${encodeURIComponent('/Fotos?x=1')}`);
@@ -148,6 +159,15 @@ describe('CSRF', () => {
     const r = await t.app.inject({ method: 'POST', url: '/auth/logout', headers: { cookie: s.cookie, origin: 'https://files.example.com' } });
     expect(r.statusCode).toBe(403);
     expect(r.json()).toEqual({ code: 'CSRF' });
+  });
+  it('rejects a present but wrong same-length token and a token prefix', async () => {
+    const s = await login(t);
+    const send = (tok: string) => t.app.inject({ method: 'POST', url: '/auth/logout',
+      headers: { cookie: s.cookie, 'x-csrf-token': tok, origin: 'https://files.example.com' } });
+    const wrong = s.csrf.replace(/./g, 'x');
+    expect(wrong).toHaveLength(s.csrf.length);
+    expect((await send(wrong)).json()).toEqual({ code: 'CSRF' });
+    expect((await send(s.csrf.slice(0, s.csrf.length / 2))).statusCode).toBe(403);
   });
   it('rejects a mutating request from a foreign origin even with the token', async () => {
     const s = await login(t);

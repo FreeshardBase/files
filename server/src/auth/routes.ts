@@ -18,8 +18,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const safeReturnTo = (v: unknown): string => {
     // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
     if (typeof v !== 'string' || !v.startsWith('/') || /[\x00-\x1f\x7f\\]/.test(v)) return '/';
+    if (v.split('?')[0]!.split('#')[0]!.split('/').some((seg) => seg === '.' || seg === '..')) return '/';
     const u = new URL(v, config.publicUrl);
-    return u.origin === config.publicUrl.origin ? u.pathname + u.search + u.hash : '/';
+    if (u.origin !== config.publicUrl.origin) return '/';
+    const out = u.pathname + u.search + u.hash;
+    return out.startsWith('/') && !out.startsWith('//') ? out : '/';
   };
   const secure = config.publicUrl.protocol === 'https:';
   const cookieBase = { httpOnly: true, sameSite: 'lax' as const, secure, path: '/' };
