@@ -555,3 +555,14 @@ Question: personal OneDrive sends downloads from `my.microsoftpersonalcontent.co
 Decision: the allowlist in `cloud/graph.ts` adds `*.microsoftpersonalcontent.com` and `*-mediap.svc.ms`, next to `*.sharepoint.com`, `*.1drv.com`, `*.livefilestore.com` and `*.onedrive.com`. It stays a fixed list in code, https only, never taken from a request, and content hosts still never get the bearer token. The fake Graph now tags every pre-signed URL with the Microsoft host the real API uses for it (`/ms/<host>/…` on the fake's origin; personal OneDrive and a SharePoint library differ). The fake provider's `contentHost` checks that host against the production allowlist, so a host the list misses fails in the suite as it does against Microsoft.
 
 Why: both are Microsoft-owned domains seen in the field (gvfs#736 for the personal downloads; the `svc.ms` media service for thumbnails). Taking only the `-mediap` hosts of `svc.ms` covers the thumbnails and keeps the list narrow. The fake used to redirect to its own origin, which every check accepted, so the gap stayed invisible until real accounts failed (as in #201).
+## 2026-10-16: v1.1 scope from the deferred list
+
+Question: the owner wanted the deferred features (spec §2.2) reconsidered. Which ones come in, and which ones go?
+
+Decision: spec §2.3. Nine features come in as v1.1 issues #211–#219. Five are dropped. Branding moves to the platform (freeshard#256), and the rest stays deferred.
+
+Why:
+- **Sources:** The owner's target group is not yet advanced users, so S3 waits. Nextcloud should come later with a proper login flow instead of a WebDAV URL. pCloud is the one well-known consumer alternative to Dropbox with a clean OAuth API.
+- **Tier 2:** Every item there is costly to build and to run on a small shard.
+- **Branding:** Calendar wants it too, so it belongs to the shard and not to each app.
+- **Dual-pane and tabs:** They are settings that are off by default, so the default UI stays simple.

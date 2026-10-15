@@ -50,6 +50,38 @@ Legal hold, the "E2E vaults", malware scan, OCR, media transcription, full-text 
 
 These are **deferred, not rejected**: the owner wants them reconsidered after v1. They are removed from the code now because the current implementations are fake or unsafe, and kept visible in one tracking issue (label `deferred`) that links each feature to its old issue. When one is picked up, it gets a new spec section and new issues; old code from the archive tag is reference only. S3 and WebDAV as sources are the most likely first.
 
+### 2.3 v1.1 scope (owner review of §2.2, 2026-10-16)
+
+The owner reviewed the deferred list. Picked up, each with its own issue (label `v1.1`):
+
+| Feature | Issue | Constraint |
+|---|---|---|
+| pCloud as a source | #211 | The only new provider for now. It uses the same StorageBackend contract, has a fake that matches the real API, and has live suites. |
+| Tags | #212 | Private to each member and follow path cascades. No free text beyond the tag name. |
+| Comments | #213 | Visible to whoever can access the item. Plain text only. |
+| Smart folders | #214 | Saved structured queries across sources. No query language and no regex. |
+| Batch rename | #215 | Literal find and replace, no regex (#121). There is a preview, and nothing runs while a conflict is flagged. |
+| Duplicate finder | #216 | Review only; it never deletes automatically. Size and hash are re-checked right before a delete (#100). |
+| File requests | #217 | Upload-only public links. Names can never leave the target folder (#94). |
+| Dual-pane view | #218 | A setting, off by default. Actions target the focused pane (#109). |
+| Browser-style tabs | #219 | A setting, off by default. Selection is kept per tab (#88). |
+
+Dropped, not wanted:
+- legal hold, because shards are too small for it
+- MOVEit
+- the failover provider, which contradicts the live view without mirroring
+- presence, which is only useful with co-editing
+- the bitrot scanner, which is the filesystem's job
+
+Moved to the platform: branding, set once for the whole shard (FreeshardBase/freeshard#256). Files only consumes it.
+
+Still deferred:
+- S3, and Nextcloud via Login Flow v2 instead of a raw WebDAV link
+- other providers (HiDrive, Box, Koofr), the outgoing WebDAV client and URL import
+- every resource-heavy item: OCR and full-text, transcription, malware scan, E2E vaults, Office, editors, automation, webhooks and PATs, the Paperless and Immich hand-off
+- bandwidth throttling, whose goal is still open
+- federation, which waits for FreeshardBase/freeshard#167
+
 ## 3. Architecture
 
 ```
