@@ -22,6 +22,12 @@ export type DriveEndpoints = {
   api: string; upload: string;
   /** Hosts a content or thumbnail download may be redirected to (pre-signed URLs). Nothing else is followed. */
   contentHost(u: URL): boolean;
+  /**
+   * Hosts a file's `thumbnailLink` may point at. Drive requires the link of a file not shared publicly to be fetched
+   * with credentials, so this first request carries the bearer token; a redirect from it is followed only to a
+   * content host and without the token (DECISIONS, #203).
+   */
+  thumbnailHost(u: URL): boolean;
 };
 export const GOOGLE_DRIVE_ENDPOINTS: DriveEndpoints = {
   authorization: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -29,6 +35,8 @@ export const GOOGLE_DRIVE_ENDPOINTS: DriveEndpoints = {
   api: 'https://www.googleapis.com/drive/v3',
   upload: 'https://www.googleapis.com/upload/drive/v3',
   contentHost: (u) => u.protocol === 'https:' && (u.hostname === 'www.googleapis.com' || u.hostname.endsWith('.googleusercontent.com')),
+  // Stored files: `lh3.googleusercontent.com/…=s220`; Google Docs, Sheets and Slides: `docs.google.com/feeds/vt?…&sz=s220`.
+  thumbnailHost: (u) => u.protocol === 'https:' && (u.hostname === 'docs.google.com' || u.hostname.endsWith('.googleusercontent.com')),
 };
 /** The whole Drive (DECISIONS #149): browsing needs it; `drive.file` would only show files the app created. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
@@ -157,7 +165,7 @@ export class GoogleDriveBackend implements StorageBackend {
   private children(parentId: string) { return this.query(`${quote(parentId)} in parents and trashed = false`); }
 
   /**
-   * Content bytes: Drive may answer with a redirect to a pre-signed URL. It is followed only to the provider's content
+   * Content bytes or a thumbnail: Drive may answer with a redirect to a pre-signed URL. It is followed only to the provider's content
    * hosts and without the bearer token, so neither a foreign host nor the token ever gets a request.
    */
   private async content(url: URL, range?: ByteRange): Promise<Response> {
@@ -543,9 +551,12 @@ export class GoogleDriveBackend implements StorageBackend {
     const f = await this.resolve(normalizeUserPath(path));
     if (isFolder(f) || f.thumbnailLink === undefined) return null;
     const u = new URL(f.thumbnailLink);
+    if (!this.ep.thumbnailHost(u)) throw new Error(`Google Drive gave a thumbnail on ${u.host}, which is not one of its thumbnail hosts`);
+    // The size is `=s220` at the end of the path (stored files) or `sz=s220` in the query (Google Docs); a link in
+    // neither shape is fetched as it is and resized below.
     u.pathname = u.pathname.replace(/=s\d+$/, `=s${size}`);
-    if (!this.ep.contentHost(u)) throw new Error(`Google Drive gave a thumbnail on ${u.host}, which is not one of its content hosts`);
-    const res = await this.client.fetch(u, { redirect: 'manual' });
+    u.search = u.search.replace(/([?&]sz=)s\d+(?=&|$)/, `$1s${size}`);
+    const res = await this.content(u);
     if (res.status === 404) { await discard(res); return null; }
     if (!res.ok || !res.body) await failure(res, 'thumbnail');
     const out = sharp().rotate().resize(size, size, { fit: 'inside', withoutEnlargement: true }).webp();
