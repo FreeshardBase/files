@@ -8,11 +8,13 @@ import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
 import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import ItemMenu from './ItemMenu.vue';
 
-export type ItemAction = 'download' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
+export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
 // `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
 // offered, the change keys do nothing and rows are not dragged. `shareable`: the items are the caller's own (#146).
+// `starred`: the paths of this source that are favourites (#155); every row has the star toggle.
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
-  editable?: boolean; shareable?: boolean }>(), { source: 'home', selected: () => [], editable: true, shareable: false });
+  editable?: boolean; shareable?: boolean; starred?: string[] }>(),
+{ source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [] });
 const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
 }>();
@@ -43,13 +45,18 @@ function selectRange(i: number) {
 // An action on a row applies to the whole selection if the row is part of it, else to the row alone.
 const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path) ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
 
-// The destructive action stays last; share and details sit between the file actions and it.
+// The destructive action stays last; favourite, share and details sit between the file actions and it.
 const menuItems = computed(() => ([
-  'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []),
+  'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite',
   ...(props.shareable ? ['share'] as const : []), 'details', ...(props.editable ? ['trash'] as const : []),
 ] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
-// Rename, share and details act on the row itself, never on the whole selection.
-const SINGLE = new Set(['rename', 'share', 'details']);
+// The favourite entry says what choosing it does to this row (#155).
+const starredSet = computed(() => new Set(props.starred));
+const isFavourite = (e: Entry) => starredSet.value.has(e.path);
+const itemsFor = (e: Entry) => menuItems.value.map((m) => m.id === 'favourite'
+  ? { id: m.id, label: t(isFavourite(e) ? 'favourites.remove' : 'favourites.add') } : m);
+// Rename, favourite, share and details act on the row itself, never on the whole selection.
+const SINGLE = new Set(['rename', 'favourite', 'share', 'details']);
 function fromMenu(i: number, id: string) { emit('action', id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i)); }
 
 function focusRow(i: number) {
@@ -139,6 +146,12 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
           role="columnheader"
         >
           {{ $t('folder.columns.modified') }}
+        </th><th
+          scope="col"
+          role="columnheader"
+          class="star-cell"
+        >
+          <span class="visually-hidden">{{ $t('favourites.column') }}</span>
         </th><th
           scope="col"
           role="columnheader"
@@ -234,13 +247,33 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
           </template>
         </td>
         <td
+          class="star-cell"
+          role="cell"
+        >
+          <button
+            type="button"
+            class="icon-button star-toggle"
+            tabindex="-1"
+            :aria-label="$t('favourites.toggle', { name: e.name })"
+            :aria-pressed="isFavourite(e)"
+            @click.stop="emit('action', 'favourite', [e])"
+            @dblclick.stop
+          >
+            <span
+              class="icon"
+              :class="isFavourite(e) ? 'icon-star-filled' : 'icon-star'"
+              aria-hidden="true"
+            />
+          </button>
+        </td>
+        <td
           class="menu-cell"
           role="cell"
         >
           <ItemMenu
             :ref="(el) => { if (el) menus[i] = el as InstanceType<typeof ItemMenu> }"
             :label="$t('actions.menu', { name: e.name })"
-            :items="menuItems"
+            :items="itemsFor(e)"
             @select="fromMenu(i, $event)"
             @closed="focusRow(i)"
           />

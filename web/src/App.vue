@@ -10,8 +10,10 @@ import SearchBox from './components/SearchBox.vue';
 import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
 import { folderRoute } from './api/paths.ts';
+import { useFavouritesStore } from './stores/favourites.ts';
 const session = useSessionStore();
 const connections = useConnectionsStore();
+const favourites = useFavouritesStore();
 const transfers = useTransfersStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
@@ -22,6 +24,7 @@ onMounted(async () => {
   await session.load();
   if (session.me) {
     void connections.load(); // the member's clouds in the sidebar (#148)
+    void favourites.load(); // the star of every item (#155)
     transfers.connect(); // the member's transfer jobs, live (#152)
   }
   if (!showLoginFailed) return;
@@ -105,6 +108,16 @@ onMounted(async () => {
             aria-hidden="true"
           />
           {{ $t('nav.migrate') }}
+        </RouterLink>
+        <RouterLink
+          to="/favourites"
+          active-class="active"
+        >
+          <span
+            class="icon icon-star"
+            aria-hidden="true"
+          />
+          {{ $t('nav.favourites') }}
         </RouterLink>
         <RouterLink
           to="/recent"

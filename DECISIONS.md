@@ -397,3 +397,21 @@ Cloud. `GET /api/v1/versions` lists the provider's revisions (the newest marked 
 UI. The details drawer of a file has a "Versions" section: newest first, date and size, "Download" (home) and "Restore" (with `edit`), each with an accessible label naming the date; a source without versions leaves the section out, a file without versions says that replacing it keeps the old content. A restore needs no confirmation, since nothing is lost: the replaced content becomes a version. After a restore the folder relists.
 
 Not in this issue: a diff view (out, as the issue says), Drive restore, cloud revision downloads, versions for edits made outside the app.
+
+## 2026-10-15: favourites across sources (#155, absorbs #28)
+
+Question: what can be starred, how do favourites follow moves and deletes outside the home, what does "unavailable" mean and when is it decided, in which order are they listed, and what does a favourite open?
+
+Model. A `favourites` row (migration 015) is `{member, source, path, type}`, one per item (`UNIQUE (user_id, source, path)`), for any source the member can read: `home`, their own `conn:<id>`, and `share:<id>` (the path inside the share). `POST /api/v1/favourites` resolves the source with `resolveSource` and `stat`s the item, so only something the caller can reach is starred and the stored path and type are the backend's; starring again answers the existing row (200). The root of a source is refused (`PATH_INVALID`): it is already in the sidebar. `DELETE /api/v1/favourites/:id` removes only the caller's own row; another member's id is `NOT_FOUND`. There is no limit on the number; it is a list a person curates by hand.
+
+Moves and deletes. In the home the table is in `PATH_TABLES` with `sourceColumn`, so a rename or move (also of a folder above) rewrites the rows and a delete removes them, in the operation's transaction (#137). A delete removes rather than orphans: a favourite is a shortcut, and a shortcut to something in the trash helps nobody; restoring the item does not star it again. In another source the provider has no transaction, so the sources route rewrites (move) or removes (delete) the caller's rows of that source once the provider call has succeeded. Changes made elsewhere (at the provider, by the owner of a share, or by a transfer job between sources) are not followed; such a favourite opens its folder, which shows the truth.
+
+Unavailable. Unlinking a connection marks its favourites gone (`gone_at`, a new `goneColumn` of `PathTable` that `orphanSourceRefs` sets instead of deleting) in the unlink's transaction. A gone row is never resolved again, even if the same account is connected again (that is a new connection id and a new source). In addition the list asks `sourceFor` for each source still in use, so a revoked or orphaned share also shows as unavailable. Availability is decided only by resolving the row's own source; a row is never matched against another source with the same path (#95). An unavailable favourite stays in the list with "Unavailable" and "Remove", and has no "Open", so the member sees what is gone instead of it silently disappearing.
+
+Order. In the order they were starred (oldest first), so entries keep their place as the list grows.
+
+Opening. As in search and Recent: a folder opens itself; a file opens its folder with `?select=`, which selects and focuses the file.
+
+UI. The star is a toggle button (`aria-pressed`, labelled "Favourite: <name>") in every row of the list, the row menu has "Add to favourites" or "Remove from favourites", and the details drawer has the same toggle. All three act on the one item, never on the selection. Favourites sits in the sidebar before Recent (spec §3.8 order) with a line star icon; the view reuses the Recent table (name, location as source and folder, "Open", "Remove") and has its own empty-state sentence (#127).
+
+Not in this issue: starring from the gallery view (it has no row menu yet), reordering, and following changes made outside the app.

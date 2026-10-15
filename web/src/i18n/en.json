@@ -13,7 +13,8 @@
     "trash": "Trash",
     "connections": "Cloud accounts",
     "connection": "{provider}: {account}",
-    "migrate": "Move to shard"
+    "migrate": "Move to shard",
+    "favourites": "Favourites"
   },
   "connections": {
     "title": "Cloud accounts",
@@ -56,6 +57,28 @@
     "noSites": "No site found.",
     "noLibraries": "This site has no document library.",
     "connect": "Connect library"
+  },
+  "favourites": {
+    "title": "Favourites",
+    "empty": "No favourites yet. Star files and folders in any of your places to find them here.",
+    "columns": {
+      "name": "Name",
+      "location": "Location",
+      "actions": "Actions"
+    },
+    "column": "Favourite",
+    "toggle": "Favourite: {name}",
+    "drawerToggle": "Favourite",
+    "add": "Add to favourites",
+    "remove": "Remove from favourites",
+    "added": "“{name}” added to favourites",
+    "removed": "“{name}” removed from favourites",
+    "failedHeading": "The favourite could not be changed:",
+    "open": "Open",
+    "openLabel": "Open {name}",
+    "removeShort": "Remove",
+    "removeLabel": "Remove {name} from favourites",
+    "unavailable": "Unavailable"
   },
   "recent": {
     "title": "Recent",
@@ -148,7 +171,8 @@
     "pasteMove": "Move here ({count})",
     "pasteCopy": "Copy here ({count})",
     "clearClipboard": "Cancel moving or copying",
-    "trash": "Move to trash"
+    "trash": "Move to trash",
+    "favourite": "Favourite"
   },
   "rename": {
     "title": "Rename",

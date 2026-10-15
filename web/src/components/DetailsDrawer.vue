@@ -1,14 +1,16 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
 // member's own home it lists the members the item is shared with and offers "Share …"; in a share it shows the caller's
-// own access. A file's versions follow (#154). Esc or "Close" closes it; focus returns to the row.
-import { onMounted, ref, useId } from 'vue';
+// own access. A file's versions follow (#154); the item can be starred (#155). Esc or "Close" closes it; focus returns
+// to the row.
+import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, Entry, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
+import { useFavouritesStore } from '../stores/favourites.ts';
 
 const props = defineProps<{ source: string; entry: Entry; access: Access; returnFocus?: HTMLElement | null }>();
 const emit = defineEmits<{ close: []; share: []; restored: [entry: Entry] }>();
@@ -18,6 +20,18 @@ const shares = ref<Share[] | null>(null);
 const error = ref('');
 const whoId = useId();
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
+// The item's star (#155), the same toggle as in its row.
+const favourites = useFavouritesStore();
+const favourite = computed(() => favourites.find(props.source, props.entry.path) !== undefined);
+const favouriteError = ref('');
+async function toggleFavourite() {
+  favouriteError.value = '';
+  try { await favourites.toggle(props.source, props.entry.path); }
+  catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    favouriteError.value = t(`errors.${e.code}`);
+  }
+}
 
 onMounted(async () => {
   if (!own) return;
@@ -91,7 +105,26 @@ onMounted(async () => {
       :entry="entry"
       @restored="emit('restored', $event)"
     />
+    <p
+      v-if="favouriteError"
+      role="alert"
+    >
+      {{ favouriteError }}
+    </p>
     <template #actions>
+      <button
+        type="button"
+        class="button star-button"
+        :aria-pressed="favourite"
+        @click="toggleFavourite"
+      >
+        <span
+          class="icon"
+          :class="favourite ? 'icon-star-filled' : 'icon-star'"
+          aria-hidden="true"
+        />
+        {{ t('favourites.drawerToggle') }}
+      </button>
       <button
         v-if="own"
         type="button"

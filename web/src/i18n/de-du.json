@@ -13,7 +13,8 @@
     "trash": "Papierkorb",
     "connections": "Cloud-Konten",
     "connection": "{provider}: {account}",
-    "migrate": "Auf den Shard umziehen"
+    "migrate": "Auf den Shard umziehen",
+    "favourites": "Favoriten"
   },
   "connections": {
     "title": "Cloud-Konten",
@@ -56,6 +57,28 @@
     "noSites": "Keine Website gefunden.",
     "noLibraries": "Diese Website hat keine Dokumentbibliothek.",
     "connect": "Bibliothek verbinden"
+  },
+  "favourites": {
+    "title": "Favoriten",
+    "empty": "Noch keine Favoriten. Markiere Dateien und Ordner an deinen Orten mit dem Stern, dann findest du sie hier.",
+    "columns": {
+      "name": "Name",
+      "location": "Ort",
+      "actions": "Aktionen"
+    },
+    "column": "Favorit",
+    "toggle": "Favorit: {name}",
+    "drawerToggle": "Favorit",
+    "add": "Zu Favoriten hinzufügen",
+    "remove": "Aus Favoriten entfernen",
+    "added": "„{name}“ zu den Favoriten hinzugefügt",
+    "removed": "„{name}“ aus den Favoriten entfernt",
+    "failedHeading": "Der Favorit konnte nicht geändert werden:",
+    "open": "Öffnen",
+    "openLabel": "{name} öffnen",
+    "removeShort": "Entfernen",
+    "removeLabel": "{name} aus den Favoriten entfernen",
+    "unavailable": "Nicht verfügbar"
   },
   "recent": {
     "title": "Zuletzt geändert",
@@ -148,7 +171,8 @@
     "pasteMove": "Hierher verschieben ({count})",
     "pasteCopy": "Hierher kopieren ({count})",
     "clearClipboard": "Verschieben oder Kopieren abbrechen",
-    "trash": "In den Papierkorb"
+    "trash": "In den Papierkorb",
+    "favourite": "Favorit"
   },
   "rename": {
     "title": "Umbenennen",

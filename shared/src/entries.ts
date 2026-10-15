@@ -88,6 +88,27 @@ export type RecentItem = z.infer<typeof RecentItemSchema>;
 export const RecentListSchema = z.object({ items: z.array(RecentItemSchema) });
 export type RecentList = z.infer<typeof RecentListSchema>;
 
+/** A file or folder the member pinned (#155), in any of their sources, at its current path. */
+export const FavouriteSchema = z.object({
+  id: z.number().int().positive(),
+  source: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().startsWith('/'),
+  type: z.enum(['file', 'directory']),
+  /** False once the source is gone (an unlinked connection, a revoked share): the entry is shown but never opened. */
+  available: z.boolean(),
+  createdAt: z.iso.datetime(),
+});
+export type Favourite = z.infer<typeof FavouriteSchema>;
+
+/** `GET /api/v1/favourites`: the caller's own favourites, in the order they were added. */
+export const FavouriteListSchema = z.object({ items: z.array(FavouriteSchema) });
+export type FavouriteList = z.infer<typeof FavouriteListSchema>;
+
+/** `POST /api/v1/favourites`: pin one item of a source the caller can read. */
+export const CreateFavouriteRequest = z.object({ source: z.string().min(1), path: z.string().min(1) }).strict();
+export type CreateFavouriteRequest = z.infer<typeof CreateFavouriteRequest>;
+
 /** `GET /api/v1/search?q=`: part of a name, matched literally and without regard to case. */
 export const SearchQuery = z.object({ q: z.string().trim().min(1).max(200) });
 export type SearchQuery = z.infer<typeof SearchQuery>;

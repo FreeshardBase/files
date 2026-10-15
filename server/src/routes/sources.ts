@@ -9,6 +9,8 @@ import { resolveSource, type Access } from '../storage/resolveSource.ts';
 import { CONTENT_CSP, disposition, readRanged, sendContent } from '../http/content.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { zipStream, type ZipRoot } from '../storage/zip.ts';
+import { deleteFavourites, moveFavourites } from '../storage/favourites.ts';
+import { requireUser } from '../auth/guard.ts';
 
 const PathQ = z.object({ path: z.string().min(1) });
 const MAX_ZIP_PATHS = 1000;
@@ -130,11 +132,15 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(await b.mkdir(body.path));
   });
 
-  // Rename is a move within the same folder.
+  // Rename is a move within the same folder. In the home the caller's favourites follow inside the move's transaction
+  // (PATH_TABLES); in another source the provider has no transaction, so they follow once the move is done (#155).
   app.post('/api/v1/sources/:source/move', async (req) => {
+    const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = TransferRequest.parse(req.body);
-    return b.move(body.from, body.to, body.onCollision);
+    const entry = await b.move(body.from, body.to, body.onCollision);
+    if (source !== 'home') moveFavourites(app.deps.db, requireUser(req).user.id, source, normalizeUserPath(body.from), entry.path);
+    return entry;
   });
 
   app.post('/api/v1/sources/:source/copy', async (req, reply) => {
@@ -143,11 +149,13 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(await b.copy(body.from, body.to, body.onCollision));
   });
 
-  // Moves every path to the trash in one transaction: all or nothing.
+  // Moves every path to the trash in one transaction: all or nothing. Favourites go as with a move (#155).
   app.post('/api/v1/sources/:source/delete', async (req, reply) => {
+    const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = DeleteRequest.parse(req.body);
     await b.delete(body.paths);
+    if (source !== 'home') deleteFavourites(app.deps.db, requireUser(req).user.id, source, body.paths.map(normalizeUserPath));
     return reply.status(204).send();
   });
 }

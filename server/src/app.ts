@@ -36,6 +36,7 @@ import { TransferEngine } from './storage/transfers.ts';
 import { registerTransferRoutes } from './routes/transfers.ts';
 import { registerMigrationRoutes } from './routes/migrations.ts';
 import { registerVersionRoutes } from './routes/versions.ts';
+import { registerFavouriteRoutes } from './routes/favourites.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -129,6 +130,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerTransferRoutes(app);
   await registerMigrationRoutes(app);
   await registerVersionRoutes(app);
+  await registerFavouriteRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

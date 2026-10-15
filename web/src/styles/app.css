@@ -459,6 +459,18 @@ body {
 .icon-trash {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6'/%3E%3C/svg%3E");
 }
+/* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
+.icon-star, .icon-star-filled {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z'/%3E%3C/svg%3E");
+}
+.icon-star-filled {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z'/%3E%3C/svg%3E");
+}
+.star-toggle .icon-star { background: var(--ink-muted); }
+.file-list .star-cell { width: 1%; padding-left: 0; padding-right: 0; }
+.star-button { display: inline-flex; align-items: center; gap: var(--space-2); }
+.star-button .icon { width: 16px; height: 16px; }
+.favourite-unavailable { display: block; font-size: var(--fs-small); color: var(--danger); }
 
 /* Phone width: header row hidden, size and date fold into one secondary line under the name. */
 @media (max-width: 600px) {
@@ -472,8 +484,8 @@ body {
   .file-list td { padding: 0; border: 0; }
   /* One line: checkbox, name, action menu (a 44px touch target); size and date wrap below, under the name. */
   .file-list td.select { order: 0; display: flex; align-items: center; width: auto; padding: 0; }
-  .file-list td.name { order: 1; flex: 1 1 calc(100% - 96px); min-width: 0; }
-  .file-list td.menu-cell { order: 2; width: auto; padding: 0; }
+  .file-list td.name { order: 1; flex: 1 1 calc(100% - 140px); min-width: 0; }
+  .file-list td.star-cell, .file-list td.menu-cell { order: 2; width: auto; padding: 0; }
   .file-list td.num { order: 3; font-size: var(--fs-small); padding-bottom: var(--space-1); }
   .file-list td.size { margin-left: calc(18px + var(--space-3)); }
   .file-list td.size:empty + td.date { margin-left: calc(18px + var(--space-3)); }
