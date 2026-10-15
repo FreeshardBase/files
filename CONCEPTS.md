@@ -102,6 +102,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `transfers.ts` | `CreateTransferRequest` and `TransferJob` (#152). |
 | `storage.ts` | The storage overview and member quotas (#156): `SetQuotaRequest`, `MemberId`, `HomeUsage`, `StorageOverview`, `MemberUsage`. |
 | `appPasswords.ts` | App passwords (#157): `CreateAppPasswordRequest`, `AppPassword`, the list and create answers, `MAX_APP_PASSWORDS`. |
+| `settings.ts` | A member's settings (#159): `LOCALES`, `THEMES`, `Settings` (`locale` null = not chosen), `DEFAULT_SETTINGS`. |
 
 ### `server/src`
 
@@ -120,6 +121,8 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `auth/guard.ts` | Deny-by-default hook, session loading, CSRF checks, `requireUser`, `requireAdmin` (the role from the OIDC claim, else `FORBIDDEN`); for `appPassword` routes (WebDAV) HTTP Basic with an app password instead, and `requireDavUser`. |
 | `auth/appPasswords.ts` | App passwords (#157): generation, argon2id hash and lookup prefix, list, create (limit), revoke, `authenticateAppPassword` (one row by prefix, verified passwords remembered for five minutes per row). |
 | `routes/appPasswords.ts` | `/api/v1/app-passwords`: list, create (the password shown once), revoke. |
+| `settings.ts` | A member's language and theme (#159): `settingsOf` (the defaults without a row), `saveSettings` (one upsert). |
+| `routes/settings.ts` | `/api/v1/settings`: the caller's own settings, `GET` and `PUT` (replaces both fields). `/api/v1/me` carries them too. |
 | `dav/routes.ts` | WebDAV class 1 and 2 on the caller's home (#157): OPTIONS, GET, HEAD, PUT, DELETE (to the trash), PROPFIND (depth 0/1), PROPPATCH, MKCOL, COPY, MOVE (`Overwrite`), LOCK, UNLOCK; `If` and lock-token checks. |
 | `dav/paths.ts` | Request paths, Destination and `If` tags to home paths (segment-wise decoding, no URL resolution), hrefs. |
 | `dav/locks.ts` | `LockStore`: in-memory write locks per member, protection and conflict rules, timeouts. |
@@ -177,7 +180,10 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 
 | File | Purpose |
 | :--- | :--- |
-| `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync; registers the service worker in the built app. |
+| `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync, the theme; registers the service worker in the built app. |
+| `theme.ts` | The theme (#159): `data-theme` on `<html>` from the setting; "system" follows the device's `prefers-color-scheme`, live. The device's last known setting paints the first frame. |
+| `stores/settings.ts` | Pinia store of the member's language and theme: `apply` (from `/api/v1/me` or a save), `save` (applies only what the server confirmed). |
+| `components/PreferencesSection.vue` | The settings page's language and theme radios (#159): saved on change, one save after another; a refusal shows in the alert line and the radios return to the stored choice. |
 | `../public/sw.js` | The service worker (#158): caches the app shell (index.html, the bundle it references, manifest, icons; one build at a time), answers app pages network first with the cached shell offline, never the API; takes the share target's POST into the share inbox and redirects to `/share-target/<id>`. |
 | `../public/manifest.webmanifest` | The web app manifest: name, `start_url` `/home`, standalone, icons (`public/icons/`), the `share_target` (POST, multipart, `files`). |
 | `shareInbox.ts` | The share inbox in IndexedDB, written by the service worker: `getShare`, `deleteShare`. |
@@ -204,7 +210,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `views/TrashView.vue` | The trash: list, restore (collision dialog), delete permanently and empty trash (both confirmed). |
 | `views/StorageView.vue` | "Storage usage" (#156): the shard's usage against the quota with a usage bar and the breakdown, each cloud connection's provider quota (a bar where the provider has a limit), the largest folders with links. |
 | `views/MembersView.vue` | "Members" (#156, admin only in the sidebar; the server refuses everyone else): each member's usage and quota, a form per row to set it in MB or GB, "Remove quota". |
-| `views/SettingsView.vue` | "Settings" (#157): the WebDAV address and the hint about the user name; app passwords: create (shown once in an `<AppDialog>` with "Copy"), list with created and last used, revoke (confirmed); a refused create stays visible as an alert. |
+| `views/SettingsView.vue` | "Settings": language and theme (#159, `PreferencesSection`); (#157) the WebDAV address and the hint about the user name; app passwords: create (shown once in an `<AppDialog>` with "Copy"), list with created and last used, revoke (confirmed); a refused create stays visible as an alert. |
 | `stores/appPasswords.ts` | Pinia store for `/api/v1/app-passwords`: list, `create`, `revoke`. |
 | `components/UsageBar.vue` | A usage gauge (`role="meter"`), red from 90 %. |
 | `stores/storage.ts` | Pinia stores for `/api/v1/storage` (`useStorageStore`) and the admin's `/api/v1/admin/members` (`useMembersStore`, `setQuota`). |
@@ -240,7 +246,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `components/UploadButton.vue` | File picker and folder picker emitting chosen files with their relative path; exposes the file input as the focus target for dialogs it causes. |
 | `components/AppDialog.vue` | The only dialog primitive (lint-enforced): `role="dialog"`, `aria-modal`, labelled title, focus trap, inert background, root scroll lock, Esc emits `close`, focus restored on unmount. |
 | `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Used by upload, rename, move, copy and restore. |
-| `i18n/index.ts` | vue-i18n setup and `resolveLocale` (stored, browser, default Deutsch Du). |
+| `i18n/index.ts` | vue-i18n setup, `resolveLocale` (the member's setting, browser, default Deutsch Du) and `applyLocale` (also caches the setting on the device for the next first paint and the public share page). |
 | `i18n/htmlLang.ts` | Keeps `<html lang>` in step with the locale. |
 | `i18n/de-du.json`, `de-sie.json`, `en.json` | The three UI languages; every key in every file. |
 | `styles/tokens.css` | Design tokens from the guide, light and dark. |
@@ -251,7 +257,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 
 - Google Drive (#149), Dropbox (#150), OneDrive and SharePoint (#151) are the real providers. Drive shows only "My Drive" (no shared drives); none adds anything to Recent yet. A Dropbox or Graph delete that fails halfway leaves the items before it in the provider's deleted files or recycle bin (no transaction at the provider). A SharePoint connection's library cannot be changed (connect another one), and national Microsoft clouds are not supported. The share dialog is offered only in the home; a connection's folder view uploads (one `PUT` per file, not resumable across a reload) but has no share button yet.
 - Members are whoever has signed in to Files once; there is no member directory from shard_core yet. Upload into a share is not offered in the SPA. Copies and moves between a share with `edit` and another source run as transfer jobs (#152); a read share offers no copy in the SPA yet.
-- No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
+- No platform language preference yet (freeshard#168): without a language setting (#159) the browser decides. The installed app's title bar colour (`theme-color`) follows the device, not an explicit theme setting.
 - Search covers the home and every connection whose backend has `search?` (Google Drive, Dropbox and Graph have, #149–#151; their word matching finds a subset of a substring search). Shares are not searched (decided in #146). The index sees changes made outside the app only after the rebuild command.
 - WebDAV serves the home only (no shares, no cloud sources), its locks are lost on restart, and PROPFIND refuses Depth: infinity. Public links to cloud files exist only through the API (the share dialog is home-only); a link to a folder offers no ZIP. Thumbnails exist for the home and every cloud provider. Drive revisions are listed but not restored, and cloud revisions cannot be downloaded (#154). Move and copy within a source are direct requests, not the persistent jobs of spec §3.4; only those between sources are jobs (#152). See spec §2.1 and the Phase D queue.
 - Transfer verification compares SHA-256 where the home is one side, and Google Drive's MD5 of the source file (#153); Dropbox's `content_hash` and Graph's `quickXorHash` are not checked yet (DECISIONS, #152, #153). A failed migration item is not retried by itself; the member migrates that folder again. A migration cleanup leaves the (possibly empty) folders in the cloud. A cancelled move that the app restarts before it has deleted its done sources keeps both copies.

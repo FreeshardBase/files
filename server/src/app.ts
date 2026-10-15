@@ -41,6 +41,7 @@ import { registerStorageRoutes } from './routes/storage.ts';
 import { registerAppPasswordRoutes } from './routes/appPasswords.ts';
 import { registerDavRoutes } from './dav/routes.ts';
 import { registerShareTargetRoutes } from './routes/shareTarget.ts';
+import { registerSettingsRoutes } from './routes/settings.ts';
 
 declare module 'fastify' {
   /**
@@ -143,6 +144,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerAppPasswordRoutes(app);
   await registerDavRoutes(app);
   await registerShareTargetRoutes(app);
+  await registerSettingsRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

@@ -31,6 +31,26 @@
   },
   "settings": {
     "title": "Settings",
+    "saved": "Settings saved",
+    "preferences": {
+      "heading": "Language and appearance",
+      "intro": "Applies on all your devices."
+    },
+    "language": {
+      "heading": "Language",
+      "auto": "Automatic (browser language)",
+      "names": {
+        "de-du": "Deutsch (Du)",
+        "de-sie": "Deutsch (Sie)",
+        "en": "English"
+      }
+    },
+    "theme": {
+      "heading": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "Same as the device"
+    },
     "webdav": {
       "heading": "Network drive (WebDAV)",
       "intro": "Connect your storage on the shard as a network drive: in Finder, in Windows Explorer, with davfs2 or rclone. Sign in there with an app password, not with your shard password.",

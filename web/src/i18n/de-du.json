@@ -31,6 +31,26 @@
   },
   "settings": {
     "title": "Einstellungen",
+    "saved": "Einstellungen gespeichert",
+    "preferences": {
+      "heading": "Sprache und Darstellung",
+      "intro": "Gilt auf allen deinen Geräten."
+    },
+    "language": {
+      "heading": "Sprache",
+      "auto": "Automatisch (Sprache des Browsers)",
+      "names": {
+        "de-du": "Deutsch (Du)",
+        "de-sie": "Deutsch (Sie)",
+        "en": "English"
+      }
+    },
+    "theme": {
+      "heading": "Farbschema",
+      "light": "Hell",
+      "dark": "Dunkel",
+      "system": "Wie das Gerät"
+    },
     "webdav": {
       "heading": "Netzlaufwerk (WebDAV)",
       "intro": "Binde deinen Speicher auf dem Shard als Netzlaufwerk ein: im Finder, im Windows-Explorer, mit davfs2 oder rclone. Melde dich dort mit einem App-Passwort an, nicht mit deinem Shard-Passwort.",

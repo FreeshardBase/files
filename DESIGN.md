@@ -62,6 +62,10 @@ Offline, a one-line banner sits under the header: a line "cloud crossed out" ico
 
 "Save shared files" uses the migration wizard's column: a muted intro, the shared files as a hairline list with sizes in the mono face, the folder picker, the chosen target as a sentence, then "Save here" as the one forward action (`.button.primary`) and "Discard" as a plain outline (the files are only in this browser and can be shared again).
 
+## Language and theme
+
+The guide has no settings recipe. Language and theme sit at the top of Settings, each a group of native radio buttons under a `.fs-label` legend, tinted with `accent-color: var(--data)` like the share dialog's radios, so they keep native keyboard behaviour (arrow keys move and choose). There is no save button: a choice is saved at once, confirmed in the status line, and a refusal is shown in the danger-coloured alert line. The language names are written in their own language ("Deutsch (Sie)", "English") and carry their `lang`. The theme sets `data-theme` on `<html>`; "Same as the device" follows `prefers-color-scheme`. `color-scheme` follows the theme, so native controls and scrollbars match it.
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

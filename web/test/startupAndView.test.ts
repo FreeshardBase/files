@@ -10,7 +10,7 @@ import { routes } from '../src/router.ts';
 // Upload behaviour of the folder view and the upload panel is in uploads.test.ts.
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
-const me = { id: 'u', displayName: 'Test User', role: 'admin', csrfToken: 'tok' };
+const me = { id: 'u', displayName: 'Test User', role: 'admin', csrfToken: 'tok', settings: { locale: null, theme: 'system' } };
 const i18n = () => createI18n({ legacy: false, locale: 'en', messages: { en } });
 const mk = () => {
   const router = createRouter({ history: createMemoryHistory(), routes });
