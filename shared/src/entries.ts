@@ -32,3 +32,35 @@ export const MeSchema = z.object({
   role: z.enum(['admin', 'member']), csrfToken: z.string(),
 });
 export type Me = z.infer<typeof MeSchema>;
+
+/** A trash id: 16 random bytes as hex, the name of the item's bytes in `<home>/.files/trash/`. */
+export const TrashId = z.string().regex(/^[0-9a-f]{32}$/);
+
+export const TrashItemSchema = z.object({
+  id: TrashId,
+  name: z.string().min(1),
+  originalPath: z.string().startsWith('/'),
+  type: z.enum(['file', 'directory']),
+  /** Bytes the item holds on disk; a folder counts its whole tree. */
+  size: z.number().int().nonnegative(),
+  deletedAt: z.iso.datetime(),
+  /** When the expiry job deletes it permanently. */
+  expiresAt: z.iso.datetime(),
+});
+export type TrashItem = z.infer<typeof TrashItemSchema>;
+
+export const TrashListSchema = z.object({
+  items: z.array(TrashItemSchema),
+  /** Sum of `size`: what the trash adds to the member's usage until it is purged. */
+  totalSize: z.number().int().nonnegative(),
+  retentionDays: z.number().int().positive(),
+});
+export type TrashList = z.infer<typeof TrashListSchema>;
+
+/** Body of `trash/restore`: one item back to its original path, with the collision policy for a taken name. */
+export const RestoreRequest = z.object({ id: TrashId, onCollision: CollisionPolicy });
+export type RestoreRequest = z.infer<typeof RestoreRequest>;
+
+/** Body of `trash/delete`: delete these items permanently. */
+export const PurgeRequest = z.object({ ids: z.array(TrashId).min(1).max(1000) });
+export type PurgeRequest = z.infer<typeof PurgeRequest>;

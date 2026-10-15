@@ -6,7 +6,9 @@
   },
   "nav": {
     "home": "Mein Speicher",
-    "breadcrumbRoot": "Mein Speicher"
+    "breadcrumbRoot": "Mein Speicher",
+    "sources": "Orte",
+    "trash": "Papierkorb"
   },
   "folder": {
     "empty": "Dieser Ordner ist leer.",
@@ -71,6 +73,34 @@
     "failedHeading": "Nicht erledigt:",
     "failedItem": "{name}: {reason}"
   },
+  "trash": {
+    "title": "Papierkorb",
+    "empty": "Der Papierkorb ist leer.",
+    "retention": "Gelöschte Elemente werden einen Tag aufbewahrt und danach endgültig gelöscht. | Gelöschte Elemente werden {days} Tage aufbewahrt und danach endgültig gelöscht.",
+    "usage": "{size} im Papierkorb, zählt zu deinem Speicher.",
+    "columns": {
+      "name": "Name",
+      "origin": "Ursprünglicher Ort",
+      "deleted": "Gelöscht",
+      "size": "Größe",
+      "actions": "Aktionen"
+    },
+    "restore": "Wiederherstellen",
+    "restoreLabel": "{name} wiederherstellen",
+    "delete": "Endgültig löschen",
+    "deleteLabel": "{name} endgültig löschen",
+    "emptyButton": "Papierkorb leeren",
+    "confirmEmptyTitle": "Papierkorb leeren?",
+    "confirmEmptyMessage": "Alle Elemente im Papierkorb ({count}) werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "confirmDeleteTitle": "Endgültig löschen?",
+    "confirmDeleteMessage": "„{name}“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "cancel": "Abbrechen",
+    "restored": "„{name}“ wiederhergestellt in {folder}",
+    "notRestored": "„{name}“ wurde nicht wiederhergestellt.",
+    "deleted": "„{name}“ endgültig gelöscht",
+    "emptied": "Papierkorb geleert",
+    "openFolder": "Ordner öffnen"
+  },
   "errors": {
     "UNAUTHENTICATED": "Du bist nicht mehr angemeldet.",
     "FORBIDDEN": "Dafür fehlt dir die Berechtigung.",
@@ -92,7 +122,8 @@
     "LOGIN_FAILED": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal.",
     "INTERNAL": "Etwas ist schiefgelaufen. Versuch es später noch einmal.",
     "NETWORK": "Keine Verbindung zum Shard.",
-    "TARGET_INSIDE_SOURCE": "Ein Ordner kann nicht in sich selbst verschoben oder kopiert werden."
+    "TARGET_INSIDE_SOURCE": "Ein Ordner kann nicht in sich selbst verschoben oder kopiert werden.",
+    "PURGE_FAILED": "Einige Elemente ({count}) ließen sich nicht endgültig löschen. Diese bleiben im Papierkorb. Versuch es später noch einmal."
   },
   "a11y": {
     "fileList": "Dateien in {folder}",

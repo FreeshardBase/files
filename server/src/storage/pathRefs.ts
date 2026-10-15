@@ -26,6 +26,23 @@ export function movePathRefs(db: Db, tables: readonly PathTable[], owner: string
   }
 }
 
+/**
+ * A table whose rows hang off one trash row (later: versions kept with a trashed file). Purging the item deletes them in
+ * the same transaction as the trash row. Restore does not touch them: an issue that adds such a table also decides what
+ * restore does with its rows and extends `server/test/trash.test.ts`.
+ */
+export type TrashTable = { table: string; column: string };
+
+/** Every table that hangs off a trash row. None exists yet. */
+export const TRASH_TABLES: readonly TrashTable[] = [];
+
+export function deleteTrashRefs(db: Db, tables: readonly TrashTable[], trashId: string): void {
+  for (const t of tables) {
+    if (![t.table, t.column].every((s) => IDENT.test(s))) throw new Error(`invalid trash table ${JSON.stringify(t)}`);
+    db.prepare(`DELETE FROM ${t.table} WHERE ${t.column} = ?`).run(trashId);
+  }
+}
+
 export function deletePathRefs(db: Db, tables: readonly PathTable[], owner: string, path: string): void {
   for (const t of tables.map(checked)) {
     db.prepare(`DELETE FROM ${t.table} WHERE ${t.ownerColumn} = @owner AND ${under(t.pathColumn)}`).run({ owner, p: path });

@@ -7,7 +7,7 @@ import { loadConfig, type Config } from '../../src/config.ts';
 import { openDb, type Db } from '../../src/db.ts';
 import { cookieNames } from '../../src/auth/cookies.ts';
 import { dbPath } from '../../src/paths.ts';
-import type { PathTable } from '../../src/storage/pathRefs.ts';
+import type { PathTable, TrashTable } from '../../src/storage/pathRefs.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
 /** `routes` holds the live route options of every registered route (read `config.public` after `ready`). */
@@ -20,7 +20,8 @@ export async function startTestApp(
   extend?: (app: FastifyInstance) => void,
   logStream?: NodeJS.WritableStream,
   /** Path-dependent tables for the cascade, e.g. ones a test creates in `prepare`; default: the app's own list. */
-  dbOpts?: { pathTables?: readonly PathTable[]; prepare?: (db: Db) => void },
+  /** Likewise for tables whose rows hang off a trash row (`trashTables`, purged with it). */
+  dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void },
 ): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
   // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
@@ -45,7 +46,8 @@ export async function startTestApp(
   dbOpts?.prepare?.(db);
   const routes: RouteOptions[] = [];
   const app = await buildApp({ config, db, extend, logStream, onRoute: (r) => { routes.push(r); },
-    ...(dbOpts?.pathTables ? { pathTables: dbOpts.pathTables } : {}) });
+    ...(dbOpts?.pathTables ? { pathTables: dbOpts.pathTables } : {}),
+    ...(dbOpts?.trashTables ? { trashTables: dbOpts.trashTables } : {}) });
   await app.ready();
   return {
     app, config, db, dataDir, idp, routes,

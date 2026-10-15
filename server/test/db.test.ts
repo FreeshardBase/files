@@ -17,7 +17,7 @@ describe('openDb', () => {
     openDb(file).close();
     const again = openDb(file);
     try {
-      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }]);
+      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }]);
     } finally { again.close(); }
   });
 

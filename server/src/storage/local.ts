@@ -1,19 +1,45 @@
 import { constants, createWriteStream, lstatSync, renameSync } from 'node:fs';
 import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, unlink } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { CollisionPolicy, Entry } from '@files/shared';
+import type { FastifyBaseLogger } from 'fastify';
+import type { CollisionPolicy, Entry, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from './backend.ts';
 import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
-import { deletePathRefs, movePathRefs, type PathTable } from './pathRefs.ts';
+import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type TrashTable } from './pathRefs.ts';
 
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
+const TRASH_ID = /^[0-9a-f]{32}$/;
+const DAY_MS = 86_400_000;
+type TrashRow = { id: string; original_path: string; type: 'file' | 'directory'; size: number; deleted_at: string };
+
+// Restore and purge of one member's trash run one at a time, so a purge never removes bytes a restore is moving.
+const userLocks = new Map<string, Promise<unknown>>();
+function underUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = userLocks.get(userId) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.then(() => undefined, () => undefined); // handled: the caller gets the error from `run`
+  userLocks.set(userId, tail);
+  void tail.then(() => { if (userLocks.get(userId) === tail) userLocks.delete(userId); });
+  return run;
+}
+
+// Bytes of the regular files in a tree (0 for anything that is gone); symlinks are neither followed nor counted.
+async function treeSize(abs: string): Promise<number> {
+  const st = await lstat(abs).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+  if (!st) return 0;
+  if (st.isFile()) return st.size;
+  if (!st.isDirectory()) return 0;
+  let sum = 0;
+  for (const name of await readdir(abs)) sum += await treeSize(join(abs, name));
+  return sum;
+}
 const MAX_NAME_BYTES = 255;
 const MAX_LIMIT = 1000;
 const isErr = (e: unknown, code: string) => (e as NodeJS.ErrnoException).code === code;
@@ -65,7 +91,7 @@ async function syncDir(dir: string): Promise<void> {
 }
 
 /** The database side of a home: path-dependent rows and trash rows change in the same transaction as the files. */
-export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[] };
+export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[] };
 
 // Renames done inside a database transaction; undone in reverse order when anything after them fails.
 class FsSteps {
@@ -170,8 +196,9 @@ export class LocalBackend implements StorageBackend {
     return { nf, nt, src, dst };
   }
 
-  // Inside the transaction: the absolute path the item may take. "replace" sends the existing item to the trash.
-  private claim(fs: FsSteps, trash: string, dst: string, userPath: string, policy: CollisionPolicy): string {
+  // Inside the transaction: the absolute path the item may take. "replace" sends the existing item to the trash;
+  // `replacedSize` is its size, measured before the transaction.
+  private claim(fs: FsSteps, trash: string, dst: string, userPath: string, policy: CollisionPolicy, replacedSize: number): string {
     if (!lstatSync(dst, { throwIfNoEntry: false })) return dst;
     if (policy === 'fail') throw new AppError('FILE_EXISTS', { name: basename(dst) });
     if (policy === 'keep-both') {
@@ -181,12 +208,13 @@ export class LocalBackend implements StorageBackend {
       }
       throw new AppError('FILE_EXISTS', { name: basename(dst) });
     }
-    this.trashSync(fs, trash, dst, userPath);
+    this.trashSync(fs, trash, dst, userPath, replacedSize);
     return dst;
   }
 
-  // Inside the transaction: move one item into the trash, cascade its path rows, record the trash row.
-  private trashSync(fs: FsSteps, trash: string, abs: string, userPath: string): void {
+  // Inside the transaction: move one item into the trash, cascade its path rows, record the trash row. `treeBytes` is
+  // the folder's size, measured before the transaction (a file's size comes from its lstat).
+  private trashSync(fs: FsSteps, trash: string, abs: string, userPath: string, treeBytes: number): void {
     const st = lstatSync(abs, { throwIfNoEntry: false });
     if (!st || !(st.isFile() || st.isDirectory())) throw new AppError('NOT_FOUND');
     const id = randomBytes(16).toString('hex');
@@ -194,15 +222,16 @@ export class LocalBackend implements StorageBackend {
     const { db, userId, pathTables } = this.index;
     deletePathRefs(db, pathTables, userId, userPath);
     db.prepare('INSERT INTO trash (id, user_id, original_path, type, size, deleted_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, userId, userPath, st.isDirectory() ? 'directory' : 'file', st.isDirectory() ? 0 : st.size, new Date().toISOString());
+      .run(id, userId, userPath, st.isDirectory() ? 'directory' : 'file', st.isDirectory() ? treeBytes : st.size, new Date().toISOString());
   }
 
   private async moveImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
     const e = await this.endpoints(from, to, policy);
     if (e.nf === e.nt) return this.statImpl(e.nf); // onto itself: nothing to do
     const trash = await this.internalDir('trash');
+    const replacedSize = policy === 'replace' ? await treeSize(e.dst) : 0;
     const placed = this.atomically((fs) => {
-      const target = this.claim(fs, trash, e.dst, e.nt, policy);
+      const target = this.claim(fs, trash, e.dst, e.nt, policy, replacedSize);
       fs.rename(e.src, target);
       const rel = join(dirname(e.nt), basename(target));
       const { db, userId, pathTables } = this.index;
@@ -220,8 +249,9 @@ export class LocalBackend implements StorageBackend {
     const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
     try {
       await copyTree(e.src, stage);
+      const replacedSize = policy === 'replace' ? await treeSize(e.dst) : 0;
       const placed = this.atomically((fs) => {
-        const target = this.claim(fs, trash, e.dst, e.nt, policy);
+        const target = this.claim(fs, trash, e.dst, e.nt, policy, replacedSize);
         fs.rename(stage, target);
         return join(dirname(e.nt), basename(target));
       });
@@ -239,11 +269,105 @@ export class LocalBackend implements StorageBackend {
     if (norm.includes('/')) throw new AppError('PATH_INVALID');
     // An item beneath another selected one goes to the trash with it.
     const top = norm.filter((p) => !norm.some((q) => p.startsWith(q + '/')));
-    const items: { p: string; a: string }[] = [];
-    for (const p of top) items.push({ p, a: await this.abs(p) });
+    const items: { p: string; a: string; size: number }[] = [];
+    for (const p of top) { const a = await this.abs(p); items.push({ p, a, size: await treeSize(a) }); }
     const trash = await this.internalDir('trash');
-    this.atomically((fs) => { for (const it of items) this.trashSync(fs, trash, it.a, it.p); });
+    this.atomically((fs) => { for (const it of items) this.trashSync(fs, trash, it.a, it.p, it.size); });
     for (const d of new Set([...items.map((it) => dirname(it.a)), trash])) await syncDir(d);
+  }
+
+  /** The member's trash, newest first. */
+  trashItems(retentionDays: number): TrashItem[] {
+    const rows = this.index.db.prepare('SELECT id, original_path, type, size, deleted_at FROM trash WHERE user_id = ? ORDER BY deleted_at DESC, id')
+      .all(this.index.userId) as TrashRow[];
+    return rows.map((r) => ({
+      id: r.id, name: posix.basename(r.original_path), originalPath: r.original_path, type: r.type, size: r.size,
+      deletedAt: r.deleted_at, expiresAt: new Date(Date.parse(r.deleted_at) + retentionDays * DAY_MS).toISOString(),
+    }));
+  }
+
+  /**
+   * Puts one trashed item back at its original path, recreating missing parent folders. A taken name follows the
+   * collision policy like any move: never a silent overwrite, and "replace" sends the taken item to the trash.
+   */
+  restore(id: string, policy: CollisionPolicy): Promise<Entry> {
+    return underUserLock(this.index.userId, () => this.restoreImpl(id, policy)).catch(rethrowMapped);
+  }
+
+  /**
+   * The one way anything leaves the trash for good: single delete, empty trash and expiry all come here. Per item the
+   * bytes go first; only then are the row and the rows hanging off it deleted, in one transaction. If the bytes cannot
+   * be removed the row stays (so the next attempt finds the item again), the error is logged and the id is reported in
+   * `failed`. `'all'` is the member's whole trash. An id without a row fails the call before anything is touched, or
+   * is left out with `missing: 'skip'` (the expiry job, whose rows may have been restored meanwhile).
+   */
+  purge(ids: readonly string[] | 'all', log: FastifyBaseLogger, missing: 'fail' | 'skip' = 'fail'): Promise<{ purged: string[]; failed: string[] }> {
+    return underUserLock(this.index.userId, () => this.purgeImpl(ids, log, missing));
+  }
+
+  private trashRow(id: string): TrashRow | undefined {
+    return this.index.db.prepare('SELECT id, original_path, type, size, deleted_at FROM trash WHERE id = ? AND user_id = ?')
+      .get(id, this.index.userId) as TrashRow | undefined;
+  }
+
+  // The bytes of a trash item, through the same resolver as every other path; only this class names the internal area.
+  private async trashBytes(id: string): Promise<string> {
+    if (!TRASH_ID.test(id)) throw new AppError('VALIDATION');
+    await this.internalDir('trash');
+    return resolveInRoot(this.root, `/${INTERNAL}/trash/${id}`);
+  }
+
+  private async restoreImpl(id: string, policy: CollisionPolicy): Promise<Entry> {
+    const row = this.trashRow(id);
+    if (!row) throw new AppError('NOT_FOUND');
+    const src = await this.trashBytes(id);
+    const trash = await this.internalDir('trash');
+    const nt = normalizeUserPath(row.original_path);
+    const dst = await this.abs(nt); // refuses symlinks and files on the way, like any user path
+    await mkdir(dirname(dst), { recursive: true }).catch((e) => {
+      if (isErr(e, 'ENOTDIR') || isErr(e, 'EEXIST')) throw new AppError('NOT_A_DIRECTORY', undefined, { cause: e });
+      throw e;
+    });
+    const replacedSize = policy === 'replace' ? await treeSize(dst) : 0;
+    const placed = this.atomically((fs) => {
+      const target = this.claim(fs, trash, dst, nt, policy, replacedSize);
+      fs.rename(src, target);
+      this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
+      return join(dirname(nt), basename(target));
+    });
+    for (const d of new Set([dirname(dst), trash])) await syncDir(d);
+    return this.statImpl(placed);
+  }
+
+  private async purgeImpl(ids: readonly string[] | 'all', log: FastifyBaseLogger, missing: 'fail' | 'skip') {
+    const { db, userId, trashTables } = this.index;
+    let todo: string[];
+    if (ids === 'all') todo = db.prepare('SELECT id FROM trash WHERE user_id = ?').pluck().all(userId) as string[];
+    else {
+      const unique = [...new Set(ids)];
+      todo = unique.filter((id) => this.trashRow(id));
+      if (missing === 'fail' && todo.length !== unique.length) throw new AppError('NOT_FOUND');
+    }
+    const result = { purged: [] as string[], failed: [] as string[] };
+    if (todo.length === 0) return result;
+    const trash = await this.internalDir('trash');
+    for (const id of todo) {
+      try {
+        // rm never follows a symlink inside the tree; `force` makes bytes that are already gone count as removed.
+        await rm(await this.trashBytes(id), { recursive: true, force: true });
+      } catch (e) { // handled: the row stays so the item is found again, the error is logged and the id reported as failed
+        log.error({ err: e, trashId: id, userId }, 'trash purge could not remove the bytes; the row stays');
+        result.failed.push(id);
+        continue;
+      }
+      db.transaction(() => {
+        deleteTrashRefs(db, trashTables, id);
+        db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, userId);
+      }).immediate();
+      result.purged.push(id);
+    }
+    await syncDir(trash);
+    return result;
   }
 
   private async statImpl(p: string): Promise<Entry> {
