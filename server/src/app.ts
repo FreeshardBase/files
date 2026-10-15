@@ -32,11 +32,13 @@ import { googleDriveProvider } from './cloud/googleDrive.ts';
 import { dropboxProvider } from './cloud/dropbox.ts';
 import { graphProviders } from './cloud/graph.ts';
 import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
+import { TransferEngine } from './storage/transfers.ts';
+import { registerTransferRoutes } from './routes/transfers.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections } }
+    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections; transfers: TransferEngine } }
 }
 
 /** A member's own cloud connections as backends: `conn:<id>` resolves only among these, as do search and shares. */
@@ -95,8 +97,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs });
   const cloud = new CloudConnections({ db, key: config.encryptionKey, providers, clock, pathTables,
     redirectUri: new URL(CONNECT_CALLBACK_PATH, config.publicUrl).href });
-  app.decorate('deps', { config, db, pathTables, trashTables, thumbs, cloud,
-    connections: connections ?? (async (user) => cloud.backends(user.id)) });
+  const deps: FastifyInstance['deps'] = { config, db, pathTables, trashTables, thumbs, cloud,
+    connections: connections ?? (async (user) => cloud.backends(user.id)), transfers: undefined as unknown as TransferEngine };
+  deps.transfers = new TransferEngine(deps, app.log);
+  app.decorate('deps', deps);
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log); });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
@@ -105,8 +109,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   app.addHook('onReady', async () => {
     expiry = scheduleTrashExpiry(app.deps, app.log);
     uploadExpiry = scheduleUploadExpiry(app.deps, app.log);
+    // After the sweep, so a resumed transfer never races the removal of its own staged files (#152).
+    app.deps.transfers.start();
   });
-  app.addHook('onClose', async () => { await expiry?.stop(); await uploadExpiry?.stop(); });
+  app.addHook('onClose', async () => { await expiry?.stop(); await uploadExpiry?.stop(); await app.deps.transfers.stop(); });
 
   registerGuard(app);
   await registerAuthRoutes(app);
@@ -118,6 +124,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerShareRoutes(app);
   await registerLinkRoutes(app);
   await registerConnectionRoutes(app);
+  await registerTransferRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

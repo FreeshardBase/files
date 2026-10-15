@@ -364,6 +364,8 @@ body {
 .upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
+/* Transfer panel (#152): the same sheet; a job that ended with errors lists its failed items under its row. */
+.transfer-failures { grid-column: 1 / -1; margin: 0; padding-left: var(--space-5); color: var(--danger); font-size: var(--fs-small); overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .upload-item { grid-template-columns: minmax(0, 1fr) auto; }
   .upload-actions { grid-column: 1 / -1; order: 3; }

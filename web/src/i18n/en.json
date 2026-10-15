@@ -346,7 +346,8 @@
     "PROVIDER_UNAVAILABLE": "The cloud provider cannot be reached right now. Please try again later.",
     "AMBIGUOUS_NAME": "Several items in this folder are called “{name}”. Open the folder again and pick one.",
     "NOT_EXPORTABLE": "This document type can't be downloaded. Open it at the cloud provider.",
-    "LIBRARY_ALREADY_CONNECTED": "This library is already connected. Choose another one."
+    "LIBRARY_ALREADY_CONNECTED": "This library is already connected. Choose another one.",
+    "VERIFY_FAILED": "The copy could not be verified: the target does not hold the bytes that were sent. The original stays where it was."
   },
   "view": {
     "label": "View",
@@ -372,5 +373,28 @@
     "fileList": "Files in {folder}",
     "gallery": "Gallery of {folder}",
     "breadcrumbs": "Path"
+  },
+  "transfers": {
+    "panelTitle": "Transfers",
+    "clear": "Clear finished",
+    "label": {
+      "copy": "Copy “{name}” to {target}",
+      "move": "Move “{name}” to {target}"
+    },
+    "state": {
+      "running": "{done} of {total} · {size}",
+      "completed": "Done",
+      "completed_with_errors": "{failed} of {total} failed",
+      "cancelled": "Cancelled"
+    },
+    "progressLabel": "Progress of {name}",
+    "cancel": "Cancel",
+    "cancelLabel": "Cancel the transfer of {name}",
+    "failedItem": "{path}: {reason}",
+    "started": {
+      "copy": "Copying one item; the progress is under “Transfers”. | Copying {count} items; the progress is under “Transfers”.",
+      "move": "Moving one item; the progress is under “Transfers”. | Moving {count} items; the progress is under “Transfers”."
+    },
+    "nothingToDo": "Nothing pasted: every item was skipped."
   }
 }

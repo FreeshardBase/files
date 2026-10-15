@@ -346,7 +346,8 @@
     "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuche es später erneut.",
     "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Einträge „{name}“. Öffne den Ordner neu und wähle einen davon.",
     "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffne ihn beim Cloud-Anbieter.",
-    "LIBRARY_ALREADY_CONNECTED": "Diese Bibliothek ist schon verbunden. Wähle eine andere."
+    "LIBRARY_ALREADY_CONNECTED": "Diese Bibliothek ist schon verbunden. Wähle eine andere.",
+    "VERIFY_FAILED": "Die Kopie ließ sich nicht bestätigen: Am Ziel liegen nicht die gesendeten Bytes. Das Original bleibt, wo es war."
   },
   "view": {
     "label": "Ansicht",
@@ -372,5 +373,28 @@
     "fileList": "Dateien in {folder}",
     "gallery": "Galerie von {folder}",
     "breadcrumbs": "Pfad"
+  },
+  "transfers": {
+    "panelTitle": "Übertragungen",
+    "clear": "Erledigte entfernen",
+    "label": {
+      "copy": "„{name}“ nach {target} kopieren",
+      "move": "„{name}“ nach {target} verschieben"
+    },
+    "state": {
+      "running": "{done} von {total} · {size}",
+      "completed": "Fertig",
+      "completed_with_errors": "{failed} von {total} fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    },
+    "progressLabel": "Fortschritt von {name}",
+    "cancel": "Abbrechen",
+    "cancelLabel": "Übertragung von {name} abbrechen",
+    "failedItem": "{path}: {reason}",
+    "started": {
+      "copy": "Ein Element wird kopiert; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden kopiert; den Fortschritt siehst du unter „Übertragungen“.",
+      "move": "Ein Element wird verschoben; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden verschoben; den Fortschritt siehst du unter „Übertragungen“."
+    },
+    "nothingToDo": "Nichts eingefügt: Du hast jedes Element übersprungen."
   }
 }

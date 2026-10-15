@@ -24,8 +24,8 @@ export function parseSource(source: string): SourceRef {
 
 // #148: only among the caller's own connections, so another member's connection is SOURCE_NOT_FOUND like an unknown id.
 // The member has full access to their own cloud account.
-async function resolveConnection(req: FastifyRequest, user: User, id: string): Promise<ResolvedSource> {
-  const conn = (await req.server.deps.connections(user)).find((c) => c.id === id);
+async function resolveConnection(deps: FastifyInstance['deps'], user: User, id: string): Promise<ResolvedSource> {
+  const conn = (await deps.connections(user)).find((c) => c.id === id);
   if (!conn) throw new AppError('SOURCE_NOT_FOUND');
   return { backend: conn.backend, access: 'edit' };
 }
@@ -51,8 +51,7 @@ export async function ownerSource(deps: FastifyInstance['deps'], row: Pick<Share
 
 // #146: the share row granted to the caller, read again on every request; its access level comes from the row. A
 // share of someone else, an unknown id and a revoked share are all SOURCE_NOT_FOUND; a deleted target is SHARE_ORPHANED.
-async function resolveShare(req: FastifyRequest, user: User, id: string): Promise<ResolvedSource> {
-  const deps = req.server.deps;
+async function resolveShare(deps: FastifyInstance['deps'], user: User, id: string): Promise<ResolvedSource> {
   const row = grantedShare(deps.db, id, user.id);
   if (!row) throw new AppError('SOURCE_NOT_FOUND');
   if (row.orphaned_at !== null) throw new AppError('SHARE_ORPHANED');
@@ -77,11 +76,18 @@ export async function searchableSources(req: FastifyRequest): Promise<{ source: 
 
 /** The one place a source id becomes a backend and the caller's access level. Routes never build a backend. */
 export async function resolveSource(req: FastifyRequest, source: string): Promise<ResolvedSource> {
-  const { user } = requireUser(req);
+  return sourceFor(req.server.deps, requireUser(req).user, source);
+}
+
+/**
+ * The same resolution for a member without a request: a transfer job (#152) resolves its sources again for every item,
+ * also after a restart, so an unlinked connection or a revoked share stops it like it stops a request.
+ */
+export async function sourceFor(deps: FastifyInstance['deps'], user: User, source: string): Promise<ResolvedSource> {
   const ref = parseSource(source);
   switch (ref.kind) {
-    case 'home': return { backend: homeBackend(req), access: 'edit' };
-    case 'conn': return resolveConnection(req, user, ref.id);
-    case 'share': return resolveShare(req, user, ref.id);
+    case 'home': return { backend: homeOf(deps, user.id), access: 'edit' };
+    case 'conn': return resolveConnection(deps, user, ref.id);
+    case 'share': return resolveShare(deps, user, ref.id);
   }
 }
