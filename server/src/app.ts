@@ -34,6 +34,7 @@ import { graphProviders } from './cloud/graph.ts';
 import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
 import { TransferEngine } from './storage/transfers.ts';
 import { registerTransferRoutes } from './routes/transfers.ts';
+import { registerMigrationRoutes } from './routes/migrations.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -125,6 +126,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerLinkRoutes(app);
   await registerConnectionRoutes(app);
   await registerTransferRoutes(app);
+  await registerMigrationRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

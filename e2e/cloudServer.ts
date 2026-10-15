@@ -21,6 +21,13 @@ fake.graph.put('/Documents/Plan 2027.txt', 'next year, from onedrive');
 fake.graph.addSite('contoso.sharepoint.com,11111111-aaaa,22222222-bbbb', 'Team Site', [['b!team-documents', 'Documents'], ['b!team-archive', 'Archive']]);
 fake.graph.addSite('contoso.sharepoint.com,33333333-cccc,44444444-dddd', 'Marketing', [['b!marketing-assets', 'Assets']]);
 fake.graph.put('/Projects/brief.txt', 'the team brief, from sharepoint', { drive: 'b!team-documents' });
+// e2e/migration.spec.ts (#153): one folder per project to migrate and clean up, with one download that breaks halfway.
+for (const project of ['desktop-chrome', 'mobile-chrome']) {
+  fake.put(`/Move-${project}/letter.txt`, 'dear testuser');
+  fake.put(`/Move-${project}/Photos/beach.txt`, 'a photo, as text');
+  fake.put(`/Move-${project}/broken.txt`, 'this download stops halfway');
+  fake.truncateContent(`/Move-${project}/broken.txt`);
+}
 const config = loadConfig(process.env);
 const db = openDb(dbPath(config.dataDir));
 const app = await buildApp({ config, db, providers: [fake.provider(), fake.driveProvider(), fake.dropboxProvider(), ...fake.graphProviders()] });

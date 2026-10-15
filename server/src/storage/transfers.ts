@@ -1,13 +1,14 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
-import { pipeline, Transform } from 'node:stream';
+import { pipeline, Readable, Transform } from 'node:stream';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
-import type { CollisionPolicy, CreateTransferRequest, ErrorCode, TransferJob, TransferStatus } from '@files/shared';
+import type { CleanupPreview, CollisionPolicy, CreateMigrationRequest, CreateTransferRequest, ErrorCode, MigrationScan,
+  TransferJob, TransferStatus } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { getUser } from '../users.ts';
+import { getUser, type User } from '../users.ts';
 import type { StorageBackend } from './backend.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
-import { sourceFor, type ResolvedSource } from './resolveSource.ts';
+import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
 export const TRANSFER_CONCURRENCY = 2;
@@ -17,12 +18,23 @@ const PROGRESS_MS = 250;
 const MAX_BYTES = Number.MAX_SAFE_INTEGER;
 /** Jobs a member sees in the panel, newest first. */
 const LIST_LIMIT = 50;
+/** How long a cleanup confirmation token stays valid (#153). */
+const CLEANUP_TOKEN_MS = 10 * 60_000;
+/** A migration scan stops after this many entries or this long and reports `complete: false` (#153). */
+export const SCAN_MAX_ENTRIES = 50_000;
+export const SCAN_MS = 15_000;
+/** Item rows per query of the summary export, so it never holds a whole job's rows. */
+const REPORT_PAGE = 500;
 
 type Deps = FastifyInstance['deps'];
-type JobRow = { id: string; user_id: string; mode: 'copy' | 'move'; from_source: string; to_source: string; dir: string;
-  status: TransferStatus; created_at: string; finished_at: string | null };
+type Kind = 'transfer' | 'migration' | 'cleanup';
+type JobRow = { id: string; user_id: string; kind: Kind; origin: string | null; mode: 'copy' | 'move'; from_source: string;
+  to_source: string; dir: string; status: TransferStatus; created_at: string; finished_at: string | null;
+  cleanup_token: string | null; cleanup_expires: string | null };
 type ItemRow = { job_id: string; seq: number; parent: number | null; from_path: string; to_path: string;
-  on_collision: CollisionPolicy; type: 'file' | 'directory' | null; placed: string | null; status: string; error: string | null; bytes: number };
+  on_collision: CollisionPolicy; type: 'file' | 'directory' | null; placed: string | null; status: string; error: string | null;
+  bytes: number; sha256: string | null; src_modified: string | null; verified: string | null };
+type NewItem = Pick<ItemRow, 'from_path' | 'to_path' | 'on_collision'> & Partial<Pick<ItemRow, 'type' | 'placed' | 'bytes' | 'sha256' | 'src_modified'>>;
 /** Why an item's work was aborted: the member cancelled the job, or the app is shutting down (the item resumes later). */
 type AbortReason = 'cancel' | 'stop';
 
@@ -30,14 +42,48 @@ const isNotFound = (e: unknown) => e instanceof AppError && e.code === 'NOT_FOUN
 async function statOrNull(b: StorageBackend, path: string) {
   return b.stat(path).then((e) => e, (e: unknown) => { if (isNotFound(e)) return null; throw e; }); // handled: absent is null
 }
+const sha256 = (s: string) => createHash('sha256').update(s).digest();
+
+/**
+ * What a migration of `path` would copy: files, folders beneath it and bytes, walked breadth-first through `list`. The
+ * walk stops after SCAN_MAX_ENTRIES entries or SCAN_MS and then reports `complete: false`.
+ */
+export async function scanFolder(b: StorageBackend, path: string, limits = { entries: SCAN_MAX_ENTRIES, ms: SCAN_MS }): Promise<MigrationScan> {
+  const root = normalizeUserPath(path);
+  if ((await b.stat(root)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
+  const end = Date.now() + limits.ms;
+  const queue = [root];
+  let files = 0; let folders = 0; let bytes = 0;
+  while (queue.length) {
+    if (files + folders >= limits.entries || Date.now() > end) return { files, folders, bytes, complete: false };
+    const dir = queue.shift()!;
+    let cursor: string | undefined;
+    do {
+      const page = await b.list(dir, cursor);
+      for (const e of page.entries) {
+        if (e.type === 'directory') { folders++; queue.push(posix.join(dir, e.name)); } else { files++; bytes += e.size; }
+      }
+      cursor = page.next;
+    } while (cursor);
+  }
+  return { files, folders, bytes, complete: true };
+}
+
+const csvCell = (v: string | number | null) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+const csvLine = (cells: (string | number | null)[]) => `${cells.map(csvCell).join(',')}\r\n`;
 
 /**
  * Copies and moves between sources as persistent jobs (spec §3.4, #152). A job row and one row per item live in SQLite;
  * workers run in this process, at most TRANSFER_CONCURRENCY items at a time. A file item is done only after the target
- * holds exactly the bytes sent: its size, and its SHA-256 where a side offers `digest`. A folder item is done once its
- * target folder exists and its children are items of the job. A move deletes the source of done items when the job
- * ends (whole folders where everything beneath them is done), so a failed item always keeps its source. Jobs still
- * running at start-up resume: items in flight start again, done ones are never redone.
+ * holds exactly the bytes sent: its size, and its SHA-256 where a side offers `digest`, plus the provider's own hash where
+ * its `read` gives one. A folder item is done once its target folder exists and its children are items of the job. A
+ * move deletes the source of done items when the job ends (whole folders where everything beneath them is done), so a
+ * failed item always keeps its source. Jobs still running at start-up resume: items in flight start again, done ones are
+ * never redone.
+ *
+ * A migration (#153) is a copy of one connection's folder into a new folder of the home. Its cleanup is a job of its own
+ * whose items are exactly the migration's verified files; each is checked again (the shard copy and the original are
+ * unchanged) right before the original is deleted, into the provider's trash.
  */
 export class TransferEngine {
   private active = new Map<string, { jobId: string; ctl: AbortController; promise: Promise<void> }>();
@@ -69,8 +115,7 @@ export class TransferEngine {
   }
 
   async create(userId: string, req: CreateTransferRequest): Promise<TransferJob> {
-    const user = getUser(this.deps.db, userId);
-    if (!user) throw new AppError('UNAUTHENTICATED');
+    const user = this.user(userId);
     // Within one source the direct move and copy routes apply; a job is for crossing sources.
     if (req.from === req.to) throw new AppError('VALIDATION');
     const from = await sourceFor(this.deps, user, req.from);
@@ -82,18 +127,71 @@ export class TransferEngine {
     const items = req.items.map((i) => ({ from: normalizeUserPath(i.path), onCollision: i.onCollision }));
     // The root of a source has no name to land under.
     if (items.some((i) => i.from === '/')) throw new AppError('VALIDATION');
-    const id = randomBytes(16).toString('hex');
+    return this.insertJob({ user, kind: 'transfer', mode: req.mode, from: req.from, to: req.to, dir },
+      items.map((i) => ({ from_path: i.from, to_path: posix.join(dir, posix.basename(i.from)), on_collision: i.onCollision })));
+  }
+
+  /**
+   * A migration (#153): the folder `path` of one of the member's own connections (`/` is the whole account) into a new
+   * folder `name` of the home folder `dir`. One folder item with "keep both", so it never lands in a folder the member
+   * already has; whatever the job then writes into that folder is its own.
+   */
+  async createMigration(userId: string, req: CreateMigrationRequest): Promise<TransferJob> {
+    const user = this.user(userId);
+    if (parseSource(req.from).kind !== 'conn') throw new AppError('VALIDATION');
+    const from = await sourceFor(this.deps, user, req.from);
+    const path = normalizeUserPath(req.path);
+    if ((await from.backend.stat(path)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
+    const to = await sourceFor(this.deps, user, 'home');
+    const dir = normalizeUserPath(req.dir);
+    const target = normalizeUserPath(posix.join(dir, req.name));
+    if (target === dir || posix.dirname(target) !== dir) throw new AppError('VALIDATION');
+    if ((await to.backend.stat(dir)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
+    return this.insertJob({ user, kind: 'migration', mode: 'copy', from: req.from, to: 'home', dir },
+      [{ from_path: path, to_path: target, on_collision: 'keep-both' }]);
+  }
+
+  /**
+   * What a cleanup of the member's ended migration would delete, with a new single-use confirmation token (valid for
+   * CLEANUP_TOKEN_MS; only its hash is stored, and a new preview replaces it).
+   */
+  previewCleanup(userId: string, id: string): CleanupPreview {
+    const job = this.ownMigration(userId, id);
+    if (job.status === 'running') throw new AppError('JOB_RUNNING');
+    const token = randomBytes(16).toString('hex');
     const { db } = this.deps;
-    db.transaction(() => {
-      db.prepare(`INSERT INTO transfer_jobs (id, user_id, mode, from_source, to_source, dir, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'running', ?)`).run(id, user.id, req.mode, req.from, req.to, dir, new Date().toISOString());
-      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, from_path, to_path, on_collision, status)
-        VALUES (?, ?, ?, ?, ?, 'pending')`);
-      items.forEach((i, seq) => insert.run(id, seq, i.from, posix.join(dir, posix.basename(i.from)), i.onCollision));
-    }).immediate();
-    this.emit(id);
-    this.pump();
-    return this.view(id);
+    db.prepare(`UPDATE transfer_jobs SET cleanup_token = ?, cleanup_expires = ? WHERE id = ?`)
+      .run(sha256(token).toString('hex'), new Date(Date.now() + CLEANUP_TOKEN_MS).toISOString(), id);
+    const r = db.prepare(`SELECT count(*) AS files, coalesce(sum(bytes), 0) AS bytes FROM transfer_items
+      WHERE job_id = ? AND type = 'file' AND status = 'done'`).get(id) as { files: number; bytes: number };
+    return { token, ...r };
+  }
+
+  /**
+   * Starts the cleanup of the member's ended migration, confirmed by the token of its last preview: a job (kind
+   * `cleanup`) with one item per verified file of the migration and nothing else. The token is used up.
+   */
+  async startCleanup(userId: string, id: string, token: string): Promise<TransferJob> {
+    const job = this.ownMigration(userId, id);
+    if (job.status === 'running') throw new AppError('JOB_RUNNING');
+    const stored = job.cleanup_token ? Buffer.from(job.cleanup_token, 'hex') : null;
+    const valid = stored !== null && job.cleanup_expires !== null && Date.parse(job.cleanup_expires) > Date.now()
+      && timingSafeEqual(stored, sha256(token));
+    if (!valid) throw new AppError('CONFIRMATION_REQUIRED');
+    const user = this.user(userId);
+    // Deleting needs edit on the connection; the job's own checks run again for every item.
+    if ((await sourceFor(this.deps, user, job.from_source)).access !== 'edit') throw new AppError('FORBIDDEN');
+    const { db } = this.deps;
+    // Single use, also against a second request racing this one.
+    if (db.prepare(`UPDATE transfer_jobs SET cleanup_token = NULL, cleanup_expires = NULL WHERE id = ? AND cleanup_token = ?`)
+      .run(id, job.cleanup_token).changes !== 1) throw new AppError('CONFIRMATION_REQUIRED');
+    const verified = db.prepare(`SELECT * FROM transfer_items WHERE job_id = ? AND type = 'file' AND status = 'done' ORDER BY seq`)
+      .all(id) as ItemRow[];
+    const root = db.prepare(`SELECT coalesce(placed, to_path) FROM transfer_items WHERE job_id = ? AND parent IS NULL ORDER BY seq LIMIT 1`)
+      .pluck().get(id) as string;
+    return this.insertJob({ user, kind: 'cleanup', origin: id, mode: 'move', from: job.from_source, to: job.to_source, dir: root },
+      verified.map((i) => ({ from_path: i.from_path, to_path: i.placed!, placed: i.placed!, on_collision: 'fail', type: 'file',
+        bytes: i.bytes, sha256: i.sha256, src_modified: i.src_modified })));
   }
 
   /** The member's own job, or NOT_FOUND: another member's job does not exist for them. */
@@ -106,6 +204,25 @@ export class TransferEngine {
     const ids = this.deps.db.prepare(`SELECT id FROM transfer_jobs WHERE user_id = ? ORDER BY created_at DESC, id LIMIT ?`)
       .pluck().all(userId, LIST_LIMIT) as string[];
     return ids.map((id) => this.view(id));
+  }
+
+  /**
+   * The summary export of the member's own job (#153): CSV, one row per item in job order (status, source path, path in
+   * the target, type, bytes, the checks it passed, the error code). Read page by page from the rows as it is sent.
+   */
+  report(userId: string, id: string): Readable {
+    this.own(userId, id);
+    const page = this.deps.db.prepare(`SELECT seq, status, from_path, placed, type, bytes, verified, error FROM transfer_items
+      WHERE job_id = ? AND seq > ? ORDER BY seq LIMIT ?`);
+    return Readable.from((function* () {
+      yield csvLine(['status', 'source_path', 'shard_path', 'type', 'bytes', 'verified', 'error']);
+      for (let after = -1; ;) {
+        const rows = page.all(id, after, REPORT_PAGE) as ItemRow[];
+        for (const r of rows) yield csvLine([r.status, r.from_path, r.placed, r.type, r.bytes, r.verified, r.error]);
+        if (rows.length < REPORT_PAGE) return;
+        after = rows.at(-1)!.seq;
+      }
+    })());
   }
 
   /** No new item starts; items in flight are aborted and leave nothing behind. Done items stay done. */
@@ -136,10 +253,41 @@ export class TransferEngine {
     return () => { set.delete(fn); if (!set.size) this.listeners.delete(userId); };
   }
 
+  private user(userId: string): User {
+    const user = getUser(this.deps.db, userId);
+    if (!user) throw new AppError('UNAUTHENTICATED');
+    return user;
+  }
+
   private own(userId: string, id: string): JobRow {
     const job = this.deps.db.prepare(`SELECT * FROM transfer_jobs WHERE id = ? AND user_id = ?`).get(id, userId) as JobRow | undefined;
     if (!job) throw new AppError('NOT_FOUND');
     return job;
+  }
+
+  private ownMigration(userId: string, id: string): JobRow {
+    const job = this.own(userId, id);
+    if (job.kind !== 'migration') throw new AppError('NOT_FOUND');
+    return job;
+  }
+
+  private insertJob(job: { user: User; kind: Kind; origin?: string; mode: 'copy' | 'move'; from: string; to: string; dir: string },
+    items: NewItem[]): TransferJob {
+    const id = randomBytes(16).toString('hex');
+    const { db } = this.deps;
+    db.transaction(() => {
+      db.prepare(`INSERT INTO transfer_jobs (id, user_id, kind, origin, mode, from_source, to_source, dir, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
+        .run(id, job.user.id, job.kind, job.origin ?? null, job.mode, job.from, job.to, job.dir, new Date().toISOString());
+      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, from_path, to_path, on_collision, type, placed, bytes,
+        sha256, src_modified, status) VALUES (@job, @seq, @from_path, @to_path, @on_collision, @type, @placed, @bytes, @sha256,
+        @src_modified, 'pending')`);
+      items.forEach((i, seq) => insert.run({ type: null, placed: null, bytes: 0, sha256: null, src_modified: null, ...i, job: id, seq }));
+    }).immediate();
+    this.emit(id);
+    this.settle(id); // a job without items (a cleanup with nothing verified) ends at once
+    this.pump();
+    return this.view(id);
   }
 
   private view(id: string): TransferJob {
@@ -149,13 +297,20 @@ export class TransferEngine {
       .all(id) as { status: string; n: number }[]).map((r) => [r.status, r.n]));
     const failed = (db.prepare(`SELECT from_path, error FROM transfer_items WHERE job_id = ? AND status = 'failed' ORDER BY seq`)
       .all(id) as { from_path: string; error: ErrorCode }[]).map((r) => ({ path: r.from_path, code: r.error }));
-    const doneBytes = db.prepare(`SELECT coalesce(sum(bytes), 0) FROM transfer_items WHERE job_id = ? AND status = 'done'`).pluck().get(id) as number;
+    const done = db.prepare(`SELECT coalesce(sum(bytes), 0) AS bytes, count(CASE WHEN type = 'file' THEN 1 END) AS files
+      FROM transfer_items WHERE job_id = ? AND status = 'done'`).get(id) as { bytes: number; files: number };
     let flowing = 0;
     for (const [key, n] of this.inflight) if (key.startsWith(`${id}:`)) flowing += n;
-    const first = db.prepare(`SELECT from_path FROM transfer_items WHERE job_id = ? ORDER BY seq LIMIT 1`).pluck().get(id) as string;
-    return { id, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name: posix.basename(first),
-      status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0,
-      cancelled: counts.cancelled ?? 0, failed, bytes: doneBytes + flowing, createdAt: job.created_at, finishedAt: job.finished_at };
+    const first = db.prepare(`SELECT from_path, coalesce(placed, to_path) AS target FROM transfer_items WHERE job_id = ? ORDER BY seq LIMIT 1`)
+      .get(id) as { from_path: string; target: string } | undefined;
+    // A transfer is named by what was picked, a migration by its new folder (once placed, the free name it got), a
+    // cleanup by the migration's folder.
+    const name = job.kind === 'transfer' ? posix.basename(first!.from_path)
+      : posix.basename(job.kind === 'migration' ? first!.target : job.dir);
+    return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
+      status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0, verifiedFiles: done.files,
+      cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
+      createdAt: job.created_at, finishedAt: job.finished_at };
   }
 
   private emit(id: string): void {
@@ -197,7 +352,8 @@ export class TransferEngine {
     }
   }
 
-  private setItem(jobId: string, seq: number, fields: Partial<Pick<ItemRow, 'status' | 'error' | 'bytes' | 'placed' | 'type'>>): void {
+  private setItem(jobId: string, seq: number,
+    fields: Partial<Pick<ItemRow, 'status' | 'error' | 'bytes' | 'placed' | 'type' | 'sha256' | 'src_modified' | 'verified'>>): void {
     const keys = Object.keys(fields) as (keyof typeof fields)[];
     this.deps.db.prepare(`UPDATE transfer_items SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE job_id = @jobId AND seq = @seq`)
       .run({ ...fields, jobId, seq });
@@ -209,10 +365,15 @@ export class TransferEngine {
     const item = db.prepare(`SELECT * FROM transfer_items WHERE job_id = ? AND seq = ?`).get(jobId, seq) as ItemRow;
     try {
       const { from, to } = await this.sources(job);
+      if (job.kind === 'cleanup') {
+        await this.removeOriginal(item, from.backend, to.backend);
+        this.setItem(jobId, seq, { status: 'done', error: null });
+        return;
+      }
       const entry = await from.backend.stat(item.from_path);
       this.setItem(jobId, seq, { type: entry.type });
       if (entry.type === 'directory') await this.copyFolder(item, from.backend, to.backend);
-      else this.setItem(jobId, seq, { status: 'done', error: null, bytes: await this.copyFile(item, from.backend, to.backend, signal) });
+      else this.setItem(jobId, seq, { status: 'done', error: null, ...await this.copyFile(item, from.backend, to.backend, signal) });
     } catch (e) {
       if (signal.aborted) {
         // A shutdown leaves the item active, so the next start runs it again; a cancel records it.
@@ -235,15 +396,16 @@ export class TransferEngine {
     return { from, to };
   }
 
-  /** Streams one file and verifies the target; returns the verified size. */
-  private async copyFile(item: ItemRow, from: StorageBackend, to: StorageBackend, signal: AbortSignal): Promise<number> {
+  /** Streams one file and verifies the target; returns the verified size and the checks it passed. */
+  private async copyFile(item: ItemRow, from: StorageBackend, to: StorageBackend, signal: AbortSignal): Promise<{ bytes: number; verified: string }> {
     const key = `${item.job_id}:${item.seq}`;
     const src = await from.read(item.from_path);
     const hash = createHash('sha256');
+    const providerHash = src.hash && !src.unsized ? { ...src.hash, hash: createHash(src.hash.algorithm) } : undefined;
     let sent = 0;
     const meter = new Transform({
       transform: (chunk: Buffer, _enc, cb) => {
-        hash.update(chunk); sent += chunk.length;
+        hash.update(chunk); providerHash?.hash.update(chunk); sent += chunk.length;
         this.progress(key, item.job_id, sent);
         cb(null, chunk);
       },
@@ -263,15 +425,40 @@ export class TransferEngine {
       signal.removeEventListener('abort', abort);
       src.stream.destroy();
     }
-    this.setItem(item.job_id, item.seq, { placed: written.path });
+    const sum = hash.digest('hex');
+    // What was received is kept with the placed path: a cleanup (#153) compares the shard copy with it later.
+    this.setItem(item.job_id, item.seq, { placed: written.path, sha256: sum, src_modified: src.entry.modified ?? null });
     // Verification (#99): what was read must be what the source announced, and the target must hold exactly that.
     if (!src.unsized && sent !== src.entry.size) throw new AppError('SIZE_MISMATCH');
     const stored = await to.stat(written.path);
     if (stored.type !== 'file' || stored.size !== sent) throw new AppError('VERIFY_FAILED');
-    const sum = hash.digest('hex');
+    const checks = ['size'];
     if (to.digest && await to.digest(written.path) !== sum) throw new AppError('VERIFY_FAILED');
     if (from.digest && await from.digest(item.from_path) !== sum) throw new AppError('VERIFY_FAILED');
-    return sent;
+    if (to.digest || from.digest) checks.push('sha256');
+    // The provider's own hash of the file (#153): the bytes received must be the ones it stores.
+    if (providerHash) {
+      if (providerHash.hash.digest('hex') !== providerHash.value) throw new AppError('VERIFY_FAILED');
+      checks.push(providerHash.algorithm);
+    }
+    return { bytes: sent, verified: checks.join(' ') };
+  }
+
+  /**
+   * One original of a cleanup (#153): deleted, into the provider's trash, only while it is still verified. The shard copy
+   * must be a file of the verified size with the SHA-256 that was received, and the original must still have the size
+   * and modified time it was migrated with. An original already gone has nothing left to delete.
+   */
+  private async removeOriginal(item: ItemRow, from: StorageBackend, to: StorageBackend): Promise<void> {
+    if (!to.digest || item.sha256 === null) throw new AppError('COPY_CHANGED');
+    const copy = await statOrNull(to, item.to_path);
+    if (copy?.type !== 'file' || copy.size !== item.bytes || await to.digest(item.to_path) !== item.sha256) throw new AppError('COPY_CHANGED');
+    const original = await statOrNull(from, item.from_path);
+    if (!original) return;
+    if (original.type !== 'file' || original.size !== item.bytes || (original.modified ?? null) !== item.src_modified) {
+      throw new AppError('SOURCE_CHANGED');
+    }
+    await from.delete([item.from_path]);
   }
 
   /** Creates the target folder (its path fixed in the row first) and adds the folder's children as items. */
@@ -324,9 +511,11 @@ export class TransferEngine {
     if (!job) return;
     const open = db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND status IN ('pending','active')`).pluck().get(jobId) as number;
     if (open > 0) return;
-    if (job.status !== 'running' && (job.mode !== 'move' || job.status !== 'cancelled')) return;
+    // A cleanup is a `move` only for the rights it needs; its items delete their originals themselves.
+    const moves = job.mode === 'move' && job.kind === 'transfer';
+    if (job.status !== 'running' && (!moves || job.status !== 'cancelled')) return;
     const work = (async () => {
-      if (job.mode === 'move') await this.deleteMovedSources(job);
+      if (moves) await this.deleteMovedSources(job);
       if (job.status === 'running') {
         const notDone = db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND status != 'done'`).pluck().get(jobId) as number;
         db.prepare(`UPDATE transfer_jobs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'`)

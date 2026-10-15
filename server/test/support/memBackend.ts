@@ -5,31 +5,41 @@ import type { CollisionPolicy, Entry } from '@files/shared';
 import { AppError } from '../../src/errors.ts';
 import type { ByteRange, StorageBackend, WriteOptions } from '../../src/storage/backend.ts';
 
+let tick = 0;
+/** A modified time that is new on every write, so a file changed later is told apart from the one migrated (#153). */
+const nextTime = () => new Date(1_700_000_000_000 + ++tick * 1000).toISOString();
+
 /**
  * An in-memory `StorageBackend` for transfer tests (#152): files and folders in a map, with the faults a transfer has to
  * catch. `lieSize` makes `stat`/`read` claim more bytes than the stream carries; `truncateWrites` and `corruptWrites`
  * make `write` succeed while storing fewer or different bytes; `stall` holds a path's read stream after its first
- * chunk until `release`; `reads` counts reads per path. `digest` is offered only with `withDigest`.
+ * chunk until `release`; `reads` counts reads per path. `digest` is offered only with `withDigest`. With `withMd5`,
+ * `read` reports the file's MD5 like Google Drive does (#153); `lieMd5` makes it report the MD5 of other bytes.
  */
 export class MemBackend implements StorageBackend {
   files = new Map<string, Buffer>();
   dirs = new Set<string>(['/']);
+  mtimes = new Map<string, string>();
   deleted: string[] = [];
   reads = new Map<string, number>();
   lieSize = new Map<string, number>();
+  lieMd5 = new Set<string>();
   truncateWrites = false;
   corruptWrites = false;
   /** `write` stores whatever arrives, whatever size was declared (a provider that does not check). */
   ignoreSize = false;
   private stalls = new Map<string, { release: () => void; promise: Promise<void> }>();
+  private withMd5: boolean;
   digest?: (path: string) => Promise<string>;
 
-  constructor(o: { withDigest?: boolean } = {}) {
+  constructor(o: { withDigest?: boolean; withMd5?: boolean } = {}) {
     if (o.withDigest) this.digest = async (p) => createHash('sha256').update(this.fileOf(p)).digest('hex');
+    this.withMd5 = o.withMd5 ?? false;
   }
 
   put(path: string, data: string | Buffer): this {
     this.files.set(path, Buffer.from(data));
+    this.mtimes.set(path, nextTime());
     for (let d = posix.dirname(path); d !== '/'; d = posix.dirname(d)) this.dirs.add(d);
     return this;
   }
@@ -50,7 +60,7 @@ export class MemBackend implements StorageBackend {
     const name = posix.basename(p) || 'root';
     if (this.dirs.has(p)) return { name, path: p, type: 'directory', size: 0, modified: new Date(0).toISOString() };
     const f = this.fileOf(p);
-    return { name, path: p, type: 'file', size: this.lieSize.get(p) ?? f.length, modified: new Date(0).toISOString() };
+    return { name, path: p, type: 'file', size: this.lieSize.get(p) ?? f.length, modified: this.mtimes.get(p)! };
   }
 
   async list(path: string) {
@@ -71,7 +81,9 @@ export class MemBackend implements StorageBackend {
       if (stall) await stall.promise;
       if (data.length > half) yield data.subarray(half);
     })(), { objectMode: false });
-    return { entry: this.entry(path), stream, etag: `"${data.length}"` };
+    const md5 = createHash('md5').update(data).update(this.lieMd5.has(path) ? 'x' : '').digest('hex');
+    return { entry: this.entry(path), stream, etag: `"${data.length}"`,
+      ...(this.withMd5 ? { hash: { algorithm: 'md5' as const, value: md5 } } : {}) };
   }
 
   async write(path: string, body: Readable, opts: WriteOptions): Promise<Entry> {

@@ -6,6 +6,8 @@ import TrashView from '../src/views/TrashView.vue';
 import RecentView from '../src/views/RecentView.vue';
 import SharedView from '../src/views/SharedView.vue';
 import ConnectionsView from '../src/views/ConnectionsView.vue';
+import MigrateView from '../src/views/MigrateView.vue';
+import MigrationJobView from '../src/views/MigrationJobView.vue';
 import { folderRoute } from '../src/api/paths.ts';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
@@ -64,6 +66,16 @@ describe('router', () => {
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(ConnectionsView);
     await r.push('/home/connections');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+  });
+  it('routes /migrate to the migration wizard and /migrate/<job id> to a migration\'s page (#153)', async () => {
+    const r = mk();
+    await r.push('/migrate');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(MigrateView);
+    await r.push(`/migrate/${'a1'.repeat(16)}`);
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(MigrationJobView);
+    expect(r.currentRoute.value.params.id).toBe('a1'.repeat(16));
+    await r.push('/migrate/not-a-job');
+    expect(r.currentRoute.value.path).toBe('/home');
   });
   it('treats /home as the root folder', async () => {
     const r = mk();
