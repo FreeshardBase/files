@@ -4,12 +4,15 @@ import { useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
+import TransferPanel from './components/TransferPanel.vue';
+import { useTransfersStore } from './stores/transfers.ts';
 import SearchBox from './components/SearchBox.vue';
 import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
 import { folderRoute } from './api/paths.ts';
 const session = useSessionStore();
 const connections = useConnectionsStore();
+const transfers = useTransfersStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
 // A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
@@ -17,7 +20,10 @@ const publicPage = isPublicPage(location.pathname);
 onMounted(async () => {
   if (publicPage) return;
   await session.load();
-  if (session.me) void connections.load(); // the member's clouds in the sidebar (#148)
+  if (session.me) {
+    void connections.load(); // the member's clouds in the sidebar (#148)
+    transfers.connect(); // the member's transfer jobs, live (#152)
+  }
   if (!showLoginFailed) return;
   // The alert is decided; drop the flag from the URL so a reload or bookmark does not repeat it.
   await router.isReady();
@@ -123,6 +129,7 @@ onMounted(async () => {
       </nav>
       <main class="app-main">
         <UploadPanel />
+        <TransferPanel />
         <RouterView />
       </main>
     </div>

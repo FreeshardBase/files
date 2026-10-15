@@ -1,0 +1,268 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { AddressInfo } from 'node:net';
+import { homeRoot } from '../src/paths.ts';
+import type { ConnectedBackend } from '../src/storage/backend.ts';
+import { startTestApp, login, type TestApp } from './support/harness.ts';
+import { startFakeProvider, type FakeProvider } from './support/fakeProvider.ts';
+import { MemBackend } from './support/memBackend.ts';
+
+// #152: copies and moves between sources run as persistent jobs. An item is done only once the target is verified
+// (size, plus SHA-256 where a side offers a digest); a move deletes the source only after that. Regressions for #99
+// (success without work, move degrading to copy) and #64 (resume, cancel, progress).
+
+type S = { cookie: string; csrf: string; id: string };
+type Job = { id: string; status: string; total: number; done: number; failed: { path: string; code: string }[]; cancelled: number };
+const ORIGIN = 'https://files.example.com';
+
+const as = (t: TestApp, s: S, method: string, url: string, payload?: unknown) => t.app.inject({
+  method: method as 'GET', url,
+  headers: { cookie: s.cookie, ...(method === 'GET' ? {} : { origin: ORIGIN, 'x-csrf-token': s.csrf }) },
+  ...(payload !== undefined ? { payload: payload as object } : {}),
+});
+async function signIn(t: TestApp, user: string): Promise<S> {
+  const s = await login(t, user);
+  return { ...s, id: (await t.app.inject({ url: '/api/v1/me', headers: { cookie: s.cookie } })).json().id as string };
+}
+type Start = { mode?: 'copy' | 'move'; from: string; to: string; dir: string; paths: string[]; onCollision?: string };
+async function start(t: TestApp, s: S, o: Start): Promise<Job> {
+  const r = await as(t, s, 'POST', '/api/v1/transfers', { mode: o.mode ?? 'copy', from: o.from, to: o.to, dir: o.dir,
+    items: o.paths.map((path) => ({ path, onCollision: o.onCollision ?? 'fail' })) });
+  expect(r.statusCode, r.body).toBe(201);
+  return r.json() as Job;
+}
+const jobOf = async (t: TestApp, s: S, id: string) => {
+  const r = await as(t, s, 'GET', `/api/v1/transfers/${id}`);
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json() as Job;
+};
+async function until<T>(get: () => Promise<T>, ok: (v: T) => boolean, what: string, ms = 10_000): Promise<T> {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await get();
+    if (ok(v)) return v;
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}: ${JSON.stringify(v)}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+const settled = (t: TestApp, s: S, id: string) => until(() => jobOf(t, s, id), (j) => j.status !== 'running', `job ${id}`);
+const home = (t: TestApp, s: S) => homeRoot(t.config.dataDir, s.id);
+// Every file under a home folder, temp files included (readdir sees dot files).
+const filesUnder = (dir: string): string[] => existsSync(dir)
+  ? readdirSync(dir, { recursive: true, withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name) : [];
+let n = 0;
+const fresh = (t: TestApp, s: S, stem: string) => { const d = `/${stem}-${++n}`; mkdirSync(join(home(t, s), d), { recursive: true }); return d; };
+
+describe('transfer jobs between sources', () => {
+  let t: TestApp; let fake: FakeProvider; let a: S; let b: S;
+  // Fake connections per member: `mem()` adds one to testuser's, `owned` holds them by user id.
+  const owned = new Map<string, ConnectedBackend[]>();
+  const mems: ConnectedBackend[] = [];
+  const mem =(o: { withDigest?: boolean } = {}) => { const m = new MemBackend(o); const id = `mem${mems.length}`; mems.push({ id, backend: m }); return { m, source: `conn:${id}` }; };
+
+  beforeAll(async () => {
+    fake = await startFakeProvider({ pageSize: 2 });
+    t = await startTestApp({}, undefined, undefined, { providers: [fake.driveProvider()],
+      connections: async (u) => [...await t.app.deps.cloud.backends(u.id), ...(owned.get(u.id) ?? [])] });
+    a = await signIn(t, 'testuser');
+    b = await signIn(t, 'member');
+    owned.set(a.id, mems);
+    owned.set(b.id, []);
+  });
+  afterAll(async () => { await t.close(); await fake.close(); });
+
+  it('copies a folder from a Google Drive to the home with identical bytes and reports completed', async () => {
+    const big = randomBytes(300_000);
+    fake.drive.put('/Album/note.txt', 'from the drive');
+    fake.drive.put('/Album/raw/photo.bin', big);
+    const r = await as(t, a, 'POST', '/api/v1/connections/authorize', { provider: 'google-drive' });
+    const back = await fake.consent(r.json().url as string);
+    const cb = await as(t, a, 'GET', back.pathname + back.search);
+    const conn = /^\/(conn:[0-9a-f]{32})$/.exec(String(cb.headers.location))![1]!;
+    const dir = fresh(t, a, 'drive');
+
+    const job = await start(t, a, { from: conn, to: 'home', dir, paths: ['/Album'] });
+    const done = await settled(t, a, job.id);
+    expect(done).toMatchObject({ status: 'completed', total: 4, done: 4, failed: [], cancelled: 0 });
+    expect(readFileSync(join(home(t, a), dir, 'Album/note.txt'), 'utf8')).toBe('from the drive');
+    expect(Buffer.compare(readFileSync(join(home(t, a), dir, 'Album/raw/photo.bin')), big)).toBe(0);
+  });
+
+  it('a source that sends fewer bytes than it claims fails that item and the job ends completed_with_errors', async () => {
+    const { m, source } = mem();
+    m.put('/ok.txt', 'fine').put('/short.txt', 'only part');
+    m.lieSize.set('/short.txt', 99);
+    const dir = fresh(t, a, 'short');
+    const done = await settled(t, a, (await start(t, a, { from: source, to: 'home', dir, paths: ['/ok.txt', '/short.txt'] })).id);
+    expect(done).toMatchObject({ status: 'completed_with_errors', total: 2, done: 1, failed: [{ path: '/short.txt', code: 'SIZE_MISMATCH' }] });
+    expect(filesUnder(join(home(t, a), dir))).toEqual(['ok.txt']);
+  });
+
+  it('a short source fails even when the target does not check the declared size', async () => {
+    const { m: src, source: from } = mem();
+    const { m: target, source: to } = mem();
+    target.ignoreSize = true;
+    src.put('/short.txt', 'only part');
+    src.lieSize.set('/short.txt', 99);
+    const done = await settled(t, a, (await start(t, a, { from, to, dir: '/', paths: ['/short.txt'] })).id);
+    expect(done).toMatchObject({ status: 'completed_with_errors', done: 0, failed: [{ path: '/short.txt', code: 'SIZE_MISMATCH' }] });
+  });
+
+  it('a target that stores fewer bytes than were sent fails verification', async () => {
+    const { m: target, source: to } = mem();
+    target.truncateWrites = true;
+    const dir = fresh(t, a, 'trunc');
+    writeFileSync(join(home(t, a), dir, 'x.txt'), 'twelve bytes');
+    const done = await settled(t, a, (await start(t, a, { from: 'home', to, dir: '/', paths: [`${dir}/x.txt`] })).id);
+    expect(done).toMatchObject({ status: 'completed_with_errors', done: 0, failed: [{ path: `${dir}/x.txt`, code: 'VERIFY_FAILED' }] });
+  });
+
+  it('a target that stores other bytes of the same size fails the hash check', async () => {
+    const { m: target, source: to } = mem({ withDigest: true });
+    target.corruptWrites = true;
+    const dir = fresh(t, a, 'corrupt');
+    writeFileSync(join(home(t, a), dir, 'x.txt'), 'same length');
+    const done = await settled(t, a, (await start(t, a, { from: 'home', to, dir: '/', paths: [`${dir}/x.txt`] })).id);
+    expect(done).toMatchObject({ status: 'completed_with_errors', done: 0, failed: [{ path: `${dir}/x.txt`, code: 'VERIFY_FAILED' }] });
+  });
+
+  it('a move whose verification fails leaves the source in place', async () => {
+    const { m: target, source: to } = mem();
+    target.truncateWrites = true;
+    const dir = fresh(t, a, 'move-bad');
+    writeFileSync(join(home(t, a), dir, 'keep.txt'), 'do not lose me');
+    const done = await settled(t, a, (await start(t, a, { mode: 'move', from: 'home', to, dir: '/', paths: [dir] })).id);
+    expect(done.status).toBe('completed_with_errors');
+    expect(done.failed).toEqual([{ path: `${dir}/keep.txt`, code: 'VERIFY_FAILED' }]);
+    expect(readFileSync(join(home(t, a), dir, 'keep.txt'), 'utf8')).toBe('do not lose me');
+    expect((await as(t, a, 'GET', '/api/v1/trash')).json().items).toEqual([]);
+  });
+
+  it('a verified move deletes the source (into the trash) and the target has the bytes', async () => {
+    const { m: target, source: to } = mem();
+    const dir = fresh(t, a, 'move-ok');
+    writeFileSync(join(home(t, a), dir, 'go.txt'), 'moving out');
+    const done = await settled(t, a, (await start(t, a, { mode: 'move', from: 'home', to, dir: '/', paths: [dir] })).id);
+    expect(done).toMatchObject({ status: 'completed', total: 2, done: 2, failed: [] });
+    expect(target.files.get(`${dir}/go.txt`)?.toString()).toBe('moving out');
+    expect(existsSync(join(home(t, a), dir))).toBe(false);
+    expect((await as(t, a, 'GET', '/api/v1/trash')).json().items.map((i: { originalPath: string }) => i.originalPath)).toContain(dir);
+  });
+
+  it('cancel stops new items and leaves no partial target files', async () => {
+    const { m, source } = mem();
+    const paths = ['/1.bin', '/2.bin', '/3.bin', '/4.bin', '/5.bin'];
+    for (const p of paths) { m.put(p, randomBytes(200_000)); m.stall(p); }
+    const dir = fresh(t, a, 'cancel');
+    const job = await start(t, a, { from: source, to: 'home', dir, paths });
+    // At least one item is mid-stream: its temp file is in the target folder.
+    await until(async () => filesUnder(join(home(t, a), dir)), (f) => f.length > 0, 'a partial target file');
+    const r = await as(t, a, 'POST', `/api/v1/transfers/${job.id}/cancel`);
+    expect(r.statusCode, r.body).toBe(200);
+    for (const p of paths) m.release(p);
+    // The job is cancelled at once; the items in flight follow once their writes have cleaned up.
+    const done = await until(() => jobOf(t, a, job.id), (j) => j.cancelled + j.done + j.failed.length === j.total, 'every item settled');
+    expect(done).toMatchObject({ status: 'cancelled', done: 0, cancelled: 5 });
+    await new Promise((res) => setTimeout(res, 100)); // nothing may still be on its way
+    expect(filesUnder(join(home(t, a), dir))).toEqual([]);
+    const started = [...m.reads.values()].reduce((x, y) => x + y, 0);
+    expect(started).toBeGreaterThan(0);
+    expect(started).toBeLessThan(paths.length);
+  });
+
+  it('another member gets 404 for the job, cannot cancel it and does not list it', async () => {
+    const { m, source } = mem();
+    m.put('/mine.txt', 'mine');
+    const job = await start(t, a, { from: source, to: 'home', dir: fresh(t, a, 'own'), paths: ['/mine.txt'] });
+    await settled(t, a, job.id);
+    expect((await as(t, b, 'GET', `/api/v1/transfers/${job.id}`)).json()).toEqual({ code: 'NOT_FOUND' });
+    expect((await as(t, b, 'GET', `/api/v1/transfers/${job.id}`)).statusCode).toBe(404);
+    expect((await as(t, b, 'POST', `/api/v1/transfers/${job.id}/cancel`)).statusCode).toBe(404);
+    expect((await as(t, b, 'GET', '/api/v1/transfers')).json().items).toEqual([]);
+    expect((await as(t, a, 'GET', '/api/v1/transfers')).json().items.map((j: Job) => j.id)).toContain(job.id);
+  });
+
+  it('refuses a source the caller cannot reach before a job exists', async () => {
+    const before = t.db.prepare('SELECT count(*) FROM transfer_jobs').pluck().get();
+    const r = await as(t, b, 'POST', '/api/v1/transfers', { mode: 'copy', from: mems[0] ? `conn:${mems[0].id}` : 'conn:x', to: 'home',
+      dir: '/', items: [{ path: '/ok.txt', onCollision: 'fail' }] });
+    expect(r.json()).toEqual({ code: 'SOURCE_NOT_FOUND' });
+    expect(t.db.prepare('SELECT count(*) FROM transfer_jobs').pluck().get()).toBe(before);
+  });
+
+  it('SSE progress reaches only the job owner', async () => {
+    await t.app.listen({ port: 0, host: '127.0.0.1' });
+    const base = `http://127.0.0.1:${(t.app.server.address() as AddressInfo).port}`;
+    const events = (s: S) => {
+      const ctl = new AbortController(); let text = '';
+      const ready = fetch(`${base}/api/v1/transfers/events`, { headers: { cookie: s.cookie }, signal: ctl.signal }).then(async (res) => {
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toMatch(/^text\/event-stream/);
+        const reader = res.body!.getReader(); const dec = new TextDecoder();
+        void (async () => {
+          for (;;) {
+            const c = await reader.read().catch(() => ({ done: true, value: undefined })); // handled: the abort ends the reading
+            if (c.done) return;
+            text += dec.decode(c.value);
+          }
+        })();
+      });
+      return { ready, text: () => text, close: () => ctl.abort() };
+    };
+    const ea = events(a); const eb = events(b);
+    await Promise.all([ea.ready, eb.ready]);
+    const { m, source } = mem();
+    m.put('/s.txt', 'streamed');
+    const job = await start(t, a, { from: source, to: 'home', dir: fresh(t, a, 'sse'), paths: ['/s.txt'] });
+    await until(async () => ea.text(), (x) => x.includes(job.id) && x.includes('"completed"'), 'the owner\'s completed event');
+    expect(ea.text()).toMatch(/^event: job$/m);
+    // The member then starts a job of their own: once its event arrives, everything sent before it has arrived too.
+    const mb = new MemBackend().put('/theirs.txt', 'theirs');
+    owned.get(b.id)!.push({ id: 'memb', backend: mb });
+    const r = await as(t, b, 'POST', '/api/v1/transfers', { mode: 'copy', from: 'conn:memb', to: 'home', dir: '/',
+      items: [{ path: '/theirs.txt', onCollision: 'fail' }] });
+    expect(r.statusCode, r.body).toBe(201);
+    await until(async () => eb.text(), (x) => x.includes(r.json().id as string), 'the member\'s own event');
+    expect(eb.text()).not.toContain(job.id);
+    // A stream opened later starts with the caller's own jobs only.
+    const late = events(b); await late.ready;
+    await until(async () => late.text(), (x) => x.includes(r.json().id as string), 'the snapshot');
+    expect(late.text()).not.toContain(job.id);
+    ea.close(); eb.close(); late.close();
+  });
+});
+
+describe('resume after a restart', () => {
+  it('a job that was running continues at start-up and does not copy verified items again', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'files-resume-'));
+    const content: Record<string, Buffer> = { '/a.bin': randomBytes(50_000), '/b.bin': randomBytes(50_000), '/c.bin': randomBytes(50_000) };
+    const first = new MemBackend();
+    for (const [p, d] of Object.entries(content)) first.put(p, d);
+    first.stall('/c.bin');
+    const t1 = await startTestApp({}, undefined, undefined, { dataDir, connections: async () => [{ id: 'src', backend: first }] });
+    const a = await signIn(t1, 'testuser');
+    mkdirSync(join(home(t1, a), 'in'), { recursive: true });
+    const job = await start(t1, a, { from: 'conn:src', to: 'home', dir: '/in', paths: Object.keys(content) });
+    await until(() => jobOf(t1, a, job.id), (j) => j.done === 2, 'a and b verified');
+    await until(async () => filesUnder(join(home(t1, a), 'in')), (f) => f.length === 3, 'c mid-stream');
+    await t1.close(); // the app goes away mid-job; c never finished
+    first.release('/c.bin');
+
+    const second = new MemBackend();
+    for (const [p, d] of Object.entries(content)) second.put(p, d);
+    const t2 = await startTestApp({}, undefined, undefined, { dataDir, connections: async () => [{ id: 'src', backend: second }] });
+    try {
+      const done = await settled(t2, a, job.id); // the session row survived the restart
+      expect(done).toMatchObject({ status: 'completed', total: 3, done: 3, failed: [] });
+      expect(Object.fromEntries(second.reads)).toEqual({ '/c.bin': 1 });
+      for (const [p, d] of Object.entries(content)) expect(Buffer.compare(readFileSync(join(home(t2, a), 'in', p)), d), p).toBe(0);
+      expect(filesUnder(join(home(t2, a), 'in')).sort()).toEqual(['a.bin', 'b.bin', 'c.bin']);
+    } finally {
+      await t2.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});

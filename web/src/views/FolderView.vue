@@ -17,12 +17,14 @@ import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
+import { useTransfersStore } from '../stores/transfers.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
 const route = useRoute(); const router = useRouter(); const { t } = useI18n();
 const folder = useFolderStore();
 const uploads = useUploadsStore();
 const connections = useConnectionsStore();
+const transfers = useTransfersStore();
 const status = ref('');
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
@@ -255,14 +257,47 @@ function onAction(action: ItemAction, entries: Entry[]) {
     status.value = t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length });
   }
 }
-// Items move and copy within their own source only (moves between sources are #152).
-const canPaste = computed(() => editable.value && folder.clipboard?.source === source.value);
+// Within one source items move and copy directly; from another source they become a transfer job (#152).
+const canPaste = computed(() => editable.value && folder.clipboard !== null);
 async function paste() {
   const clip = folder.clipboard;
   if (!clip || !canPaste.value) return;
   if (clip.mode === 'move') folder.clipboard = null; // a moved item is gone from where it was marked
+  if (clip.source !== folder.source) return pasteAcross(clip);
   await transfer(clip.mode, clip.entries.map((e) => ({ from: e.path, name: e.name })), folder.path, clip.source);
 }
+// The open folder's listing tells which names are taken; each one asks the collision question before the job starts, so
+// the job runs without asking. The job reports in the transfer panel; this folder relists once it has ended.
+async function pasteAcross(clip: NonNullable<typeof folder.clipboard>) {
+  const at = { source: folder.source, dir: folder.path };
+  failures.value = null;
+  const taken = new Set(folder.entries.map((e) => e.name));
+  const items: { path: string; onCollision: CollisionPolicy }[] = [];
+  let forAll: CollisionChoice['policy'] | null = null; // "apply to all remaining"
+  for (const [i, e] of clip.entries.entries()) {
+    if (!taken.has(e.name)) { items.push({ path: e.path, onCollision: 'fail' }); continue; }
+    let policy = forAll;
+    if (!policy) {
+      const c = await ask(e.name, clip.entries.length - i - 1);
+      policy = c.policy; if (c.all) forAll = c.policy;
+    }
+    if (policy !== 'skip') items.push({ path: e.path, onCollision: policy });
+  }
+  if (!items.length) { status.value = t('transfers.nothingToDo'); return; }
+  try {
+    await transfers.start({ mode: clip.mode, from: clip.source, to: at.source, dir: at.dir, items });
+    status.value = t(`transfers.started.${clip.mode}`, items.length);
+  } catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    status.value = '';
+    failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] };
+  }
+}
+watch(() => transfers.lastSettled, (j) => {
+  if (!j) return;
+  const here = (j.to === folder.source && j.dir === folder.path) || (j.mode === 'move' && j.from === folder.source);
+  if (here && folder.source === source.value) void folder.open(folder.path, { refresh: true });
+});
 function onDrop(paths: string[], dir: string) {
   if (!editable.value) return;
   void transfer('move', paths.map((p) => ({ from: p, name: baseName(p) })), dir);

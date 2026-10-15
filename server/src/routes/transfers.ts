@@ -1,0 +1,69 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { CreateTransferRequest, TransferId, type TransferJob, type TransferList } from '@files/shared';
+import { requireUser } from '../auth/guard.ts';
+
+const IdP = z.object({ id: TransferId });
+/** A comment line now and then keeps proxies from closing an idle event stream. */
+const KEEPALIVE_MS = 25_000;
+
+/**
+ * `/api/v1/transfers` (#152): the caller's transfer jobs between sources. Every lookup is by id and owner, so another
+ * member's job is NOT_FOUND; the event stream carries only the caller's own jobs.
+ */
+export async function registerTransferRoutes(app: FastifyInstance): Promise<void> {
+  const engine = () => app.deps.transfers;
+  const streams = new Set<() => void>();
+  // Open event streams would hold the server open; they end before it closes.
+  app.addHook('preClose', async () => { for (const end of [...streams]) end(); });
+
+  app.post('/api/v1/transfers', async (req, reply) => {
+    const { user } = requireUser(req);
+    const body = CreateTransferRequest.parse(req.body);
+    return reply.status(201).send(await engine().create(user.id, body));
+  });
+
+  app.get('/api/v1/transfers', async (req): Promise<TransferList> => {
+    const { user } = requireUser(req);
+    return { items: engine().list(user.id) };
+  });
+
+  // Server-sent events: one `job` event with the whole job on every change and while bytes flow, starting with the
+  // caller's current jobs, so a client that connects late has the full picture.
+  app.get('/api/v1/transfers/events', async (req, reply) => {
+    const { user } = requireUser(req);
+    reply.hijack();
+    const raw = reply.raw;
+    raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store',
+      'x-accel-buffering': 'no', connection: 'keep-alive' });
+    raw.flushHeaders(); // a member without jobs gets the headers now, not with the first event
+    const send = (job: TransferJob) => { raw.write(`event: job\ndata: ${JSON.stringify(job)}\n\n`); };
+    for (const job of engine().list(user.id).reverse()) send(job);
+    const unsubscribe = engine().subscribe(user.id, send);
+    const keepalive = setInterval(() => { raw.write(': keepalive\n\n'); }, KEEPALIVE_MS);
+    keepalive.unref();
+    const end = () => {
+      if (!streams.delete(end)) return;
+      clearInterval(keepalive); unsubscribe(); raw.end();
+    };
+    streams.add(end);
+    req.raw.on('close', end);
+  });
+
+  app.get('/api/v1/transfers/:id', async (req) => {
+    const { user } = requireUser(req);
+    return engine().get(user.id, IdP.parse(req.params).id);
+  });
+
+  app.post('/api/v1/transfers/:id/cancel', async (req) => {
+    const { user } = requireUser(req);
+    return engine().cancel(user.id, IdP.parse(req.params).id);
+  });
+
+  // Removes the caller's finished jobs from the panel; running ones stay.
+  app.post('/api/v1/transfers/clear', async (req, reply) => {
+    const { user } = requireUser(req);
+    engine().clearFinished(user.id);
+    return reply.status(204).send();
+  });
+}

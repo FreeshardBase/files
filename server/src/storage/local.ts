@@ -1,7 +1,7 @@
 import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync } from 'node:fs';
 import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, truncate, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
@@ -217,6 +217,14 @@ export class LocalBackend implements StorageBackend {
   }
   delete(paths: readonly string[]): Promise<void> { return this.deleteImpl(paths).catch(rethrowMapped); }
   thumbnail(p: string, size: ThumbSize): Promise<Readable | null> { return this.thumbnailImpl(p, size).catch(rethrowMapped); }
+
+  /** SHA-256 of the file as it lies on disk, read as a stream (verification of transfers, #152). */
+  async digest(p: string): Promise<string> {
+    const { stream } = await this.read(p);
+    const hash = createHash('sha256');
+    for await (const chunk of stream) hash.update(chunk as Buffer);
+    return hash.digest('hex');
+  }
 
   private async thumbnailImpl(p: string, size: ThumbSize): Promise<Readable | null> {
     const { thumbs, userId } = this.index;

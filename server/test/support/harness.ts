@@ -24,10 +24,11 @@ export async function startTestApp(
   /** Likewise for tables whose rows hang off a trash row (`trashTables`, purged with it). */
   /** `connections`: the members' cloud connections as fake backends (search merge tests). */
   /** `providers`: cloud providers to connect, e.g. `fakeProvider.provider()` (support/fakeProvider.ts); `clock`: a fake clock. */
+  /** `dataDir`: start on an existing data dir (a restart); `close` then leaves it for the test to remove. */
   dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void;
-    connections?: Connections; providers?: readonly Provider[]; clock?: Clock },
+    connections?: Connections; providers?: readonly Provider[]; clock?: Clock; dataDir?: string },
 ): Promise<TestApp> {
-  const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
+  const dataDir = dbOpts?.dataDir ?? mkdtempSync(join(tmpdir(), 'files-app-'));
   // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
   const setDefaultDist = process.env.FILES_WEB_DIST === undefined;
   if (setDefaultDist) process.env.FILES_WEB_DIST = join(dataDir, 'no-web-dist');
@@ -60,7 +61,8 @@ export async function startTestApp(
     app, config, db, dataDir, idp, routes,
     async close() {
       if (setDefaultDist && process.env.FILES_WEB_DIST === join(dataDir, 'no-web-dist')) delete process.env.FILES_WEB_DIST;
-      await app.close(); db.close(); await idp.close(); rmSync(dataDir, { recursive: true, force: true }); },
+      await app.close(); db.close(); await idp.close();
+      if (!dbOpts?.dataDir) rmSync(dataDir, { recursive: true, force: true }); },
   };
 }
 

@@ -51,6 +51,11 @@ export interface StorageBackend {
   quota?(): Promise<{ used: number; total?: number }>;
   /** The provider's stored revisions of a file, oldest first (cloud backends; restoring comes with versions). */
   revisions?(path: string): Promise<Revision[]>;
+  /**
+   * SHA-256 (hex) of a file's bytes as stored. A transfer (#152) compares it with the hash of the bytes it sent. Only the
+   * home offers it today: the providers' own hashes use other algorithms (DECISIONS, #152).
+   */
+  digest?(path: string): Promise<string>;
 }
 
 export type Revision = { id: string; modified: string; size?: number };
