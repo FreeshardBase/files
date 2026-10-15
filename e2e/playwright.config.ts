@@ -12,5 +12,7 @@ export default defineConfig({
   projects: [
     { name: 'desktop-chrome', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chrome', use: { ...devices['Pixel 7'] } },
+    // Firefox checks what depends on its engine: the PDF preview under `CSP: sandbox` (#143).
+    { name: 'desktop-firefox', use: { ...devices['Desktop Firefox'] }, testMatch: ['pdf-preview.spec.ts'] },
   ],
 });

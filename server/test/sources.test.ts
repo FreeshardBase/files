@@ -163,15 +163,14 @@ describe('sources/home', () => {
       headers: { cookie: c.cookie, 'x-csrf-token': c.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream', 'transfer-encoding': 'chunked' } });
     req.on('error', () => undefined);
     const gotResponse = once(req, 'response');
-    let written = 0;
-    const pump = setInterval(() => { if (written < 2 * 1024 * 1024) { req.write(Buffer.alloc(64 * 1024)); written += 64 * 1024; } }, 5);
+    // One chunk and the body is never ended: an answer at all means the server did not wait for the body. The client
+    // writes nothing more, so it cannot run into the closed socket (EPIPE) before the answer is parsed.
+    req.write(Buffer.alloc(64 * 1024));
     const [res] = (await Promise.race([gotResponse, new Promise((_, rej) => setTimeout(() => rej(new Error('no early 409')), 3000))])) as [http.IncomingMessage];
-    clearInterval(pump);
     const body = await new Promise<string>((resolve) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => resolve(b)); });
     expect(res.statusCode).toBe(409);
     expect(res.headers.connection).toBe('close');
     expect(JSON.parse(body)).toEqual({ code: 'FILE_EXISTS', params: { name: 'taken.bin' } });
-    expect(written).toBeLessThan(2 * 1024 * 1024); // the client still had data to send: the server did not wait for the body
     req.destroy();
     const root = await rootOf(s, c);
     expect(readdirSync(root).filter((n) => n.endsWith('.upload'))).toEqual([]);

@@ -124,7 +124,22 @@ body {
 .button[aria-disabled='true'] { opacity: 0.45; cursor: default; }
 .pdf-view { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
 .pdf-pages { display: flex; align-items: center; gap: var(--space-2); }
-.pdf-view canvas { max-width: 100%; background: #fff; border: var(--border-w) solid var(--border); }
+.pdf-sheet { position: relative; max-width: 100%; background: #fff; outline: var(--border-w) solid var(--border); --scale-round-x: 1px; --scale-round-y: 1px; }
+.pdf-sheet canvas { display: block; max-width: 100%; }
+/* pdf.js text layer: transparent runs placed over the canvas; the rules pdf.js's own viewer CSS gives `.textLayer`. */
+.pdf-text {
+  position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; transform-origin: 0 0;
+  text-size-adjust: none; forced-color-adjust: none;
+  --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-text :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; user-select: text; }
+.pdf-text > :not(.markedContent), .pdf-text .markedContent span:not(.markedContent) {
+  --font-height: 0; --scale-x: 1; --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.pdf-text .markedContent { display: contents; }
+.pdf-text ::selection { background: color-mix(in srgb, var(--line) 30%, transparent); color: transparent; }
 .markdown { align-self: stretch; max-width: 72ch; margin: 0 auto; line-height: 1.55; overflow-wrap: anywhere; }
 .markdown h1 { font-size: var(--fs-h1); } .markdown h2 { font-size: var(--fs-h2); } .markdown h3 { font-size: var(--fs-h3); }
 .markdown a { color: var(--line); }
