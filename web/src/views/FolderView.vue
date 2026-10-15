@@ -66,6 +66,23 @@ const gallery = ref<InstanceType<typeof GalleryGrid>>();
 const conflict = ref<{ name: string; remaining: number; returnFocus?: HTMLElement | null; answer: (c: CollisionChoice) => void } | null>(null);
 const uploadButton = ref<InstanceType<typeof UploadButton>>();
 const list = ref<InstanceType<typeof FileList>>();
+
+// `?select=<path>` (a search result, #145): once this folder's list is in, that item is selected and focused.
+const pendingSelect = ref<string | null>(null);
+async function applySelect() {
+  const want = pendingSelect.value;
+  if (!want || folder.loading || folder.path !== path.value || folder.source !== source.value) return;
+  pendingSelect.value = null;
+  if (!folder.entries.some((e) => e.path === want)) return; // gone meanwhile: the folder shows what is there
+  selected.value = [want];
+  await nextTick();
+  (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(want);
+}
+watch(() => route.query.select, (s) => {
+  pendingSelect.value = typeof s === 'string' ? s : null;
+  void applySelect();
+}, { immediate: true });
+watch([() => folder.entries, () => folder.loading], () => { void applySelect(); });
 const ask = (name: string, remaining: number, returnFocus?: HTMLElement | null) => new Promise<CollisionChoice>((resolve) => {
   conflict.value = { name, remaining, returnFocus, answer: (c) => { conflict.value = null; resolve(c); } };
 });

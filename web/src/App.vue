@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
+import SearchBox from './components/SearchBox.vue';
 const session = useSessionStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
@@ -22,6 +23,7 @@ onMounted(async () => {
   <div class="app-shell">
     <header class="app-header">
       <span class="app-title">{{ $t('app.name') }}</span>
+      <SearchBox v-if="session.me" />
     </header>
     <div
       v-if="session.me"

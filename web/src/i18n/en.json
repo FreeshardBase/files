@@ -24,6 +24,16 @@
     "openFolderLabel": "Open the folder of {name}",
     "openLabel": "Open {name}"
   },
+  "search": {
+    "label": "Search files by name",
+    "placeholder": "Search by name",
+    "results": "Search results",
+    "searching": "Searching …",
+    "empty": "Nothing found with “{query}” in its name.",
+    "sourceFailed": "{source} could not be searched: {reason}",
+    "more": "{source} has more matches. Type more of the name to narrow them down.",
+    "count": "No results | One result | {count} results"
+  },
   "folder": {
     "empty": "This folder is empty.",
     "loading": "Loading …",
@@ -166,7 +176,8 @@
     "OFFSET_MISMATCH": "The upload got out of step with the server. Please try again.",
     "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment.",
     "NO_THUMBNAIL": "There is no thumbnail for this file type.",
-    "THUMBNAIL_FAILED": "The thumbnail could not be created."
+    "THUMBNAIL_FAILED": "The thumbnail could not be created.",
+    "SEARCH_FAILED": "The search at this provider failed."
   },
   "view": {
     "label": "View",

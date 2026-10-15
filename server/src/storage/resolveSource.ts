@@ -37,6 +37,16 @@ export function homeBackend(req: FastifyRequest): LocalBackend {
   return new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables, trashTables, thumbs });
 }
 
+/**
+ * Every source the caller can search, home first: their home and each of their own cloud connections (#148 fills
+ * `connections`). Sources shared with the caller are not searched (#146 decides).
+ */
+export async function searchableSources(req: FastifyRequest): Promise<{ source: string; backend: StorageBackend }[]> {
+  const { user } = requireUser(req);
+  const conns = await req.server.deps.connections(user);
+  return [{ source: 'home', backend: homeBackend(req) }, ...conns.map((c) => ({ source: `conn:${c.id}`, backend: c.backend }))];
+}
+
 /** The one place a source id becomes a backend and the caller's access level. Routes never build a backend. */
 export async function resolveSource(req: FastifyRequest, source: string): Promise<ResolvedSource> {
   const { user } = requireUser(req);

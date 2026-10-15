@@ -6,7 +6,8 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "build": "node build.mjs",
-    "dev": "tsx watch src/dev.ts"
+    "dev": "tsx watch src/dev.ts",
+    "reindex": "tsx src/reindex.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

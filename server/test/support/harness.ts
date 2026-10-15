@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance, RouteOptions } from 'fastify';
-import { buildApp } from '../../src/app.ts';
+import { buildApp, type Connections } from '../../src/app.ts';
 import { loadConfig, type Config } from '../../src/config.ts';
 import { openDb, type Db } from '../../src/db.ts';
 import { cookieNames } from '../../src/auth/cookies.ts';
@@ -21,7 +21,9 @@ export async function startTestApp(
   logStream?: NodeJS.WritableStream,
   /** Path-dependent tables for the cascade, e.g. ones a test creates in `prepare`; default: the app's own list. */
   /** Likewise for tables whose rows hang off a trash row (`trashTables`, purged with it). */
-  dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void },
+  /** `connections`: the members' cloud connections as fake backends (search merge tests). */
+  dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void;
+    connections?: Connections },
 ): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
   // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
@@ -47,7 +49,8 @@ export async function startTestApp(
   const routes: RouteOptions[] = [];
   const app = await buildApp({ config, db, extend, logStream, onRoute: (r) => { routes.push(r); },
     ...(dbOpts?.pathTables ? { pathTables: dbOpts.pathTables } : {}),
-    ...(dbOpts?.trashTables ? { trashTables: dbOpts.trashTables } : {}) });
+    ...(dbOpts?.trashTables ? { trashTables: dbOpts.trashTables } : {}),
+    ...(dbOpts?.connections ? { connections: dbOpts.connections } : {}) });
   await app.ready();
   return {
     app, config, db, dataDir, idp, routes,
