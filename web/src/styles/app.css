@@ -172,6 +172,20 @@ body {
 .details-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
 .details-facts dt { color: var(--ink-muted); font-size: var(--fs-small); }
 .details-facts dd { margin: 0; overflow-wrap: anywhere; }
+/* Public links (#147): the share dialog's link list and form, and the visitor's share page; see DESIGN.md */
+.link-list .share-level { flex-basis: 100%; }
+.link-address { flex: 1 1 100%; box-sizing: border-box; font-family: var(--font-mono); font-size: var(--fs-mono); }
+.link-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.link-form { margin-top: var(--space-3); padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }
+.link-page { max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.link-kind { margin: 0 0 var(--space-1); font-size: var(--fs-label); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--ink-muted); }
+.link-name { margin-bottom: var(--space-4); overflow-wrap: anywhere; }
+.link-alert { padding: var(--space-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius-control); color: var(--danger); }
+.link-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.link-entries { margin-top: var(--space-3); }
+@media (max-width: 600px) {
+  .link-actions .button, .link-unlock .button { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+}
 @media (max-width: 600px) {
   .share-option { min-height: 44px; display: flex; align-items: center; }
   .app-dialog-scrim.app-dialog-scrim-drawer { align-items: flex-end; padding: var(--space-2) var(--space-2) 0; }

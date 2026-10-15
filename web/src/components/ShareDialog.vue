@@ -2,12 +2,13 @@
 // Shares one item of the member's own source with other members (#146): a member picker (WAI-ARIA combobox, filtered
 // by name, focus stays in the field, the active option is aria-activedescendant), the access level as two radios,
 // "Share", and the list of who has access with "Remove access" per member. Esc in the open picker list closes only
-// the list; otherwise it closes the dialog.
+// the list; otherwise it closes the dialog. Public links of the item are managed below (LinkManager, #147).
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, CreateShareRequest, Entry, Member, MemberList, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import AppDialog from './AppDialog.vue';
+import LinkManager from './LinkManager.vue';
 
 const props = defineProps<{ source: string; entry: Entry; returnFocus?: HTMLElement | null }>();
 const emit = defineEmits<{ close: [] }>();
@@ -245,6 +246,10 @@ async function revoke(s: Share) {
     >
       {{ t('share.onlyYou') }}
     </p>
+    <LinkManager
+      :source="source"
+      :entry="entry"
+    />
     <p
       class="visually-hidden"
       aria-live="polite"

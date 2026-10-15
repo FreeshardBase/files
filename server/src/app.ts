@@ -21,6 +21,7 @@ import { scheduleUploadExpiry } from './storage/uploads.ts';
 import { registerRecentRoutes } from './routes/recent.ts';
 import { registerSearchRoutes } from './routes/search.ts';
 import { registerShareRoutes } from './routes/shares.ts';
+import { registerLinkRoutes } from './routes/links.ts';
 import type { ConnectedBackend } from './storage/backend.ts';
 import type { User } from './users.ts';
 import { ThumbnailCache } from './storage/thumbnails.ts';
@@ -54,7 +55,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
       level: config.logLevel,
       ...(logStream ? { stream: logStream } : {}),
       redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
-      serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0], id: req.id }) },
+      // A public link's token is a secret in the path (#147); the log keeps only that it was one.
+      serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0]!.replace(/^\/s\/[^/]*/, '/s/<token>'), id: req.id }) },
     },
     trustProxy: (_address, hop) => hop < 1, // trust exactly one proxy hop (number form is not in the typings)
     bodyLimit: 1024 * 1024,
@@ -93,6 +95,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerRecentRoutes(app);
   await registerSearchRoutes(app);
   await registerShareRoutes(app);
+  await registerLinkRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

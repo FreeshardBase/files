@@ -5,10 +5,14 @@ import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
 import SearchBox from './components/SearchBox.vue';
+import { isPublicPage } from './router.ts';
 const session = useSessionStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
+// A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
+const publicPage = isPublicPage(location.pathname);
 onMounted(async () => {
+  if (publicPage) return;
   await session.load();
   if (!showLoginFailed) return;
   // The alert is decided; drop the flag from the URL so a reload or bookmark does not repeat it.
@@ -20,7 +24,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <RouterView v-if="publicPage" />
+  <div
+    v-else
+    class="app-shell"
+  >
     <header class="app-header">
       <span class="app-title">{{ $t('app.name') }}</span>
       <SearchBox v-if="session.me" />
