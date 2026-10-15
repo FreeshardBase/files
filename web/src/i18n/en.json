@@ -25,12 +25,18 @@
     "button": "Upload",
     "progress": "{name}: {percent} %",
     "done": "{name} uploaded",
-    "keepBoth": "Upload as copy",
-    "replace": "Replace",
-    "skip": "Skip",
     "summary": "{done} of {total} uploaded",
+    "summarySkipped": "{done} of {total} uploaded, {skipped} skipped",
     "failedHeading": "Not uploaded:",
     "failedItem": "{name}: {reason}"
+  },
+  "collision": {
+    "title": "Name already taken",
+    "message": "“{name}” already exists here. What should happen?",
+    "replace": "Replace",
+    "keepBoth": "Keep both",
+    "skip": "Skip",
+    "applyAll": "Do this for all remaining items ({count})"
   },
   "errors": {
     "UNAUTHENTICATED": "You are no longer signed in.",

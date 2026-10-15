@@ -42,7 +42,32 @@ body {
   position: relative; /* anchors the visually hidden file input */
 }
 .button.primary { border-color: var(--accent); color: var(--accent); }
+.button.danger { border-color: var(--danger); color: var(--danger); }
 .button:focus-within { outline: 2px solid var(--line); outline-offset: 2px; }
+
+/* ---- AppDialog: a sheet on a flat scrim (no shadow); see DESIGN.md ---- */
+.app-dialog-scrim {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-4); overflow-y: auto; /* the page lock is AppDialog's root overflow, not overscroll-behavior */
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.app-dialog {
+  width: 100%; max-width: 440px; margin: auto;
+  background: var(--surface); color: var(--ink);
+  border: var(--border-w) solid var(--border); border-radius: var(--radius-sheet);
+  padding: var(--space-5);
+}
+.app-dialog:focus { outline: none; }
+.app-dialog-title { margin: 0 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
+.app-dialog-text { margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
+.app-dialog-check { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); font-size: var(--fs-small); }
+.app-dialog-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
+.app-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+@media (max-width: 600px) {
+  .app-dialog-scrim { align-items: flex-end; padding: var(--space-2); }
+  .app-dialog-actions .button { flex: 1 1 auto; justify-content: center; }
+}
 
 .folder { max-width: 960px; margin: 0 auto; }
 .toolbar {

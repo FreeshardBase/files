@@ -10,6 +10,13 @@ const bannedBuffering = [
   { selector: "CallExpression[callee.property.name='readFile']", message: 'Stream instead of buffering (spec 3.2).' },
 ];
 
+// Spec §3.8: every dialog uses <AppDialog> (focus trap, Esc, focus restore, scroll lock).
+const onlyAppDialog = 'Dialogs must use <AppDialog> (web/src/components/AppDialog.vue).';
+const bannedDialogScript = [
+  { selector: "CallExpression[callee.property.name='setAttribute'][arguments.0.value='role'][arguments.1.value=/^(alert)?dialog$/]", message: onlyAppDialog },
+  { selector: "Property[key.name='role'][value.value=/^(alert)?dialog$/]", message: onlyAppDialog },
+];
+
 export default tseslint.config(
   { ignores: ['**/dist/**', '**/node_modules/**', 'docs/**'] },
   js.configs.recommended,
@@ -44,6 +51,16 @@ export default tseslint.config(
       '@intlify/vue-i18n/no-raw-text': ['error', { ignorePattern: '^[\\s/·…–—|()\\-:]+$' }],
       '@intlify/vue-i18n/no-missing-keys': 'error',
       'no-alert': 'error',
+      'vue/no-restricted-static-attribute': ['error',
+        { key: 'role', value: 'dialog', message: onlyAppDialog }, { key: 'role', value: 'alertdialog', message: onlyAppDialog }],
+      'vue/no-restricted-v-bind': ['error', { argument: 'role', message: `A bound role can hide a dialog. ${onlyAppDialog}` }],
+      'vue/no-restricted-html-elements': ['error', { element: ['dialog'], message: onlyAppDialog }],
     },
+  },
+  { files: ['web/src/**/*.{ts,vue}'], rules: { 'no-restricted-syntax': ['error', ...bannedDialogScript] } },
+  // The one place a dialog role may appear.
+  {
+    files: ['web/src/components/AppDialog.vue'],
+    rules: { 'vue/no-restricted-static-attribute': 'off', 'vue/no-restricted-v-bind': 'off', 'vue/no-restricted-html-elements': 'off' },
   },
 );

@@ -22,6 +22,7 @@ Container: with podman use `podman build --format docker .`, otherwise the `HEAL
 - No auth bypass, no `NODE_ENV === 'test'` branches. Tests log in through `server/test/support/fakeIdp.ts`.
 - Tests use temp dirs only; never `data/`.
 - Every bug fix starts with a failing test; deleting the fix must turn it red.
+- Every dialog uses `web/src/components/AppDialog.vue`. The lint config rejects `role="dialog"`/`alertdialog`, a bound `:role` and `<dialog>` in any other file under `web/src` (`web/test/dialogLint.test.ts`).
 - Every UI change has a Playwright test and passes `no-raw-text` (all strings in `web/src/i18n/*.json`, all three locales).
 - Design guide "Daylight Instrument" is binding; deviations go in `DESIGN.md`.
 - Fixtures use `testuser`, `testuser@example.com`, `Test User`.

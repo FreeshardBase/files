@@ -10,6 +10,10 @@ The design guide "Daylight Instrument" (`docs/design-guide.md`) is binding. This
 
 Line icons are SVG on a 24px grid with a 1.5px stroke, stored as data-URI custom properties (`--icon`) in `web/src/styles/app.css` and drawn through a CSS mask on the `.icon` class. The colour therefore comes from the theme tokens, not from the SVG. No emoji, no icon fonts.
 
+## Dialogs
+
+The guide has no dialog recipe. `<AppDialog>` (`web/src/components/AppDialog.vue`) is a `.fs-sheet`-like surface (surface tone, hairline border, sheet radius, no shadow) centred on a flat scrim of `--bg` at 70 %. The scrim separates the sheet by tone, not by elevation, so the "no shadows" rule holds in both themes. On phone width the sheet sits at the bottom edge and the action buttons share the row. Actions are outline buttons of equal weight: the one forward action takes the amber hairline (`.button.primary`), a destructive one the danger hairline (`.button.danger`). In the collision dialog "keep both" is the forward action and takes the initial focus, because it never loses data; "replace" is marked destructive. The "apply to all" checkbox is a native checkbox tinted with `accent-color: var(--data)` instead of the guide's custom `.fs-check`, so it keeps native keyboard and screen-reader behaviour without extra script.
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

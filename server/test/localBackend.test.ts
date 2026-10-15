@@ -41,7 +41,7 @@ describe('write + read', () => {
   it('keep-both picks a free name', async () => {
     await b.write('/a.txt', body('one'), opts);
     const e = await b.write('/a.txt', body('two'), { ...opts, onCollision: 'keep-both' });
-    expect(e.name).toBe('a (2).txt');
+    expect(e.name).toBe('a (1).txt');
   });
   it('two concurrent fail-uploads: exactly one wins, content is never mixed', async () => {
     const results = await Promise.allSettled([
@@ -209,7 +209,7 @@ describe('keep-both on a long name', () => {
     await b.write('/' + name, body('one'), opts);
     const e = await b.write('/' + name, body('two'), { ...opts, onCollision: 'keep-both' });
     expect(Buffer.byteLength(e.name)).toBeLessThanOrEqual(255);
-    expect(e.name.endsWith(' (2).txt')).toBe(true);
+    expect(e.name.endsWith(' (1).txt')).toBe(true);
     expect(e.name.isWellFormed()).toBe(true);
   });
 
@@ -229,29 +229,29 @@ describe('keep-both on a long name', () => {
     const ext = '.' + 'x'.repeat(19);
     const name = 'a'.repeat(250 - ext.length) + ext;
     expect(Buffer.byteLength(name)).toBe(250);
-    expect(await keepBoth(name)).toMatch(new RegExp(`^a+ \\(2\\)\\${ext}$`));
+    expect(await keepBoth(name)).toMatch(new RegExp(`^a+ \\(1\\)\\${ext}$`));
   });
 
   it('never splits a multi-byte character', async () => {
     const name = '😀'.repeat(63); // 252 bytes, no extension
     const got = await keepBoth(name);
-    expect(got).toMatch(/^(😀)+ \(2\)$/u);
+    expect(got).toMatch(/^(😀)+ \(1\)$/u);
   });
 
   it('drops an extension that leaves no room for the name', async () => {
     const name = 'a.' + 'x'.repeat(252); // the "extension" alone is 253 bytes
     expect(Buffer.byteLength(name)).toBe(254);
     const got = await keepBoth(name);
-    expect(got.endsWith(' (2)')).toBe(true);
+    expect(got.endsWith(' (1)')).toBe(true);
     expect(got.startsWith('a.x')).toBe(true);
   });
 
   it('drops an extension that would leave an empty stem', async () => {
-    const name = '😀.' + 'x'.repeat(246); // stem 4 bytes, extension 247 bytes: " (2)" + extension leaves 4 bytes, one emoji fits
-    expect(await keepBoth(name)).toBe('😀 (2).' + 'x'.repeat(246));
+    const name = '😀.' + 'x'.repeat(246); // stem 4 bytes, extension 247 bytes: " (1)" + extension leaves 4 bytes, one emoji fits
+    expect(await keepBoth(name)).toBe('😀 (1).' + 'x'.repeat(246));
     const tight = '😀.' + 'x'.repeat(248); // extension 249 bytes leaves 2 bytes: no whole character fits before it
     const got = await keepBoth(tight);
-    expect(got.endsWith(' (2)')).toBe(true);
+    expect(got.endsWith(' (1)')).toBe(true);
     expect(got.startsWith('😀.x')).toBe(true);
   });
 });

@@ -141,7 +141,42 @@ describe('sources/home', () => {
     const f = uniq('dup');
     expect((await put(a, f, 'one')).statusCode).toBe(201);
     expect((await put(a, f, 'two')).statusCode).toBe(409);
-    expect((await put(a, f, 'two', 'keep-both')).json().name).toBe(`${f.slice(1, -4)} (2).txt`);
+    expect((await put(a, f, 'two', 'keep-both')).json().name).toBe(`${f.slice(1, -4)} (1).txt`);
+  });
+  it('PUT with policy fail on an existing name answers 409 FILE_EXISTS with the name and keeps the file', async () => {
+    const f = uniq('Bericht');
+    expect((await put(a, f, 'old')).statusCode).toBe(201);
+    const r = await put(a, f, 'new content');
+    expect(r.statusCode).toBe(409);
+    expect(r.json()).toEqual({ code: 'FILE_EXISTS', params: { name: f.slice(1) } });
+    expect((await get(a, `/api/v1/sources/home/content?path=${q(f)}`)).body).toBe('old');
+  });
+  it('answers 409 FILE_EXISTS before the body of a colliding upload is read (real socket, body still streaming)', async () => {
+    const s = await startTestApp();
+    const c = await login(s);
+    const f = '/taken.bin';
+    expect((await s.app.inject({ method: 'PUT', url: `/api/v1/sources/home/content?path=${q(f)}&onCollision=fail`,
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream' }, payload: 'old' })).statusCode).toBe(201);
+    await s.app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (s.app.server.address() as AddressInfo).port;
+    const req = http.request({ port, host: '127.0.0.1', method: 'PUT', path: `/api/v1/sources/home/content?path=${q(f)}&onCollision=fail`,
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream', 'transfer-encoding': 'chunked' } });
+    req.on('error', () => undefined);
+    const gotResponse = once(req, 'response');
+    let written = 0;
+    const pump = setInterval(() => { if (written < 2 * 1024 * 1024) { req.write(Buffer.alloc(64 * 1024)); written += 64 * 1024; } }, 5);
+    const [res] = (await Promise.race([gotResponse, new Promise((_, rej) => setTimeout(() => rej(new Error('no early 409')), 3000))])) as [http.IncomingMessage];
+    clearInterval(pump);
+    const body = await new Promise<string>((resolve) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => resolve(b)); });
+    expect(res.statusCode).toBe(409);
+    expect(res.headers.connection).toBe('close');
+    expect(JSON.parse(body)).toEqual({ code: 'FILE_EXISTS', params: { name: 'taken.bin' } });
+    expect(written).toBeLessThan(2 * 1024 * 1024); // the client still had data to send: the server did not wait for the body
+    req.destroy();
+    const root = await rootOf(s, c);
+    expect(readdirSync(root).filter((n) => n.endsWith('.upload'))).toEqual([]);
+    expect((await s.app.inject({ url: `/api/v1/sources/home/content?path=${q(f)}`, headers: { cookie: c.cookie } })).body).toBe('old');
+    await s.close();
   });
   it('rejects an upload without the octet-stream content type', async () => {
     const r = await t.app.inject({ method: 'PUT', url: '/api/v1/sources/home/content?path=%2Fct.txt&onCollision=fail',

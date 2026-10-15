@@ -96,7 +96,11 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
       throw new AppError('PAYLOAD_TOO_LARGE');
     }
     const entry = await b.write(q.path, req.body as Readable, { onCollision: q.onCollision, maxBytes: max,
-      ...(Number.isSafeInteger(declared) ? { size: declared } : {}), ...(h['if-match'] ? { ifMatch: h['if-match'] } : {}) });
+      ...(Number.isSafeInteger(declared) ? { size: declared } : {}), ...(h['if-match'] ? { ifMatch: h['if-match'] } : {}) })
+      .catch((e: unknown) => {
+        if (!req.raw.complete) reply.header('connection', 'close'); // rejected before the body was read (e.g. FILE_EXISTS): stop draining it
+        throw e;
+      });
     return reply.status(201).send(entry);
   });
 
