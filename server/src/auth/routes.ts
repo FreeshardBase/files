@@ -53,8 +53,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     let claims;
     try { claims = await oidc.exchange(callbackUrl, attempt); }
     catch (err) { return failed('code exchange rejected', err); } // handled: state mismatch, IdP error=, bad code
-    const roleValue = claims[config.oidc.roleClaim];
-    const isAdmin = Array.isArray(roleValue) ? roleValue.includes(config.oidc.adminValue) : roleValue === config.oidc.adminValue;
+    // Without a configured admin claim nobody is admin (least privilege).
+    const admin = config.oidc.admin;
+    const roleValue = admin && claims[admin.claim];
+    const isAdmin = admin !== undefined && (Array.isArray(roleValue) ? roleValue.includes(admin.value) : roleValue === admin.value);
     const user = upsertUserFromClaims(db, { iss: claims.iss, sub: claims.sub, isAdmin,
       ...(typeof claims.name === 'string' ? { name: claims.name } : {}),
       ...(typeof claims.email === 'string' ? { email: claims.email } : {}) });

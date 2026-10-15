@@ -17,7 +17,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 - The only way in is the shard's OIDC provider: authorization code with PKCE. `state`, `nonce` and the verifier live server-side in a `login_attempts` row (cookie `__Host-fs_login`) and are single-use. A missing or mismatched value is rejected.
 - Each person gets a stable internal user id (UUID), mapped from (`iss`, `sub`). Nothing is keyed by `sub`, display name or `X-Ptl-Client-Id` (a device id, not a person).
-- The `admin` role comes from a configurable claim: `FILES_OIDC_ROLE_CLAIM` equal to / containing `FILES_OIDC_ADMIN_VALUE`. Everyone else is `member`.
+- The `admin` role comes from a configurable claim: `FILES_OIDC_ROLE_CLAIM` equal to / containing `FILES_OIDC_ADMIN_VALUE`. Everyone else is `member`. The pair is optional (both or neither); without it nobody is admin, because shard_core sends no role claim yet (freeshard#251).
 - Sessions are rows in SQLite (only a hash of the id is stored), 14 days, revocable; the cookie is `__Host-fs_sid` on https and `fs_sid` on http loopback.
 - Mutating requests need `Origin` equal to the public URL and an `X-CSRF-Token` matching the session. The token comes from `GET /api/v1/me`.
 - There are no local accounts and no bypass. Dev, tests and E2E use the fake IdP in `server/test/support/fakeIdp.ts`. An `http://` issuer is accepted only for loopback.

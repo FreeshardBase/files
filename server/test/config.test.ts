@@ -78,7 +78,27 @@ describe('loadConfig', () => {
   it('reports every problem at once', () => {
     const err = thrownBy(() => loadConfig({}));
     expect(err).toBeInstanceOf(ConfigError);
-    expect((err as ConfigError).problems.length).toBeGreaterThanOrEqual(9);
+    expect((err as ConfigError).problems.length).toBeGreaterThanOrEqual(7);
+  });
+
+  // shard_core's OIDC provider sends no role claim yet (freeshard#251), so the app template cannot set these.
+  it('accepts a config without FILES_OIDC_ROLE_CLAIM and FILES_OIDC_ADMIN_VALUE and maps nobody to admin', () => {
+    const env: Record<string, string> = { ...valid };
+    delete env.FILES_OIDC_ROLE_CLAIM;
+    delete env.FILES_OIDC_ADMIN_VALUE;
+    expect(loadConfig(env).oidc.admin).toBeUndefined();
+  });
+
+  it('exposes the admin claim mapping when both are set', () => {
+    expect(loadConfig(valid).oidc.admin).toEqual({ claim: 'groups', value: 'admin' });
+  });
+
+  it.each(['FILES_OIDC_ROLE_CLAIM', 'FILES_OIDC_ADMIN_VALUE'])('refuses to start with only one of the pair (without %s)', (key) => {
+    const env: Record<string, string> = { ...valid };
+    delete env[key];
+    const err = thrownBy(() => loadConfig(env));
+    expect(err).toBeInstanceOf(ConfigError);
+    expect((err as ConfigError).problems).toEqual([expect.stringMatching(/FILES_OIDC_ROLE_CLAIM.*FILES_OIDC_ADMIN_VALUE.*both or neither/)]);
   });
 
   it.each([
