@@ -10,7 +10,8 @@ export const solidPng = (width: number, height: number, background: string): Pro
 // The Google Drive v3 subset that GoogleDriveBackend uses (#149), mounted on the fake provider (spec §3.9): files are
 // ids with names and parents (so one folder can hold two items of the same name), `q` queries, `pageToken` pagination,
 // `alt=media` answered by a 302 to a pre-signed URL that honours Range, exports of Google-native documents, resumable
-// upload sessions (308 with `Range` until the last chunk), trash by `trashed: true`, revisions, quota and thumbnails.
+// upload sessions (308 with `Range` until the last chunk; the Range may confirm less than was sent, and a `bytes */n`
+// status query never completes a session, #204), multipart uploads, trash by `trashed: true`, revisions, quota and thumbnails.
 // Bearer tokens, injected failures and 401s are handled by the fake provider before a request gets here.
 //
 // Thumbnails come in Drive's two link shapes (#203): a stored file's `thumbnailLink` is `…/drive-thumb/<id>=s220`
@@ -43,7 +44,7 @@ type Content = { kind: 'bytes'; data: Buffer } | { kind: 'generated'; size: numb
 export type DriveFile = { id: string; name: string; mimeType: string; parents: string[]; trashed: boolean; modifiedTime: string;
   content?: Content; thumbnail?: boolean | Buffer; revisions: { id: string; modifiedTime: string; size: number }[] };
 type Session = { fileId?: string; meta: { name?: string; parents?: string[]; mimeType?: string }; size: number; received: number;
-  parts: Buffer[]; md5: ReturnType<typeof createHash> };
+  parts: Buffer[]; md5: ReturnType<typeof createHash>; mediaType: string };
 
 const sizeOf = (c?: Content) => (c === undefined ? 0 : c.kind === 'bytes' ? c.data.length : c.size);
 const LIT = String.raw`'((?:[^'\\]|\\.)*)'`;
@@ -56,6 +57,8 @@ export class FakeDrive {
   readonly chunks: string[] = [];
   /** Sessions cancelled by the client (`DELETE` on the session URI). */
   cancelled = 0;
+  /** Bytes Drive persists of the next session chunks, in order (#204); a chunk beyond the list is persisted whole. */
+  readonly persistOnly: number[] = [];
   /** Where `alt=media` redirects to; the fake's own pre-signed URL unless a test points it elsewhere. */
   contentOrigin: string | undefined;
   quota = { limit: 15 * 1024 ** 3, usage: 1234 };
@@ -174,6 +177,18 @@ export class FakeDrive {
   }
 
   private target(id: string) { return this.files.get(id === 'root' ? this.rootId : id); }
+
+  /** A finished upload: a new revision of `fileId`, or a new file from the metadata. */
+  private store(fileId: string | undefined, meta: Session['meta'], mediaType: string, content: Content): DriveFile {
+    if (fileId) {
+      const f = this.target(fileId)!;
+      f.content = content; this.touch(f);
+      f.revisions.push({ id: this.newId(), modifiedTime: f.modifiedTime, size: sizeOf(content) });
+      return f;
+    }
+    return this.create({ name: String(meta.name), mimeType: meta.mimeType ?? mediaType,
+      parents: meta.parents?.map((p) => (p === 'root' ? this.rootId : p)) ?? [this.rootId] }, content);
+  }
   private touch(f: DriveFile) { f.modifiedTime = new Date(Math.max(Date.now(), Date.parse(f.modifiedTime) + 1)).toISOString(); }
 
   /** `/drive/v3/...` and `/upload/drive/v3/...` with a valid bearer token. Answers false when the path is not Drive's. */
@@ -271,14 +286,34 @@ export class FakeDrive {
         return true;
       }
       case 'POST upload files': case 'PATCH upload files :id': {
+        if (id && !this.live(this.target(id))) { notFound(); return true; }
+        if (q.get('uploadType') === 'multipart') {
+          // multipart/related: a JSON metadata part, then the media part with its own Content-Type.
+          const boundary = /boundary=("?)([^";]+)\1/.exec(String(req.headers['content-type'] ?? ''))?.[2];
+          const pieces: Buffer[] = [];
+          for await (const c of req) pieces.push(c as Buffer);
+          const raw = Buffer.concat(pieces).toString('latin1');
+          const parts = boundary === undefined ? [] : raw.split(`--${boundary}`).slice(1, -1).map((p) => {
+            const at = p.indexOf('\r\n\r\n');
+            return { head: p.slice(0, at), body: p.slice(at + 4, -2) };
+          });
+          const type = (h: string) => /^content-type:\s*([^;\r\n]+)/im.exec(h)?.[1]?.trim();
+          if (parts.length !== 2 || type(parts[0]!.head) !== 'application/json' || !type(parts[1]!.head)
+            || raw.slice(raw.lastIndexOf(`--${boundary}`)).trim() !== `--${boundary}--`) {
+            json(400, { error: { code: 400, message: 'bad multipart body' } }); return true;
+          }
+          const meta = JSON.parse(parts[0]!.body) as Session['meta'];
+          rec.body = meta as Record<string, unknown>;
+          json(200, this.json(this.store(id, meta, type(parts[1]!.head)!, { kind: 'bytes', data: Buffer.from(parts[1]!.body, 'latin1') })));
+          return true;
+        }
         if (q.get('uploadType') !== 'resumable') { json(400, { error: { code: 400 } }); return true; }
         const b = await body();
         const size = Number(req.headers['x-upload-content-length']);
         if (!Number.isSafeInteger(size)) { json(400, { error: { code: 400, message: 'X-Upload-Content-Length required' } }); return true; }
-        if (id && !this.live(this.target(id))) { notFound(); return true; }
         const sid = randomBytes(18).toString('base64url');
         this.sessions.set(sid, { ...(id ? { fileId: id } : {}), meta: b as Session['meta'], size, received: 0, parts: [],
-          md5: createHash('md5') });
+          md5: createHash('md5'), mediaType: String(req.headers['x-upload-content-type'] ?? 'application/octet-stream') });
         res.writeHead(200, { location: `${this.url()}/upload/drive/v3/files?uploadType=resumable&upload_id=${sid}` }).end();
         return true;
       }
@@ -302,13 +337,10 @@ export class FakeDrive {
       this.chunks.push(range);
       const status = /^bytes \*\/(\d+)$/.exec(range);
       const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(range);
-      let got = 0;
-      for await (const c of req) {
-        const chunk = c as Buffer;
-        got += chunk.length;
-        s.md5.update(chunk);
-        if (s.size <= KEEP_UPLOAD_BYTES) s.parts.push(chunk);
-      }
+      const pieces: Buffer[] = []; // one chunk of the client's, so bounded by its chunk size
+      for await (const c of req) pieces.push(c as Buffer);
+      const data = Buffer.concat(pieces);
+      const got = data.length;
       if (status && Number(status[1]) !== s.size) { json(400, { error: { code: 400, message: 'size differs' } }); return true; }
       if (!status) {
         if (!m || Number(m[1]) !== s.received || Number(m[3]) !== s.size || Number(m[2]) - Number(m[1]) + 1 !== got) {
@@ -316,25 +348,21 @@ export class FakeDrive {
         }
         const last = Number(m[2]) + 1 === s.size;
         if (!last && got % DRIVE_CHUNK_UNIT !== 0) { json(400, { error: { code: 400, message: 'chunk not a multiple of 256 KiB' } }); return true; }
-        s.received += got;
+        // Drive may persist less than it was sent and names what it kept in the 308's Range (#204).
+        const kept = data.subarray(0, Math.min(got, this.persistOnly.shift() ?? got));
+        s.md5.update(kept);
+        if (s.size <= KEEP_UPLOAD_BYTES) s.parts.push(kept);
+        s.received += kept.length;
       }
-      if (s.received < s.size) {
+      // A status query (`bytes */size`) only reports progress; it never completes an upload, not even an empty one.
+      if (status || s.received < s.size) {
         res.writeHead(308, s.received > 0 ? { range: `bytes=0-${s.received - 1}` } : {}).end();
         return true;
       }
       this.sessions.delete(sid);
       const content: Content = s.size <= KEEP_UPLOAD_BYTES
         ? { kind: 'bytes', data: Buffer.concat(s.parts) } : { kind: 'counted', size: s.size, md5: s.md5.digest('hex') };
-      let f: DriveFile;
-      if (s.fileId) {
-        f = this.target(s.fileId)!;
-        f.content = content; this.touch(f);
-        f.revisions.push({ id: this.newId(), modifiedTime: f.modifiedTime, size: s.size });
-      } else {
-        f = this.create({ name: String(s.meta.name), mimeType: s.meta.mimeType ?? String(req.headers['x-upload-content-type'] ?? 'application/octet-stream'),
-          parents: s.meta.parents?.map((p) => (p === 'root' ? this.rootId : p)) ?? [this.rootId] }, content);
-      }
-      json(200, this.json(f));
+      json(200, this.json(this.store(s.fileId, s.meta, s.mediaType, content)));
       return true;
     }
     const blob = /^\/drive-blob\/([A-Za-z0-9_-]+)$/.exec(u.pathname);

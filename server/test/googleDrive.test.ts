@@ -87,6 +87,7 @@ afterAll(async () => { await t?.close(); await fake?.close(); });
 beforeEach(async () => {
   sleeps.length = 0;
   fake.drive.contentOrigin = undefined;
+  fake.drive.persistOnly.length = 0;
   for (const c of (await as(a, 'GET', '/api/v1/connections')).json().items as Connection[]) {
     expect((await as(a, 'DELETE', `/api/v1/connections/${c.id}`)).statusCode).toBe(204);
   }
@@ -252,6 +253,56 @@ describe('changing files', () => {
     expect(revs.map((x) => x.size)).toEqual([body.length, 3]);
   });
 
+  it('resends from the Range of a 308 when Drive persisted less than the chunk, also of the last one (#204)', async () => {
+    const id = await connect(a);
+    const body = randomBytes(2 * CHUNK + 512 * 1024);
+    const total = body.length;
+    const before = fake.drive.chunks.length;
+    // The first chunk loses its last 256 KiB, the second keeps an odd 1000 bytes, the third lands whole, the last loses 7.
+    const p1 = CHUNK - DRIVE_CHUNK_UNIT; const p2 = p1 + 1000; const p3 = p2 + CHUNK;
+    fake.drive.persistOnly.push(p1, 1000, CHUNK, total - p3 - 7);
+    const r = await put(id, '/Partial/big.bin', body);
+    expect(r.statusCode, r.body).toBe(201);
+    expect(r.json().size).toBe(total);
+    expect(fake.drive.chunks.slice(before)).toEqual([`bytes 0-${CHUNK - 1}/${total}`, `bytes ${p1}-${p1 + CHUNK - 1}/${total}`,
+      `bytes ${p2}-${p3 - 1}/${total}`, `bytes ${p3}-${total - 1}/${total}`, `bytes ${total - 7}-${total - 1}/${total}`]);
+    expect(Buffer.compare(fake.drive.bytes(fake.drive.byPath('/Partial/big.bin')!.id), body)).toBe(0);
+  });
+
+  it('a 308 that confirms no new bytes fails the upload and cancels the session instead of looping (#204)', async () => {
+    const id = await connect(a);
+    const cancelled = fake.drive.cancelled;
+    fake.drive.persistOnly.push(0);
+    const r = await put(id, '/Stuck/big.bin', randomBytes(CHUNK + 10));
+    expect(r.statusCode).toBeGreaterThanOrEqual(500);
+    expect(fake.drive.cancelled - cancelled).toBe(1);
+    expect(fake.drive.byPath('/Stuck/big.bin')).toBeUndefined();
+  });
+
+  it('uploads an empty file as one multipart request, never as a session status query; replace makes a revision (#204)', async () => {
+    const id = await connect(a);
+    const chunks = fake.drive.chunks.length; const reqs = fake.requests.length;
+    const r = await put(id, '/Empty/blank.txt', Buffer.alloc(0));
+    expect(r.statusCode, r.body).toBe(201);
+    expect(r.json()).toEqual(expect.objectContaining({ name: 'blank.txt', path: '/Empty/blank.txt', size: 0 }));
+    const f = fake.drive.byPath('/Empty/blank.txt')!;
+    expect(f.mimeType).toBe('text/plain');
+    expect(fake.drive.bytes(f.id).length).toBe(0);
+    expect(fake.drive.chunks.length).toBe(chunks);
+    const uploads = since(reqs).filter((x) => x.path.startsWith('/upload/'));
+    expect(uploads.map((x) => `${x.method} ${qOf(x).get('uploadType')}`)).toEqual(['POST multipart']);
+
+    expect((await put(id, '/Empty/blank.txt', Buffer.from('filled'), 'replace')).statusCode).toBe(201);
+    expect((await put(id, '/Empty/blank.txt', Buffer.alloc(0), 'replace')).statusCode).toBe(201);
+    expect(fake.drive.byPath('/Empty/blank.txt')!.id).toBe(f.id);
+    expect(fake.drive.bytes(f.id).length).toBe(0);
+    expect(f.revisions.map((x) => x.size)).toEqual([0, 6, 0]);
+    const b = await backendOf(id);
+    await expect(b.write('/Empty/liar.txt', Readable.from([Buffer.from('x')]), { onCollision: 'fail', maxBytes: 1e9, size: 0 }))
+      .rejects.toMatchObject({ code: 'SIZE_MISMATCH' });
+    expect(fake.drive.byPath('/Empty/liar.txt')).toBeUndefined();
+  });
+
   it('a body shorter or longer than declared cancels the session and creates nothing', async () => {
     const id = await connect(a);
     const b = await backendOf(id);
@@ -385,6 +436,8 @@ describe('search, quota, memory', () => {
       const md5 = createHash('md5');
       const block = Buffer.alloc(64 * 1024, 7);
       async function* gen() { for (let sent = 0; sent < GB; sent += block.length) { md5.update(block); yield block; } }
+      // Drive persists only part of two chunks (#204): the resent bytes must still arrive once, in order.
+      fake.drive.persistOnly.push(CHUNK - DRIVE_CHUNK_UNIT, 12345);
       const up = await b.write('/up/big.bin', Readable.from(gen(), { objectMode: false }), { onCollision: 'replace', maxBytes: 2 * GB, size: GB });
       expect(up.size).toBe(GB);
       expect(fake.drive.md5(fake.drive.byPath('/up/big.bin')!.id)).toBe(md5.digest('hex'));
