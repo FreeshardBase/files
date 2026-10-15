@@ -35,7 +35,10 @@ export async function resolveSource(req: FastifyRequest, source: string): Promis
   const { user } = requireUser(req);
   const ref = parseSource(source);
   switch (ref.kind) {
-    case 'home': return { backend: new LocalBackend(homeRoot(req.server.deps.config.dataDir, user.id)), access: 'edit' };
+    case 'home': {
+      const { config, db, pathTables } = req.server.deps;
+      return { backend: new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables }), access: 'edit' };
+    }
     case 'conn': return resolveConnection(user, ref.id);
     case 'share': return resolveShare(user, ref.id);
   }

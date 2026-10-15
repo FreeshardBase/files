@@ -1,9 +1,9 @@
 import type { Dirent } from 'node:fs';
-import { readdir, unlink } from 'node:fs/promises';
+import { lstat, readdir, rm, unlink } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import { homeRoot, homesDir } from '../paths.ts';
-import { TEMP_NAME } from './local.ts';
+import { INTERNAL, TEMP_NAME } from './local.ts';
 
 export type SweepResult = { removed: number; failed: number };
 
@@ -21,10 +21,37 @@ export async function sweepUploadTemps(dataDir: string, log: FastifyBaseLogger):
     homes = [];
   }
   for (const h of homes) {
-    if (h.isDirectory()) await sweepDir(homeRoot(dataDir, h.name), '/', h.name, log, result);
+    if (!h.isDirectory()) continue;
+    await sweepStaging(homeRoot(dataDir, h.name), h.name, log, result);
+    await sweepDir(homeRoot(dataDir, h.name), '/', h.name, log, result);
   }
   log.info(result, 'upload temp sweep finished');
   return result;
+}
+
+// Copies are built in `<home>/.files/tmp/` and renamed into place; anything still there at startup is a copy a crash
+// interrupted. Neither `.files` nor `tmp` is followed if it is a symlink; rm never follows the links inside.
+async function sweepStaging(home: string, id: string, log: FastifyBaseLogger, result: SweepResult): Promise<void> {
+  const tmp = join(home, INTERNAL, 'tmp');
+  let names: string[];
+  try {
+    for (const dir of [join(home, INTERNAL), tmp]) {
+      const st = await lstat(dir).catch((e: unknown) => { if (code(e) === 'ENOENT') return undefined; throw e; });
+      if (!st?.isDirectory()) return;
+    }
+    names = await readdir(tmp);
+  } catch (e) { // handled: logged with its path and counted; the sweep continues with the rest of the home
+    result.failed++;
+    log.warn({ home: id, path: posix.join('/', INTERNAL, 'tmp'), code: code(e) }, 'copy staging sweep could not read a directory');
+    return;
+  }
+  for (const name of names) {
+    try { await rm(join(tmp, name), { recursive: true, force: true }); result.removed++; }
+    catch (e) { // handled: logged with its path and counted; the sweep continues
+      result.failed++;
+      log.warn({ home: id, path: posix.join('/', INTERNAL, 'tmp', name), code: code(e) }, 'copy staging sweep could not remove an entry');
+    }
+  }
 }
 
 async function sweepDir(abs: string, rel: string, home: string, log: FastifyBaseLogger, result: SweepResult): Promise<void> {

@@ -38,6 +38,39 @@
     "skip": "Überspringen",
     "applyAll": "Für alle weiteren Einträge übernehmen ({count})"
   },
+  "actions": {
+    "toolbar": "Aktionen für die Auswahl",
+    "column": "Aktionen",
+    "menu": "Aktionen für {name}",
+    "select": "{name} auswählen",
+    "selectColumn": "Auswahl",
+    "rename": "Umbenennen",
+    "cut": "Verschieben",
+    "copy": "Kopieren",
+    "pasteMove": "Hierher verschieben ({count})",
+    "pasteCopy": "Hierher kopieren ({count})",
+    "clearClipboard": "Verschieben oder Kopieren abbrechen",
+    "trash": "In den Papierkorb"
+  },
+  "rename": {
+    "title": "Umbenennen",
+    "label": "Neuer Name",
+    "submit": "Umbenennen",
+    "cancel": "Abbrechen",
+    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten."
+  },
+  "transfer": {
+    "markedMove": "{count} zum Verschieben vorgemerkt. Öffne den Zielordner und wähle „Hierher verschieben“.",
+    "markedCopy": "{count} zum Kopieren vorgemerkt. Öffne den Zielordner und wähle „Hierher kopieren“.",
+    "moveSummary": "{done} von {total} verschoben",
+    "moveSummarySkipped": "{done} von {total} verschoben, {skipped} übersprungen",
+    "copySummary": "{done} von {total} kopiert",
+    "copySummarySkipped": "{done} von {total} kopiert, {skipped} übersprungen",
+    "renamed": "Umbenannt in {name}",
+    "trashed": "{count} in den Papierkorb verschoben",
+    "failedHeading": "Nicht erledigt:",
+    "failedItem": "{name}: {reason}"
+  },
   "errors": {
     "UNAUTHENTICATED": "Du bist nicht mehr angemeldet.",
     "FORBIDDEN": "Dafür fehlt dir die Berechtigung.",
@@ -58,7 +91,8 @@
     "SIZE_MISMATCH": "Der Upload war unvollständig. Versuch es noch einmal.",
     "LOGIN_FAILED": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal.",
     "INTERNAL": "Etwas ist schiefgelaufen. Versuch es später noch einmal.",
-    "NETWORK": "Keine Verbindung zum Shard."
+    "NETWORK": "Keine Verbindung zum Shard.",
+    "TARGET_INSIDE_SOURCE": "Ein Ordner kann nicht in sich selbst verschoben oder kopiert werden."
   },
   "a11y": {
     "fileList": "Dateien in {folder}",

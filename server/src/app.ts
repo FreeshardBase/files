@@ -13,18 +13,21 @@ import { registerAuthRoutes } from './auth/routes.ts';
 import { registerSourceRoutes } from './routes/sources.ts';
 import { purgeExpired } from './auth/sessions.ts';
 import { sweepUploadTemps } from './storage/uploadSweep.ts';
+import { PATH_TABLES, type PathTable } from './storage/pathRefs.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
-  interface FastifyInstance { deps: { config: Config; db: Db } }
+  interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[] } }
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
+  /** Path-dependent tables that moves and deletes cascade to; `PATH_TABLES` unless a test brings its own. */
+  pathTables?: readonly PathTable[];
   logStream?: NodeJS.WritableStream;
   /** Observes every registered route (the test harness builds the route inventory from it). */
   onRoute?: (route: RouteOptions) => void };
 
-export async function buildApp({ config, db, extend, logStream, onRoute }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -48,7 +51,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute }: AppDe
     },
     crossOriginEmbedderPolicy: false,
   });
-  app.decorate('deps', { config, db });
+  app.decorate('deps', { config, db, pathTables });
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); });
 

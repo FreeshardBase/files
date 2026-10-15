@@ -1,5 +1,5 @@
-import { constants, createWriteStream } from 'node:fs';
-import { link, lstat, mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
+import { constants, createWriteStream, lstatSync, renameSync } from 'node:fs';
+import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
@@ -9,8 +9,10 @@ import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from './backend.ts';
 import { lookupMime } from './mime.ts';
+import type { Db } from '../db.ts';
+import { deletePathRefs, movePathRefs, type PathTable } from './pathRefs.ts';
 
-const INTERNAL = '.files';
+export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
 const MAX_NAME_BYTES = 255;
 const MAX_LIMIT = 1000;
@@ -57,8 +59,54 @@ function truncateBytes(s: string, max: number): string {
   return out;
 }
 
+async function syncDir(dir: string): Promise<void> {
+  const dh = await open(dir, 'r');
+  try { await dh.sync(); } finally { await dh.close(); }
+}
+
+/** The database side of a home: path-dependent rows and trash rows change in the same transaction as the files. */
+export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[] };
+
+// Renames done inside a database transaction; undone in reverse order when anything after them fails.
+class FsSteps {
+  private done: [string, string][] = [];
+  rename(from: string, to: string): void {
+    try { renameSync(from, to); }
+    catch (e) {
+      if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND', undefined, { cause: e });
+      if (isErr(e, 'EEXIST') || isErr(e, 'ENOTEMPTY')) throw new AppError('FILE_EXISTS', { name: basename(to) }, { cause: e });
+      throw e;
+    }
+    this.done.push([from, to]);
+  }
+  undo(cause: unknown): void {
+    for (const [from, to] of this.done.reverse()) {
+      try { renameSync(to, from); }
+      catch (e) { throw new AggregateError([cause, e], `could not undo the rename to ${to}`, { cause: e }); }
+    }
+  }
+}
+
+// Copies a file or a folder tree; files go through copy_file_range in the kernel, never through a buffer in memory.
+async function copyTree(src: string, dst: string): Promise<void> {
+  const st = await lstat(src).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
+  if (st.isSymbolicLink()) throw new AppError('PATH_SYMLINK');
+  if (st.isDirectory()) {
+    await mkdir(dst);
+    // On-disk names, not user input. An in-flight upload's temp file is not part of the folder yet.
+    for (const name of await readdir(src)) if (!TEMP_NAME.test(name)) await copyTree(join(src, name), join(dst, name));
+    await syncDir(dst);
+  } else if (st.isFile()) {
+    await copyFile(src, dst, constants.COPYFILE_EXCL);
+    const fh = await open(dst, 'r');
+    try { await fh.sync(); } finally { await fh.close(); }
+  } else {
+    throw new AppError('PATH_INVALID');
+  }
+}
+
 export class LocalBackend implements StorageBackend {
-  constructor(private root: string) {}
+  constructor(private root: string, private index: HomeIndex) {}
 
   // Every user path goes through here: normalise, refuse the internal area and temp names, resolve inside the root.
   private async abs(p: string) {
@@ -83,6 +131,119 @@ export class LocalBackend implements StorageBackend {
   mkdir(p: string): Promise<Entry> { return this.mkdirImpl(p).catch(rethrowMapped); }
   write(p: string, body: Readable, opts: WriteOptions): Promise<Entry> {
     return this.writeImpl(p, body, opts).catch(rethrowMapped);
+  }
+  move(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
+    return this.moveImpl(from, to, onCollision).catch(rethrowMapped);
+  }
+  copy(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
+    return this.copyImpl(from, to, onCollision).catch(rethrowMapped);
+  }
+  delete(paths: readonly string[]): Promise<void> { return this.deleteImpl(paths).catch(rethrowMapped); }
+
+  // The internal area goes through the same resolver; only this class may name it.
+  private async internalDir(name: 'trash' | 'tmp'): Promise<string> {
+    await mkdir(this.root, { recursive: true });
+    const d = await resolveInRoot(this.root, `/${INTERNAL}/${name}`);
+    await mkdir(d, { recursive: true });
+    return d;
+  }
+
+  // One SQLite write transaction around the filesystem steps: a failure anywhere rolls the rows back and undoes the
+  // renames, so neither a ghost row nor a lost file is left behind (#117).
+  private atomically<T>(fn: (fs: FsSteps) => T): T {
+    const fs = new FsSteps();
+    try { return this.index.db.transaction(() => fn(fs)).immediate(); }
+    catch (e) { fs.undo(e); throw e; }
+  }
+
+  private async endpoints(from: string, to: string, policy: CollisionPolicy) {
+    const nf = normalizeUserPath(from); const nt = normalizeUserPath(to);
+    if (nf === '/' || nt === '/') throw new AppError('PATH_INVALID');
+    const src = await this.abs(nf); const dst = await this.abs(nt);
+    const st = await lstat(src).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
+    if (!st.isFile() && !st.isDirectory()) throw new AppError('NOT_FOUND');
+    if (st.isDirectory() && nt.startsWith(nf + '/')) throw new AppError('TARGET_INSIDE_SOURCE');
+    // Replacing a folder that holds the source would send the source to the trash along with it.
+    if (policy === 'replace' && nf.startsWith(nt + '/')) throw new AppError('TARGET_INSIDE_SOURCE');
+    const parent = await lstat(dirname(dst)).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
+    if (!parent.isDirectory()) throw new AppError('NOT_A_DIRECTORY');
+    return { nf, nt, src, dst };
+  }
+
+  // Inside the transaction: the absolute path the item may take. "replace" sends the existing item to the trash.
+  private claim(fs: FsSteps, trash: string, dst: string, userPath: string, policy: CollisionPolicy): string {
+    if (!lstatSync(dst, { throwIfNoEntry: false })) return dst;
+    if (policy === 'fail') throw new AppError('FILE_EXISTS', { name: basename(dst) });
+    if (policy === 'keep-both') {
+      for (let i = 1; i < 1000; i++) {
+        const c = numbered(dst, i);
+        if (!lstatSync(c, { throwIfNoEntry: false })) return c;
+      }
+      throw new AppError('FILE_EXISTS', { name: basename(dst) });
+    }
+    this.trashSync(fs, trash, dst, userPath);
+    return dst;
+  }
+
+  // Inside the transaction: move one item into the trash, cascade its path rows, record the trash row.
+  private trashSync(fs: FsSteps, trash: string, abs: string, userPath: string): void {
+    const st = lstatSync(abs, { throwIfNoEntry: false });
+    if (!st || !(st.isFile() || st.isDirectory())) throw new AppError('NOT_FOUND');
+    const id = randomBytes(16).toString('hex');
+    fs.rename(abs, join(trash, id));
+    const { db, userId, pathTables } = this.index;
+    deletePathRefs(db, pathTables, userId, userPath);
+    db.prepare('INSERT INTO trash (id, user_id, original_path, type, size, deleted_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, userId, userPath, st.isDirectory() ? 'directory' : 'file', st.isDirectory() ? 0 : st.size, new Date().toISOString());
+  }
+
+  private async moveImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
+    const e = await this.endpoints(from, to, policy);
+    if (e.nf === e.nt) return this.statImpl(e.nf); // onto itself: nothing to do
+    const trash = await this.internalDir('trash');
+    const placed = this.atomically((fs) => {
+      const target = this.claim(fs, trash, e.dst, e.nt, policy);
+      fs.rename(e.src, target);
+      const rel = join(dirname(e.nt), basename(target));
+      const { db, userId, pathTables } = this.index;
+      movePathRefs(db, pathTables, userId, e.nf, rel);
+      return rel;
+    });
+    for (const d of new Set([dirname(e.src), dirname(e.dst), trash])) await syncDir(d);
+    return this.statImpl(placed);
+  }
+
+  private async copyImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
+    const e = await this.endpoints(from, to, policy);
+    const trash = await this.internalDir('trash');
+    // Built in the internal area first, so a half-done copy is never visible; the startup sweep clears what a crash leaves.
+    const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
+    try {
+      await copyTree(e.src, stage);
+      const placed = this.atomically((fs) => {
+        const target = this.claim(fs, trash, e.dst, e.nt, policy);
+        fs.rename(stage, target);
+        return join(dirname(e.nt), basename(target));
+      });
+      for (const d of new Set([dirname(e.dst), trash])) await syncDir(d);
+      return await this.statImpl(placed);
+    } catch (err) {
+      await rm(stage, { recursive: true, force: true });
+      throw err;
+    }
+  }
+
+  private async deleteImpl(paths: readonly string[]): Promise<void> {
+    if (paths.length === 0) throw new AppError('VALIDATION');
+    const norm = [...new Set(paths.map(normalizeUserPath))];
+    if (norm.includes('/')) throw new AppError('PATH_INVALID');
+    // An item beneath another selected one goes to the trash with it.
+    const top = norm.filter((p) => !norm.some((q) => p.startsWith(q + '/')));
+    const items: { p: string; a: string }[] = [];
+    for (const p of top) items.push({ p, a: await this.abs(p) });
+    const trash = await this.internalDir('trash');
+    this.atomically((fs) => { for (const it of items) this.trashSync(fs, trash, it.a, it.p); });
+    for (const d of new Set([...items.map((it) => dirname(it.a)), trash])) await syncDir(d);
   }
 
   private async statImpl(p: string): Promise<Entry> {
@@ -188,8 +349,7 @@ export class LocalBackend implements StorageBackend {
       checkIfMatch(await current());
       const finalPath = await this.place(tmp, target, opts.onCollision);
       // The rename/link lives in the directory entry; without this a crash can lose the file after we answered 201.
-      const dh = await open(dir, 'r');
-      try { await dh.sync(); } finally { await dh.close(); }
+      await syncDir(dir);
       const rel = normalizeUserPath(p);
       return this.statImpl(join(dirname(rel), basename(finalPath)));
     } catch (e) {
