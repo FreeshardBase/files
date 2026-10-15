@@ -25,12 +25,35 @@
   },
   "upload": {
     "button": "Hochladen",
-    "progress": "{name}: {percent} %",
+    "folderButton": "Ordner hochladen",
     "done": "{name} hochgeladen",
     "summary": "{done} von {total} hochgeladen",
     "summarySkipped": "{done} von {total} hochgeladen, {skipped} übersprungen",
     "failedHeading": "Nicht hochgeladen:",
-    "failedItem": "{name}: {reason}"
+    "failedItem": "{name}: {reason}",
+    "panelTitle": "Uploads",
+    "dropHint": "Legen Sie Dateien oder Ordner hier ab, um sie nach {folder} hochzuladen.",
+    "state": {
+      "queued": "Wartet",
+      "uploading": "{percent} %",
+      "paused": "Pausiert",
+      "done": "Hochgeladen",
+      "skipped": "Übersprungen",
+      "failed": "Fehlgeschlagen: {reason}",
+      "cancelled": "Abgebrochen"
+    },
+    "failedSummary": "Ein Upload ist fehlgeschlagen. | {count} Uploads sind fehlgeschlagen.",
+    "retryAll": "Alle erneut versuchen",
+    "retry": "Erneut versuchen",
+    "pause": "Pausieren",
+    "resume": "Fortsetzen",
+    "cancel": "Abbrechen",
+    "clear": "Erledigte entfernen",
+    "progressLabel": "Fortschritt beim Hochladen von {name}",
+    "pauseLabel": "Hochladen von {name} pausieren",
+    "resumeLabel": "Hochladen von {name} fortsetzen",
+    "retryLabel": "Hochladen von {name} erneut versuchen",
+    "cancelLabel": "Hochladen von {name} abbrechen"
   },
   "collision": {
     "title": "Name bereits vergeben",
@@ -124,7 +147,10 @@
     "INTERNAL": "Etwas ist schiefgelaufen. Bitte versuchen Sie es später erneut.",
     "NETWORK": "Keine Verbindung zum Shard.",
     "TARGET_INSIDE_SOURCE": "Ein Ordner kann nicht in sich selbst verschoben oder kopiert werden.",
-    "PURGE_FAILED": "Einige Elemente ({count}) ließen sich nicht endgültig löschen. Diese bleiben im Papierkorb. Bitte versuchen Sie es später erneut."
+    "PURGE_FAILED": "Einige Elemente ({count}) ließen sich nicht endgültig löschen. Diese bleiben im Papierkorb. Bitte versuchen Sie es später erneut.",
+    "QUOTA_EXCEEDED": "Das passt nicht mehr in Ihren Speicherplatz.",
+    "OFFSET_MISMATCH": "Der Upload passt nicht mehr zum Stand auf dem Shard. Bitte versuchen Sie es erneut.",
+    "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Bitte versuchen Sie es gleich erneut."
   },
   "a11y": {
     "fileList": "Dateien in {folder}",

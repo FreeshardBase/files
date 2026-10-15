@@ -16,6 +16,8 @@ import { sweepUploadTemps } from './storage/uploadSweep.ts';
 import { PATH_TABLES, TRASH_TABLES, type PathTable, type TrashTable } from './storage/pathRefs.ts';
 import { registerTrashRoutes } from './routes/trash.ts';
 import { scheduleTrashExpiry } from './storage/trash.ts';
+import { registerUploadRoutes } from './routes/uploads.ts';
+import { scheduleUploadExpiry } from './storage/uploads.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -60,13 +62,18 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
   let expiry: { stop(): Promise<void> } | undefined;
-  app.addHook('onReady', async () => { expiry = scheduleTrashExpiry(app.deps, app.log); });
-  app.addHook('onClose', async () => { await expiry?.stop(); });
+  let uploadExpiry: { stop(): Promise<void> } | undefined;
+  app.addHook('onReady', async () => {
+    expiry = scheduleTrashExpiry(app.deps, app.log);
+    uploadExpiry = scheduleUploadExpiry(app.deps, app.log);
+  });
+  app.addHook('onClose', async () => { await expiry?.stop(); await uploadExpiry?.stop(); });
 
   registerGuard(app);
   await registerAuthRoutes(app);
   await registerSourceRoutes(app);
   await registerTrashRoutes(app);
+  await registerUploadRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

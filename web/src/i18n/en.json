@@ -25,12 +25,35 @@
   },
   "upload": {
     "button": "Upload",
-    "progress": "{name}: {percent} %",
+    "folderButton": "Upload folder",
     "done": "{name} uploaded",
     "summary": "{done} of {total} uploaded",
     "summarySkipped": "{done} of {total} uploaded, {skipped} skipped",
     "failedHeading": "Not uploaded:",
-    "failedItem": "{name}: {reason}"
+    "failedItem": "{name}: {reason}",
+    "panelTitle": "Uploads",
+    "dropHint": "Drop files or folders to upload them to {folder}.",
+    "state": {
+      "queued": "Waiting",
+      "uploading": "{percent} %",
+      "paused": "Paused",
+      "done": "Uploaded",
+      "skipped": "Skipped",
+      "failed": "Failed: {reason}",
+      "cancelled": "Cancelled"
+    },
+    "failedSummary": "One upload failed. | {count} uploads failed.",
+    "retryAll": "Retry all",
+    "retry": "Retry",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel",
+    "clear": "Clear finished",
+    "progressLabel": "Upload progress of {name}",
+    "pauseLabel": "Pause upload of {name}",
+    "resumeLabel": "Resume upload of {name}",
+    "retryLabel": "Retry upload of {name}",
+    "cancelLabel": "Cancel upload of {name}"
   },
   "collision": {
     "title": "Name already taken",
@@ -124,7 +147,10 @@
     "INTERNAL": "Something went wrong. Please try again later.",
     "NETWORK": "No connection to the shard.",
     "TARGET_INSIDE_SOURCE": "A folder can't be moved or copied into itself.",
-    "PURGE_FAILED": "Some items ({count}) could not be deleted permanently. They stay in the trash. Please try again later."
+    "PURGE_FAILED": "Some items ({count}) could not be deleted permanently. They stay in the trash. Please try again later.",
+    "QUOTA_EXCEEDED": "This doesn't fit into your storage quota.",
+    "OFFSET_MISMATCH": "The upload got out of step with the server. Please try again.",
+    "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment."
   },
   "a11y": {
     "fileList": "Files in {folder}",

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useFolderStore } from '../src/stores/folder.ts';
-import { installFakeXhr } from './fakeXhr.ts';
 
 const entry = (i: number) => ({ name: `f${i}`, path: `/f${i}`, type: 'file', size: 1, modified: '2026-10-14T00:00:00.000Z' });
 
@@ -40,17 +39,14 @@ describe('folder store sources', () => {
     await s.open('/');
     expect(calls()[0]![0]).toMatch(/^\/api\/v1\/sources\/home\/list\?/);
   });
-  it('lists, creates folders and uploads in the store source', async () => {
+  it('lists and creates folders in the store source', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ entries: [] }), { status: 200 })));
-    const x = installFakeXhr(() => ({ status: 201, text: JSON.stringify(entry(1)) }));
     const s = useFolderStore();
     await s.open('/', { source: 'conn:1' });
     expect(s.source).toBe('conn:1');
     await s.mkdir('neu');
-    await s.upload(new File(['x'], 'n.txt'), { source: s.source, dir: '/' });
     expect(calls()[0]![0]).toMatch(/^\/api\/v1\/sources\/conn%3A1\/list\?/);
     expect(calls().find(([, i]) => i.method === 'POST')![0]).toBe('/api/v1/sources/conn%3A1/mkdir');
-    expect(x.puts[0]!.url).toMatch(/^\/api\/v1\/sources\/conn%3A1\/content\?/);
   });
 });
 
@@ -138,14 +134,5 @@ describe('folder store races and upload target', () => {
     release();
     await p;
     expect(s.refreshing).toBe(false);
-  });
-  it('upload joins with the given dir even after the store path moved', async () => {
-    const x = installFakeXhr(() => ({ status: 201, text: JSON.stringify(entry(1)) }));
-    vi.stubGlobal('fetch', vi.fn(async () => json({ entries: [] })));
-    const s = useFolderStore();
-    await s.open('/A');
-    await s.open('/B');
-    await s.upload(new File(['x'], 'n.txt'), { source: 'home', dir: '/A' });
-    expect(new URL(x.puts[0]!.url, 'http://x').searchParams.get('path')).toBe('/A/n.txt');
   });
 });

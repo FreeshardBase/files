@@ -11,9 +11,12 @@ import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
+import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
+import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
 const route = useRoute(); const router = useRouter(); const { t } = useI18n();
 const folder = useFolderStore();
+const uploads = useUploadsStore();
 const status = ref('');
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
@@ -91,19 +94,30 @@ async function settle(at: { source: string; dir: string }) {
   if (!conflict.value && !renaming.value && (document.activeElement === document.body || !document.activeElement)) list.value?.focus();
 }
 
-async function upload(files: File[]) {
+// Uploads run in the uploads store (resumable, one panel); failures are summarised there, so this only reports the
+// batch in the status line and relists once it has an outcome.
+function upload(files: PickedFile[]) {
   const at = { source: folder.source, dir: folder.path }; // captured: navigating away mid-batch must not redirect the remaining files
   failures.value = null;
-  try {
-    const r = await batch(files, (f) => f.name, (f, policy) => folder.upload(f, at, policy, (x) => {
-      status.value = t('upload.progress', { name: f.name, percent: Math.round(x * 100) });
-    }), uploadButton.value?.input);
-    showFailures(t('upload.failedHeading'), r.failed, 'upload.failedItem');
-    status.value = r.skipped ? t('upload.summarySkipped', { done: r.done, total: files.length, skipped: r.skipped })
-      : t('upload.summary', { done: r.done, total: files.length });
-  } finally {
-    await settle(at);
-  }
+  uploads.enqueue(files, at, { returnFocus: uploadButton.value?.input, settled: (r) => {
+    status.value = r.skipped ? t('upload.summarySkipped', { done: r.done, total: r.total, skipped: r.skipped })
+      : t('upload.summary', { done: r.done, total: r.total });
+    void settle(at);
+  } });
+}
+
+// Files and folders dragged in from the desktop upload into the open folder.
+const dropActive = ref(false);
+function onFileDragOver(e: DragEvent) { if (acceptFileDrag(e)) dropActive.value = true; }
+function onFileDragLeave(e: DragEvent) {
+  if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) dropActive.value = false;
+}
+async function onFileDrop(e: DragEvent) {
+  dropActive.value = false;
+  const files = droppedFiles(e);
+  if (!files) return;
+  const picked = await files;
+  if (picked.length) upload(picked);
 }
 
 type Item = { from: string; name: string };
@@ -179,7 +193,19 @@ function onDrop(paths: string[], dir: string) {
 </script>
 
 <template>
-  <section class="folder">
+  <section
+    class="folder"
+    :class="{ 'drop-active': dropActive }"
+    @dragover="onFileDragOver"
+    @dragleave="onFileDragLeave"
+    @drop="onFileDrop"
+  >
+    <p
+      v-if="dropActive"
+      class="drop-hint"
+    >
+      {{ $t('upload.dropHint', { folder: folderName }) }}
+    </p>
     <div class="toolbar">
       <Breadcrumbs
         :source="source"

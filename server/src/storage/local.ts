@@ -1,5 +1,5 @@
-import { constants, createWriteStream, lstatSync, renameSync } from 'node:fs';
-import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, unlink } from 'node:fs/promises';
+import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync } from 'node:fs';
+import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, truncate, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
@@ -16,8 +16,22 @@ import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type Tra
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
 const TRASH_ID = /^[0-9a-f]{32}$/;
+export const UPLOAD_ID = /^[0-9a-f]{32}$/;
 const DAY_MS = 86_400_000;
+/** An upload expires this long after it was created or last received bytes. */
+export const UPLOAD_TTL_MS = DAY_MS;
 type TrashRow = { id: string; original_path: string; type: 'file' | 'directory'; size: number; deleted_at: string };
+type UploadRow = { id: string; source: string; path: string; length: number; received: number; on_collision: CollisionPolicy; expires_at: string };
+/** What HEAD reports; `entry` is set once the bytes have been placed at their target. */
+export type UploadState = { id: string; offset: number; length: number; expiresAt: string; entry?: Entry };
+
+// One request at a time per upload (tus forbids concurrent PATCHes); the app runs as one process.
+const busyUploads = new Set<string>();
+async function withUpload<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  if (busyUploads.has(id)) throw new AppError('UPLOAD_LOCKED');
+  busyUploads.add(id);
+  try { return await fn(); } finally { busyUploads.delete(id); }
+}
 
 // Restore and purge of one member's trash run one at a time, so a purge never removes bytes a restore is moving.
 const userLocks = new Map<string, Promise<unknown>>();
@@ -31,7 +45,7 @@ function underUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 // Bytes of the regular files in a tree (0 for anything that is gone); symlinks are neither followed nor counted.
-async function treeSize(abs: string): Promise<number> {
+export async function treeSize(abs: string): Promise<number> {
   const st = await lstat(abs).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
   if (!st) return 0;
   if (st.isFile()) return st.size;
@@ -105,6 +119,17 @@ class FsSteps {
     }
     this.done.push([from, to]);
   }
+  /** Moves `from` to the first free name of `candidates` (a hard link refuses a taken name atomically). */
+  linkInto(from: string, candidates: readonly string[]): string {
+    for (const c of candidates) {
+      try { linkSync(from, c); }
+      catch (e) { if (isErr(e, 'EEXIST')) continue; throw e; } // handled: the name is taken, the next candidate is tried
+      unlinkSync(from);
+      this.done.push([from, c]);
+      return c;
+    }
+    throw new AppError('FILE_EXISTS', { name: basename(candidates[0]!) });
+  }
   undo(cause: unknown): void {
     for (const [from, to] of this.done.reverse()) {
       try { renameSync(to, from); }
@@ -167,7 +192,7 @@ export class LocalBackend implements StorageBackend {
   delete(paths: readonly string[]): Promise<void> { return this.deleteImpl(paths).catch(rethrowMapped); }
 
   // The internal area goes through the same resolver; only this class may name it.
-  private async internalDir(name: 'trash' | 'tmp'): Promise<string> {
+  private async internalDir(name: 'trash' | 'tmp' | 'uploads'): Promise<string> {
     await mkdir(this.root, { recursive: true });
     const d = await resolveInRoot(this.root, `/${INTERNAL}/${name}`);
     await mkdir(d, { recursive: true });
@@ -370,6 +395,206 @@ export class LocalBackend implements StorageBackend {
     return result;
   }
 
+  /**
+   * Bytes the member may still add: the quota minus everything under the home (trash and staged uploads included) minus
+   * what open uploads other than `exceptUpload` have yet to send. Infinity without a quota.
+   */
+  private async remainingQuota(exceptUpload?: string): Promise<number> {
+    const free = await this.freeBeforeReservations();
+    return free === Infinity ? free : Math.max(0, free - this.reserved(exceptUpload));
+  }
+
+  // Quota minus the bytes under the home; Infinity without a quota. The walk is async, so callers that must not race
+  // subtract `reserved()` inside their transaction.
+  private async freeBeforeReservations(): Promise<number> {
+    const quota = this.index.db.prepare('SELECT quota_bytes FROM users WHERE id = ?').pluck().get(this.index.userId) as number | null | undefined;
+    if (quota === null || quota === undefined) return Infinity;
+    return quota - await treeSize(this.root);
+  }
+
+  private reserved(exceptUpload?: string): number {
+    return this.index.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE user_id = ? AND id IS NOT ?')
+      .pluck().get(this.index.userId, exceptUpload ?? null) as number;
+  }
+
+  private uploadRow(id: string): UploadRow | undefined {
+    if (!UPLOAD_ID.test(id)) return undefined;
+    return this.index.db.prepare('SELECT id, source, path, length, received, on_collision, expires_at FROM uploads WHERE id = ? AND user_id = ?')
+      .get(id, this.index.userId) as UploadRow | undefined;
+  }
+
+  // The staged bytes of an upload, through the same resolver as every other path; only this class names the internal area.
+  private async uploadBytes(id: string): Promise<string> {
+    if (!UPLOAD_ID.test(id)) throw new AppError('NOT_FOUND');
+    await this.internalDir('uploads');
+    return resolveInRoot(this.root, `/${INTERNAL}/uploads/${id}`);
+  }
+
+  // The member's own upload or NOT_FOUND: another member's id looks exactly like one that never existed.
+  private ownUpload(id: string): UploadRow {
+    const row = this.uploadRow(id);
+    if (!row) throw new AppError('NOT_FOUND');
+    return row;
+  }
+
+  /**
+   * Opens a resumable upload of `length` bytes to `path`. Everything that can be refused is refused here, before a byte
+   * is stored: the size limit, the quota (counting what other open uploads still have to send), the path, a folder in
+   * the way, and a taken name under `fail`. The bytes collect in `<home>/.files/uploads/<id>`.
+   */
+  createUpload(u: { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number }): Promise<UploadState> {
+    return this.createUploadImpl(u).catch(rethrowMapped);
+  }
+
+  private async createUploadImpl(u: { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number }) {
+    if (u.length > u.maxBytes) throw new AppError('PAYLOAD_TOO_LARGE');
+    const nt = normalizeUserPath(u.path);
+    if (nt === '/') throw new AppError('PATH_INVALID');
+    const target = await this.abs(nt);
+    const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+    if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    if (st && u.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
+    const free = await this.freeBeforeReservations();
+    const { db, userId } = this.index;
+    const id = randomBytes(16).toString('hex');
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + UPLOAD_TTL_MS).toISOString();
+    // Reservation check and insert under one write lock, so two uploads created at once cannot both take the last bytes.
+    db.transaction(() => {
+      if (free !== Infinity && u.length > free - this.reserved()) throw new AppError('QUOTA_EXCEEDED');
+      db.prepare(`INSERT INTO uploads (id, user_id, source, path, length, received, on_collision, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, userId, u.source, nt, u.length, u.onCollision, now.toISOString(), expiresAt);
+    }).immediate();
+    try {
+      const fh = await open(await this.uploadBytes(id), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW);
+      await fh.close();
+    } catch (e) {
+      db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(id, userId);
+      throw e;
+    }
+    return { id, offset: 0, length: u.length, expiresAt };
+  }
+
+  /** HEAD: how many bytes are safely stored. */
+  uploadState(id: string): UploadState {
+    const row = this.ownUpload(id);
+    return { id, offset: row.received, length: row.length, expiresAt: row.expires_at };
+  }
+
+  /**
+   * PATCH: appends the body at `offset`, which must be what is stored. Never more than the declared length is stored:
+   * a client that sends more is cut off and the whole upload is dropped (#113). Whatever arrived before a dropped
+   * connection is fsynced and recorded, so the client resumes from there. Once all bytes are in, they are placed at the
+   * target with the upload's collision policy; a name taken meanwhile under `fail` answers FILE_EXISTS and keeps the
+   * bytes for `finishUpload`.
+   */
+  async appendUpload(id: string, offset: number, body: Readable, declared?: number): Promise<UploadState> {
+    this.ownUpload(id);
+    return withUpload(id, () => this.appendImpl(id, offset, body, declared)).catch(rethrowMapped);
+  }
+
+  private async appendImpl(id: string, offset: number, body: Readable, declared?: number): Promise<UploadState> {
+    const row = this.ownUpload(id);
+    if (offset !== row.received) throw new AppError('OFFSET_MISMATCH', { offset: row.received });
+    const rest = row.length - row.received;
+    if (declared !== undefined && declared > rest) { await this.dropUpload(id); throw new AppError('SIZE_MISMATCH'); }
+    if (rest > 0 && rest > await this.remainingQuota(id)) throw new AppError('QUOTA_EXCEEDED');
+    const file = await this.uploadBytes(id);
+    const before = await lstat(file).then((s) => s, (e) => {
+      if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND', undefined, { cause: e });
+      throw e;
+    });
+    if (!before.isFile()) throw new Error(`staged bytes of upload ${id} are not a regular file`);
+    // Only what was recorded counts: bytes written after the last fsync but before a crash are dropped again.
+    if (before.size < row.received) throw new Error(`staged bytes of upload ${id} are shorter than recorded`);
+    await truncate(file, row.received);
+    let over = false; let failure: unknown;
+    let written = 0;
+    const limiter = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        written += chunk.length;
+        if (written > rest) { over = true; return cb(new AppError('SIZE_MISMATCH')); }
+        cb(null, chunk);
+      },
+    });
+    await pipeline(body, limiter, createWriteStream(file, { flags: 'r+', start: row.received }))
+      .catch((e: unknown) => { failure = e; }); // handled: what arrived is fsynced and recorded below, then the error is rethrown
+    const fh = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let size: number;
+    try { await fh.sync(); size = (await fh.stat()).size; } finally { await fh.close(); }
+    if (over) { await this.dropUpload(id); throw new AppError('SIZE_MISMATCH'); }
+    const expiresAt = new Date(Date.now() + UPLOAD_TTL_MS).toISOString();
+    this.index.db.prepare('UPDATE uploads SET received = ?, expires_at = ? WHERE id = ? AND user_id = ?').run(size, expiresAt, id, this.index.userId);
+    if (failure !== undefined) throw failure;
+    const state: UploadState = { id, offset: size, length: row.length, expiresAt };
+    if (size < row.length) return state;
+    return { ...state, entry: await this.placeUpload({ ...row, received: size }, row.on_collision) };
+  }
+
+  /** Places a complete upload whose name was taken at the end, with the policy the user chose then. */
+  async finishUpload(id: string, policy: CollisionPolicy): Promise<Entry> {
+    this.ownUpload(id);
+    return withUpload(id, async () => {
+      const row = this.ownUpload(id);
+      if (row.received !== row.length) throw new AppError('SIZE_MISMATCH');
+      return this.placeUpload(row, policy);
+    }).catch(rethrowMapped);
+  }
+
+  /** Termination: the staged bytes and the row go. */
+  async terminateUpload(id: string): Promise<void> {
+    this.ownUpload(id);
+    return withUpload(id, () => this.dropUpload(id)).catch(rethrowMapped);
+  }
+
+  /**
+   * The expiry job: drops this member's uploads that expired before `now`, skipping one that is receiving bytes right
+   * now. Bytes first, then the row, so a failure leaves the row for the next run.
+   */
+  async expireUploads(now: Date, log: FastifyBaseLogger): Promise<{ removed: string[]; failed: string[] }> {
+    const ids = this.index.db.prepare('SELECT id FROM uploads WHERE user_id = ? AND expires_at < ?').pluck()
+      .all(this.index.userId, now.toISOString()) as string[];
+    const result = { removed: [] as string[], failed: [] as string[] };
+    for (const id of ids) {
+      if (busyUploads.has(id)) continue;
+      try { await withUpload(id, () => this.dropUpload(id)); result.removed.push(id); }
+      catch (e) { // handled: logged with the upload id and reported as failed; the row stays for the next run
+        log.error({ err: e, uploadId: id, userId: this.index.userId }, 'upload expiry could not remove an upload');
+        result.failed.push(id);
+      }
+    }
+    return result;
+  }
+
+  private async dropUpload(id: string): Promise<void> {
+    await rm(await this.uploadBytes(id), { force: true });
+    this.index.db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(id, this.index.userId);
+  }
+
+  // Moves the staged bytes to the target and deletes the row in one transaction (renames undone if the commit fails).
+  // Missing parent folders are created, which is how a folder upload recreates its structure.
+  private async placeUpload(row: UploadRow, policy: CollisionPolicy): Promise<Entry> {
+    const nt = normalizeUserPath(row.path);
+    const target = await this.abs(nt);
+    await mkdir(dirname(target), { recursive: true }).catch((e) => {
+      if (isErr(e, 'ENOTDIR') || isErr(e, 'EEXIST')) throw new AppError('NOT_A_DIRECTORY', undefined, { cause: e });
+      throw e;
+    });
+    const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+    if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    const staged = await this.uploadBytes(row.id);
+    const { db, userId } = this.index;
+    const placed = this.atomically((fs) => {
+      let final: string;
+      if (policy === 'replace') { fs.rename(staged, target); final = target; }
+      else final = fs.linkInto(staged, policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i)));
+      db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(row.id, userId);
+      return final;
+    });
+    for (const d of new Set([dirname(target), dirname(staged)])) await syncDir(d);
+    return this.statImpl(join(dirname(nt), basename(placed)));
+  }
+
   private async statImpl(p: string): Promise<Entry> {
     const a = await this.abs(p);
     const st = await lstat(a).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
@@ -457,12 +682,15 @@ export class LocalBackend implements StorageBackend {
       if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
     };
     checkIfMatch(st);
+    const quotaLeft = await this.remainingQuota();
+    if (opts.size !== undefined && opts.size > quotaLeft) throw new AppError('QUOTA_EXCEEDED');
     const tmp = join(dir, `.${randomBytes(8).toString('hex')}.upload`);
     let written = 0;
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         written += chunk.length;
         if (written > opts.maxBytes) return cb(new AppError('PAYLOAD_TOO_LARGE'));
+        if (written > quotaLeft) return cb(new AppError('QUOTA_EXCEEDED'));
         cb(opts.size !== undefined && written > opts.size ? new AppError('SIZE_MISMATCH') : null, chunk);
       },
     });
