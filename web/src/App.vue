@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
 const session = useSessionStore();
+const router = useRouter();
 const showLoginFailed = loginFailed();
-onMounted(() => session.load());
+onMounted(async () => {
+  await session.load();
+  if (!showLoginFailed) return;
+  // The alert is decided; drop the flag from the URL so a reload or bookmark does not repeat it.
+  await router.isReady();
+  const query = { ...router.currentRoute.value.query };
+  delete query.loginError;
+  await router.replace({ query });
+});
 </script>
 
 <template>

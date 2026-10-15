@@ -90,11 +90,15 @@ test('a folder named like a server route survives a reload', async ({ page, base
 
 test('a failed login shows the error and a way to sign in again, without a redirect loop', async ({ page }) => {
   await page.goto('/auth/callback?code=bogus&state=bogus');
-  await expect(page).toHaveURL(/\/home\?loginError=1$/);
   await expect(page.getByRole('alert')).toContainText(/Anmeldung|sign/i);
-  const again = page.getByRole('link', { name: /Erneut anmelden|Sign in again/ });
-  await expect(again).toBeVisible();
-  await again.click();
+  await expect(page.getByRole('link', { name: /Erneut anmelden|Sign in again/ })).toHaveAttribute('href', '/auth/login');
+  // Once shown, the flag leaves the URL (history replace, no reload), so a reload does not repeat the alert.
+  await expect(page).toHaveURL(/\/home$/);
+  expect(await page.evaluate(() => location.search)).not.toContain('loginError');
+  await expect(page.getByRole('alert')).toContainText(/Anmeldung|sign/i);
+  // A reload is a fresh start: it signs in instead of showing the old failure.
+  await page.reload();
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

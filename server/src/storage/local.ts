@@ -171,6 +171,9 @@ export class LocalBackend implements StorageBackend {
       await pipeline(body, limiter, createWriteStream(tmp, { flags: 'wx' }));
       const fh = await open(tmp, 'r+'); await fh.sync(); await fh.close();
       const finalPath = await this.place(tmp, target, opts.onCollision);
+      // The rename/link lives in the directory entry; without this a crash can lose the file after we answered 201.
+      const dh = await open(dir, 'r');
+      try { await dh.sync(); } finally { await dh.close(); }
       const rel = normalizeUserPath(p);
       return this.statImpl(join(dirname(rel), basename(finalPath)));
     } catch (e) {
@@ -190,9 +193,14 @@ export class LocalBackend implements StorageBackend {
   }
 }
 
+// "name (n).ext" within MAX_NAME_BYTES; the extension is kept only if at least one character of the stem fits before it.
 function numbered(target: string, n: number): string {
-  const ext = extname(target);
-  const suffix = ` (${n})${ext}`;
-  const stem = truncateBytes(basename(target, ext), Math.max(0, MAX_NAME_BYTES - Buffer.byteLength(suffix)));
-  return join(dirname(target), `${stem}${suffix}`);
+  const name = basename(target);
+  const counter = ` (${n})`;
+  const ext = extname(name);
+  const stem = truncateBytes(name.slice(0, name.length - ext.length), MAX_NAME_BYTES - Buffer.byteLength(counter + ext));
+  const numberedName = stem.length > 0
+    ? `${stem}${counter}${ext}`
+    : `${truncateBytes(name, MAX_NAME_BYTES - Buffer.byteLength(counter))}${counter}`;
+  return join(dirname(target), numberedName);
 }
