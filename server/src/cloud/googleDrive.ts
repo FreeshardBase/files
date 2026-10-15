@@ -330,7 +330,8 @@ export class GoogleDriveBackend implements StorageBackend {
     if (res.status === 416) { await discard(res); throw new RangeNotSatisfiable(entry.size); }
     if (!res.ok || !res.body) await failure(res, 'download');
     if (res.status !== (r ? 206 : 200)) { await discard(res); throw new Error(`Google Drive download answered ${res.status} to ${r ? 'a' : 'no'} range`); }
-    return { entry, stream: fromWeb(res.body!), etag, ...(r ? { range: r } : {}) };
+    return { entry, stream: fromWeb(res.body!), etag, ...(r ? { range: r } : {}),
+      ...(!r && f.md5Checksum ? { hash: { algorithm: 'md5' as const, value: f.md5Checksum.toLowerCase() } } : {}) };
   }
 
   /**

@@ -55,6 +55,15 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     return engine().get(user.id, IdP.parse(req.params).id);
   });
 
+  // The summary export (#153): one CSV row per item, streamed from the rows.
+  app.get('/api/v1/transfers/:id/report', async (req, reply) => {
+    const { user } = requireUser(req);
+    const { id } = IdP.parse(req.params);
+    const body = engine().report(user.id, id);
+    return reply.header('content-type', 'text/csv; charset=utf-8').header('cache-control', 'no-store')
+      .header('content-disposition', `attachment; filename="transfer-${id}.csv"`).send(body);
+  });
+
   app.post('/api/v1/transfers/:id/cancel', async (req) => {
     const { user } = requireUser(req);
     return engine().cancel(user.id, IdP.parse(req.params).id);

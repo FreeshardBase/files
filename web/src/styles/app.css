@@ -364,6 +364,35 @@ body {
 .upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
+/* Migration (#153): one column of steps; a folder picker is crumbs over a hairline list of folder buttons. */
+.migrate { max-width: 720px; }
+.migrate-step { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.migrate-step:focus { outline: none; }
+.migrate-accounts { margin: 0 0 var(--space-4); padding: 0; border: 0; display: grid; gap: var(--space-2); }
+.migrate-accounts legend { margin-bottom: var(--space-2); }
+.migrate-radio { display: flex; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+.migrate-radio input { accent-color: var(--data); }
+.migrate-choice { margin: var(--space-3) 0; overflow-wrap: anywhere; }
+.migrate-name { display: block; width: 100%; max-width: 480px; margin: var(--space-1) 0 var(--space-2); }
+.migrate-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+.migrate .upload-bar { margin: 0 0 var(--space-3); }
+.migrate-state[data-state='completed_with_errors'] { color: var(--danger); }
+.migrate-failures { margin: 0 0 var(--space-3); }
+.folder-picker { border: var(--border-w) solid var(--border); border-radius: var(--radius-tile); padding: var(--space-3); }
+.picker-crumbs button { padding: 0; border: 0; background: none; font: inherit; color: var(--line); cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.picker-crumbs button:hover { text-decoration: underline; }
+.picker-crumbs button[aria-current='location'] { color: var(--ink); }
+.picker-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.picker-list li { border-top: var(--border-w) solid var(--border); }
+.picker-folder {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 40px; padding: var(--space-2) 0;
+  border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere;
+}
+.picker-folder:hover { color: var(--line); }
+@media (max-width: 600px) {
+  .picker-folder { min-height: 44px; }
+  .migrate-actions .button { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+}
 /* Transfer panel (#152): the same sheet; a job that ended with errors lists its failed items under its row. */
 .transfer-failures { grid-column: 1 / -1; margin: 0; padding-left: var(--space-5); color: var(--danger); font-size: var(--fs-small); overflow-wrap: anywhere; }
 @media (max-width: 600px) {
@@ -411,6 +440,9 @@ body {
 }
 .icon-cloud-add {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 18h10.5a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 7.3 9.6 4.2 4.2 0 0 0 7 18z'/%3E%3Cpath d='M12 11.5v4M10 13.5h4'/%3E%3C/svg%3E");
+}
+.icon-migrate {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 13H6.8a3.8 3.8 0 0 1-.3-7.6A5.2 5.2 0 0 1 16.4 5a3.5 3.5 0 0 1 .8 7H16'/%3E%3Cpath d='M12 9v8M9.5 14.5 12 17l2.5-2.5M5 20h14'/%3E%3C/svg%3E");
 }
 .icon-home {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='6' rx='1.5'/%3E%3Crect x='3' y='13' width='18' height='6' rx='1.5'/%3E%3Cpath d='M7 8h.01M7 16h.01' stroke-linecap='round' stroke-width='2'/%3E%3C/svg%3E");

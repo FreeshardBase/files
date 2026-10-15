@@ -12,7 +12,8 @@
     "shared": "Mit mir geteilt",
     "trash": "Papierkorb",
     "connections": "Cloud-Konten",
-    "connection": "{provider}: {account}"
+    "connection": "{provider}: {account}",
+    "migrate": "Auf den Shard umziehen"
   },
   "connections": {
     "title": "Cloud-Konten",
@@ -347,7 +348,11 @@
     "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Einträge „{name}“. Öffnen Sie den Ordner neu und wählen Sie einen davon.",
     "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffnen Sie ihn beim Cloud-Anbieter.",
     "LIBRARY_ALREADY_CONNECTED": "Diese Bibliothek ist schon verbunden. Wählen Sie eine andere.",
-    "VERIFY_FAILED": "Die Kopie ließ sich nicht bestätigen: Am Ziel liegen nicht die gesendeten Bytes. Das Original bleibt, wo es war."
+    "VERIFY_FAILED": "Die Kopie ließ sich nicht bestätigen: Am Ziel liegen nicht die gesendeten Bytes. Das Original bleibt, wo es war.",
+    "CONFIRMATION_REQUIRED": "Das müssen Sie erst bestätigen. Fragen Sie noch einmal und bestätigen Sie.",
+    "JOB_RUNNING": "Der Umzug läuft noch.",
+    "SOURCE_CHANGED": "Seit dem Umzug in der Cloud geändert, deshalb behalten.",
+    "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original."
   },
   "view": {
     "label": "Ansicht",
@@ -379,7 +384,9 @@
     "clear": "Erledigte entfernen",
     "label": {
       "copy": "„{name}“ nach {target} kopieren",
-      "move": "„{name}“ nach {target} verschieben"
+      "move": "„{name}“ nach {target} verschieben",
+      "migration": "„{name}“ nach {target} umziehen",
+      "cleanup": "Originale von „{name}“ löschen"
     },
     "state": {
       "running": "{done} von {total} · {size}",
@@ -395,6 +402,62 @@
       "copy": "Ein Element wird kopiert; den Fortschritt sehen Sie unter „Übertragungen“. | {count} Elemente werden kopiert; den Fortschritt sehen Sie unter „Übertragungen“.",
       "move": "Ein Element wird verschoben; den Fortschritt sehen Sie unter „Übertragungen“. | {count} Elemente werden verschoben; den Fortschritt sehen Sie unter „Übertragungen“."
     },
-    "nothingToDo": "Nichts eingefügt: Sie haben jedes Element übersprungen."
+    "nothingToDo": "Nichts eingefügt: Sie haben jedes Element übersprungen.",
+    "summary": "Zusammenfassung",
+    "summaryLabel": "Zusammenfassung von {name}"
+  },
+  "migrate": {
+    "title": "Auf den Shard umziehen",
+    "intro": "Kopieren Sie einen Cloud-Ordner oder ein ganzes Konto in einem Rutsch auf den Shard. Jede Datei wird bei der Ankunft geprüft. Danach können Sie die geprüften Originale in der Cloud löschen.",
+    "noConnections": "Verbinden Sie zuerst ein Cloud-Konto:",
+    "steps": {
+      "source": "1. Was umzieht",
+      "target": "2. Wohin es kommt",
+      "review": "3. Prüfen und starten"
+    },
+    "account": "Cloud-Konto",
+    "cloudFolders": "Ordner in der Cloud",
+    "shardFolders": "Ordner auf dem Shard",
+    "wholeAccount": "das ganze Konto {account}",
+    "chosenSource": "Zieht um: {what}",
+    "noSubfolders": "Hier sind keine Ordner.",
+    "next": "Weiter",
+    "back": "Zurück",
+    "name": "Name des neuen Ordners",
+    "nameNote": "Für den Umzug wird ein neuer Ordner angelegt. Ist der Name vergeben, bekommt er eine Nummer.",
+    "chosenTarget": "Landet in: {where}",
+    "from": "Von",
+    "to": "Nach",
+    "files": "Dateien",
+    "folders": "Ordner",
+    "size": "Größe",
+    "counting": "Wird gezählt …",
+    "atLeast": "Mindestens so viel: Das Zählen wurde früh beendet. Der Umzug kopiert alles.",
+    "start": "Umzug starten",
+    "theCloud": "der Cloud",
+    "jobTitle": "„{name}“ zieht auf den Shard um",
+    "another": "Neuer Umzug",
+    "state": "Stand",
+    "progressLabel": "Fortschritt des Umzugs von {name}",
+    "summary": {
+      "title": "Zusammenfassung",
+      "verified": "Geprüfte Dateien",
+      "failed": "Fehlgeschlagen",
+      "failedList": "Nicht umgezogene Elemente",
+      "cancelled": "Der Umzug wurde abgebrochen; was geprüft ist, bleibt auf dem Shard.",
+      "export": "Zusammenfassung exportieren (CSV)"
+    },
+    "cleanup": {
+      "title": "Originale in der Cloud",
+      "intro": "Löschen Sie die geprüften Dateien in {account}. Sie landen im Papierkorb des Anbieters. Dateien, die fehlgeschlagen sind oder sich seit dem Umzug geändert haben, bleiben.",
+      "nothing": "Es gibt keine geprüften Dateien zum Löschen.",
+      "start": "Geprüfte Originale löschen …",
+      "confirmTitle": "Geprüfte Originale löschen?",
+      "confirmMessage": "{count} geprüfte Dateien ({size}) werden in {account} gelöscht und landen dort im Papierkorb. Dateien, die fehlgeschlagen sind oder sich seit dem Umzug geändert haben, bleiben.",
+      "confirm": "Originale löschen",
+      "deleted": "Gelöschte Originale",
+      "kept": "Behalten",
+      "progressLabel": "Fortschritt beim Löschen der Originale von {name}"
+    }
   }
 }

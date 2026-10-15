@@ -28,7 +28,12 @@ export interface StorageBackend {
   read(path: string, range?: ByteRange | ((size: number) => ByteRange | undefined)):
     Promise<{ entry: Entry; stream: Readable; etag: string; range?: ByteRange;
       /** The length is not known before the bytes are sent (a Google-native document's export): no ranges, no Content-Length. */
-      unsized?: boolean }>;
+      unsized?: boolean;
+      /**
+       * The provider's own hash of the whole file, when it lists one (Google Drive's MD5). A transfer hashes the bytes it
+       * receives with the same algorithm and compares (#153). Absent for a range.
+       */
+      hash?: { algorithm: 'md5'; value: string } }>;
   write(path: string, body: Readable, opts: WriteOptions): Promise<Entry>;
   mkdir(path: string): Promise<Entry>;
   /** Rename or move within this source. A folder never moves into itself; "replace" sends the old target to the trash. */

@@ -97,6 +97,16 @@ onMounted(async () => {
           {{ $t('nav.connections') }}
         </RouterLink>
         <RouterLink
+          to="/migrate"
+          active-class="active"
+        >
+          <span
+            class="icon icon-migrate"
+            aria-hidden="true"
+          />
+          {{ $t('nav.migrate') }}
+        </RouterLink>
+        <RouterLink
           to="/recent"
           active-class="active"
         >

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The transfer panel (spec §3.8, #152): one row per copy or move between sources, live from the server's event stream,
-// with its progress, cancel while it runs, and the items that failed once it has ended. It uses the upload panel's sheet
+// with its progress, cancel while it runs, and the items that failed once it has ended; migrations and their cleanups
+// (#153) link to their page. It uses the upload panel's sheet
 // (DESIGN.md), so both read as one kind of thing.
 import { useI18n } from 'vue-i18n';
 import type { TransferJob } from '@files/shared';
@@ -20,6 +21,8 @@ const sourceName = (source: string) => {
   return c ? t('nav.connection', { provider: c.providerName, account: c.account }) : t('nav.shared');
 };
 const target = (j: TransferJob) => (j.dir === '/' ? sourceName(j.to) : `${sourceName(j.to)}${j.dir}`);
+// A migration and its cleanup (#153) link to the migration's page, with the summary and the cleanup.
+const migrationOf = (j: TransferJob) => (j.kind === 'migration' ? j.id : j.kind === 'cleanup' ? j.origin : null);
 const stateText = (j: TransferJob) => {
   if (j.status === 'running') return t('transfers.state.running', { done: j.done, total: j.total, size: formatSize(j.bytes, intlLocale(locale.value)) });
   if (j.status === 'completed_with_errors') return t('transfers.state.completed_with_errors', { failed: j.failed.length, total: j.total });
@@ -54,7 +57,7 @@ const stateText = (j: TransferJob) => {
         class="upload-item"
         :data-state="j.status === 'completed_with_errors' ? 'failed' : j.status"
       >
-        <span class="upload-name">{{ t(`transfers.label.${j.mode}`, { name: j.name, target: target(j) }) }}</span>
+        <span class="upload-name">{{ t(`transfers.label.${j.kind === 'transfer' ? j.mode : j.kind}`, { name: j.name, target: target(j) }) }}</span>
         <span class="upload-state">{{ stateText(j) }}</span>
         <div
           class="upload-bar"
@@ -67,6 +70,14 @@ const stateText = (j: TransferJob) => {
           <span :style="{ width: `${percent(j)}%` }" />
         </div>
         <span class="upload-actions">
+          <RouterLink
+            v-if="migrationOf(j)"
+            class="button"
+            :to="`/migrate/${migrationOf(j)}`"
+            :aria-label="t('transfers.summaryLabel', { name: j.name })"
+          >
+            {{ t('transfers.summary') }}
+          </RouterLink>
           <button
             v-if="j.status === 'running'"
             type="button"

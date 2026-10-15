@@ -12,7 +12,8 @@
     "shared": "Shared with me",
     "trash": "Trash",
     "connections": "Cloud accounts",
-    "connection": "{provider}: {account}"
+    "connection": "{provider}: {account}",
+    "migrate": "Move to shard"
   },
   "connections": {
     "title": "Cloud accounts",
@@ -347,7 +348,11 @@
     "AMBIGUOUS_NAME": "Several items in this folder are called “{name}”. Open the folder again and pick one.",
     "NOT_EXPORTABLE": "This document type can't be downloaded. Open it at the cloud provider.",
     "LIBRARY_ALREADY_CONNECTED": "This library is already connected. Choose another one.",
-    "VERIFY_FAILED": "The copy could not be verified: the target does not hold the bytes that were sent. The original stays where it was."
+    "VERIFY_FAILED": "The copy could not be verified: the target does not hold the bytes that were sent. The original stays where it was.",
+    "CONFIRMATION_REQUIRED": "This needs your confirmation first. Ask again and confirm.",
+    "JOB_RUNNING": "The migration is still running.",
+    "SOURCE_CHANGED": "Changed in the cloud since the migration, so it was kept.",
+    "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept."
   },
   "view": {
     "label": "View",
@@ -379,7 +384,9 @@
     "clear": "Clear finished",
     "label": {
       "copy": "Copy “{name}” to {target}",
-      "move": "Move “{name}” to {target}"
+      "move": "Move “{name}” to {target}",
+      "migration": "Move “{name}” to {target}",
+      "cleanup": "Delete the originals of “{name}”"
     },
     "state": {
       "running": "{done} of {total} · {size}",
@@ -395,6 +402,62 @@
       "copy": "Copying one item; the progress is under “Transfers”. | Copying {count} items; the progress is under “Transfers”.",
       "move": "Moving one item; the progress is under “Transfers”. | Moving {count} items; the progress is under “Transfers”."
     },
-    "nothingToDo": "Nothing pasted: every item was skipped."
+    "nothingToDo": "Nothing pasted: every item was skipped.",
+    "summary": "Summary",
+    "summaryLabel": "Summary of {name}"
+  },
+  "migrate": {
+    "title": "Move to the shard",
+    "intro": "Copy a cloud folder or a whole account onto the shard in one go. Every file is checked when it arrives. Afterwards you can delete the verified originals from the cloud.",
+    "noConnections": "Connect a cloud account first:",
+    "steps": {
+      "source": "1. What to move",
+      "target": "2. Where it goes",
+      "review": "3. Check and start"
+    },
+    "account": "Cloud account",
+    "cloudFolders": "Folder in the cloud",
+    "shardFolders": "Folder on the shard",
+    "wholeAccount": "the whole account {account}",
+    "chosenSource": "Moves: {what}",
+    "noSubfolders": "No folders in here.",
+    "next": "Next",
+    "back": "Back",
+    "name": "Name of the new folder",
+    "nameNote": "A new folder is created for the migration. If the name is taken, it gets a number.",
+    "chosenTarget": "Lands in: {where}",
+    "from": "From",
+    "to": "To",
+    "files": "Files",
+    "folders": "Folders",
+    "size": "Size",
+    "counting": "Counting …",
+    "atLeast": "At least this much: counting stopped early. The migration copies everything.",
+    "start": "Start migration",
+    "theCloud": "the cloud",
+    "jobTitle": "Moving “{name}” to the shard",
+    "another": "New migration",
+    "state": "State",
+    "progressLabel": "Progress of the migration of {name}",
+    "summary": {
+      "title": "Summary",
+      "verified": "Verified files",
+      "failed": "Failed",
+      "failedList": "Items that were not moved",
+      "cancelled": "The migration was cancelled; what is verified stays on the shard.",
+      "export": "Export summary (CSV)"
+    },
+    "cleanup": {
+      "title": "Originals in the cloud",
+      "intro": "Delete the verified files from {account}. They go to the provider’s trash. Files that failed or changed since the migration stay.",
+      "nothing": "There are no verified files to delete.",
+      "start": "Delete verified originals …",
+      "confirmTitle": "Delete the verified originals?",
+      "confirmMessage": "{count} verified files ({size}) will be deleted from {account} and go to its trash. Files that failed or changed since the migration stay.",
+      "confirm": "Delete originals",
+      "deleted": "Originals deleted",
+      "kept": "Kept",
+      "progressLabel": "Progress of deleting the originals of {name}"
+    }
   }
 }

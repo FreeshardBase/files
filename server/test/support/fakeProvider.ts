@@ -57,7 +57,7 @@ export type FakeProvider = {
   /** The Microsoft Graph subset (support/fakeGraph.ts): drives, sites, sessions, monitors and controls. */
   graph: FakeGraph;
   /** Puts a file (or, with `null`, a folder) into the fake's store; parent folders are created. */
-  put(path: string, content: string | null): void;
+  put(path: string, content: string | Buffer | null): void;
   /** Every request in order. `token` is the bearer (API) or the refresh token (refresh grant). */
   requests: FakeRequest[];
   /** Called synchronously for every request before it is answered. */
@@ -70,6 +70,8 @@ export type FakeProvider = {
   expireAccessTokens(): void;
   /** Every refresh token is refused (`invalid_grant`), as after the member revoked the app at the provider. */
   revokeRefreshTokens(): void;
+  /** Downloads of `path` in the generic file API send only the first half of its bytes (as a connection that drops). */
+  truncateContent(path: string): void;
   /** The next `n` API requests answer `status` with `headers`, before the token is even looked at. */
   failNext(n: number, status: number, headers?: Record<string, string>): void;
   /** Submits the consent page for `authorizeUrl` like a browser would; answers where the fake sends the browser back. */
@@ -102,6 +104,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   const blobs = new Map<string, string>(); // pre-signed id → path
   const uploads = new Map<string, { path: string; size: number; parts: Buffer[]; received: number }>();
   const failures: { status: number; headers: Record<string, string> }[] = [];
+  const truncated = new Set<string>();
   const requests: FakeRequest[] = [];
   let refreshGrants = 0;
   let url = '';
@@ -263,6 +266,10 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     if (kind === 'blob' && req.method === 'GET') {
       const f = files.get(blobs.get(id ?? '') ?? '');
       if (!f) return json(res, 404, { error: 'not_found' });
+      if (truncated.has(blobs.get(id!)!)) {
+        const half = f.data.subarray(0, Math.floor(f.data.length / 2));
+        return res.writeHead(200, { 'content-length': half.length }).end(half);
+      }
       const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ''));
       if (!m) return res.writeHead(200, { 'content-length': f.data.length }).end(f.data);
       const start = Number(m[1]); const end = m[2] ? Math.min(Number(m[2]), f.data.length - 1) : f.data.length - 1;
@@ -343,6 +350,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     validRefreshTokens: () => [...refreshTokens.keys()],
     expireAccessTokens: () => accessTokens.clear(),
     revokeRefreshTokens: () => refreshTokens.clear(),
+    truncateContent: (path) => { truncated.add(path); },
     failNext: (n, status, headers = {}) => { for (let i = 0; i < n; i++) failures.push({ status, headers }); },
     async consent(authorizeUrl, o = {}) {
       const page = await fetch(authorizeUrl);
