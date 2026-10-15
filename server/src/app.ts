@@ -20,6 +20,7 @@ import { registerUploadRoutes } from './routes/uploads.ts';
 import { scheduleUploadExpiry } from './storage/uploads.ts';
 import { registerRecentRoutes } from './routes/recent.ts';
 import { registerSearchRoutes } from './routes/search.ts';
+import { registerShareRoutes } from './routes/shares.ts';
 import type { ConnectedBackend } from './storage/backend.ts';
 import type { User } from './users.ts';
 import { ThumbnailCache } from './storage/thumbnails.ts';
@@ -91,6 +92,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerUploadRoutes(app);
   await registerRecentRoutes(app);
   await registerSearchRoutes(app);
+  await registerShareRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

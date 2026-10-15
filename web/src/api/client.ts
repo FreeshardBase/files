@@ -95,4 +95,5 @@ export function sendXhr(method: string, url: string, headers: Record<string, str
 export const api = {
   get: <T>(path: string, query?: Record<string, string>) => request<T>('GET', path, query ? { query } : {}),
   post: <T>(path: string, json: unknown) => request<T>('POST', path, { json }),
+  delete: (path: string) => request<void>('DELETE', path),
 };

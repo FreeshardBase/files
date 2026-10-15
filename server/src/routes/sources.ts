@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { posix } from 'node:path';
-import { CollisionPolicy, DeleteRequest, THUMB_SIZES, TransferRequest, type ThumbSize } from '@files/shared';
+import { CollisionPolicy, DeleteRequest, THUMB_SIZES, TransferRequest, type ListResponse, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
 import { resolveSource, type Access } from '../storage/resolveSource.ts';
@@ -25,12 +25,13 @@ const ThumbQ = z.object({ path: z.string().min(1),
 const ZipQ = z.object({ path: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(MAX_ZIP_PATHS)]) });
 
 // First thing in every handler: resolve the source and check the access the route needs, before any input is read.
-async function backendFor(req: FastifyRequest, need: Access): Promise<StorageBackend> {
+async function resolvedFor(req: FastifyRequest, need: Access) {
   const { source } = z.object({ source: z.string() }).parse(req.params);
   const resolved = await resolveSource(req, source);
   if (need === 'edit' && resolved.access !== 'edit') throw new AppError('FORBIDDEN');
-  return resolved.backend;
+  return resolved;
 }
+const backendFor = async (req: FastifyRequest, need: Access): Promise<StorageBackend> => (await resolvedFor(req, need)).backend;
 
 const disposition = (kind: 'inline' | 'attachment', name: string) => {
   const fallback = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
@@ -42,12 +43,13 @@ const disposition = (kind: 'inline' | 'attachment', name: string) => {
 export async function registerSourceRoutes(app: FastifyInstance): Promise<void> {
   app.addContentTypeParser('application/octet-stream', (_req, payload, done) => done(null, payload));
 
-  app.get('/api/v1/sources/:source/list', async (req) => {
-    const b = await backendFor(req, 'read');
+  // The listing carries the caller's access, so the SPA offers changes in a read share not at all (#146).
+  app.get('/api/v1/sources/:source/list', async (req): Promise<ListResponse> => {
+    const { backend, access } = await resolvedFor(req, 'read');
     const q = z.object({
       path: z.string().min(1), cursor: z.string().optional(), limit: z.coerce.number().int().optional(),
     }).parse(req.query);
-    return b.list(q.path, q.cursor, q.limit);
+    return { ...await backend.list(q.path, q.cursor, q.limit), access };
   });
 
   app.get('/api/v1/sources/:source/stat', async (req) => {

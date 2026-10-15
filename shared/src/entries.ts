@@ -11,9 +11,15 @@ export const EntrySchema = z.object({
 });
 export type Entry = z.infer<typeof EntrySchema>;
 
+/** What the caller may do in a source: `edit` in their own home, `read` or `edit` in a share (#146). */
+export const Access = z.enum(['read', 'edit']);
+export type Access = z.infer<typeof Access>;
+
 export const ListResponseSchema = z.object({
   entries: z.array(EntrySchema),
   next: z.string().optional(),
+  /** The caller's access to the source, re-checked on this request; the SPA offers changes only with `edit`. */
+  access: Access,
 });
 export type ListResponse = z.infer<typeof ListResponseSchema>;
 
@@ -98,6 +104,52 @@ export type SearchGroup = z.infer<typeof SearchGroupSchema>;
 /** `GET /api/v1/search`: one group per source the caller can search. */
 export const SearchResponseSchema = z.object({ groups: z.array(SearchGroupSchema) });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+
+/** Another member of the shard: someone who has signed in at least once. */
+export const MemberSchema = z.object({ id: z.string(), displayName: z.string() });
+export type Member = z.infer<typeof MemberSchema>;
+
+/** `GET /api/v1/members`: the other members, for the share dialog's picker. */
+export const MemberListSchema = z.object({ items: z.array(MemberSchema) });
+export type MemberList = z.infer<typeof MemberListSchema>;
+
+/**
+ * Body of `POST /api/v1/shares`. The owner is always the caller and `source` one of their own sources, so there is no
+ * field to name another owner; unknown fields are refused. Sharing the same item with the same member again changes the
+ * access of the existing share.
+ */
+export const CreateShareRequest = z.object({
+  source: z.string().min(1), path: z.string().min(1), grantee: z.string().min(1), access: Access,
+}).strict();
+export type CreateShareRequest = z.infer<typeof CreateShareRequest>;
+
+/** One member's access to an item of the caller (owner's view: the share dialog and the details drawer). */
+export const ShareSchema = z.object({
+  id: z.string(), grantee: MemberSchema, access: Access, createdAt: z.iso.datetime(),
+});
+export type Share = z.infer<typeof ShareSchema>;
+
+/** `GET /api/v1/shares?source=&path=`: who has access to one item of the caller. */
+export const ShareListSchema = z.object({ items: z.array(ShareSchema) });
+export type ShareList = z.infer<typeof ShareListSchema>;
+
+/** An item shared with the caller ("Shared with me"), opened as the source `share:<id>`. */
+export const IncomingShareSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  /** The shared item's own name; the owner's folders above it are not revealed. */
+  name: z.string().min(1),
+  type: z.enum(['file', 'directory']),
+  access: Access,
+  owner: MemberSchema,
+  createdAt: z.iso.datetime(),
+  /** The owner deleted the item: the share answers SHARE_ORPHANED until someone removes it. */
+  orphaned: z.boolean(),
+});
+export type IncomingShare = z.infer<typeof IncomingShareSchema>;
+
+export const IncomingShareListSchema = z.object({ items: z.array(IncomingShareSchema) });
+export type IncomingShareList = z.infer<typeof IncomingShareListSchema>;
 
 /** Body of `trash/delete`: delete these items permanently. */
 export const PurgeRequest = z.object({ ids: z.array(TrashId).min(1).max(1000) });

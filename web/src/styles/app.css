@@ -137,6 +137,50 @@ body {
   .app-dialog-actions .button { flex: 1 1 auto; justify-content: center; }
 }
 
+/* ---- Share dialog and details drawer (#146); see DESIGN.md ---- */
+.share-picker { position: relative; }
+.share-options {
+  list-style: none; margin: 0; padding: var(--space-1) 0; max-height: 220px; overflow-y: auto;
+  background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-tile);
+}
+.share-option { padding: var(--space-2) var(--space-3); border-left: 2px solid transparent; cursor: pointer; }
+.share-option:hover, .share-option[aria-selected='true'] {
+  border-left-color: var(--data); background: color-mix(in srgb, var(--data) 9%, transparent);
+}
+.share-note { margin: 0 0 var(--space-3); font-size: var(--fs-small); color: var(--ink-muted); }
+.share-access { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-4); padding: 0; border: 0; }
+.share-access legend { padding: 0; margin-bottom: 5px; }
+.share-radio { display: inline-flex; align-items: center; gap: var(--space-2); }
+.share-radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
+.share-submit { margin-bottom: var(--space-4); }
+.share-heading { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-small); font-weight: 600; }
+.share-list { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
+.share-list li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0; border-bottom: var(--border-w) solid var(--border);
+}
+.share-list li:last-child { border-bottom: 0; }
+.share-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.share-level { font-size: var(--fs-small); color: var(--ink-muted); }
+.app-dialog-scrim.app-dialog-scrim-drawer { justify-content: flex-end; align-items: stretch; padding: 0; }
+.app-dialog.app-dialog-drawer {
+  max-width: 380px; margin: 0; min-height: 100dvh; box-sizing: border-box;
+  border-width: 0 0 0 var(--border-w); border-radius: 0; display: flex; flex-direction: column;
+}
+.app-dialog-drawer .app-dialog-title { overflow-wrap: anywhere; }
+.app-dialog-drawer .app-dialog-actions { margin-top: auto; padding-top: var(--space-4); }
+.details-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+.details-facts dt { color: var(--ink-muted); font-size: var(--fs-small); }
+.details-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .share-option { min-height: 44px; display: flex; align-items: center; }
+  .app-dialog-scrim.app-dialog-scrim-drawer { align-items: flex-end; padding: var(--space-2) var(--space-2) 0; }
+  .app-dialog.app-dialog-drawer {
+    max-width: none; min-height: 0; max-height: 85dvh; overflow-y: auto;
+    border-width: var(--border-w) var(--border-w) 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  }
+}
+
 /* ---- Preview overlay (#142): a wide AppDialog; the content scrolls, the actions stay in view ---- */
 .app-dialog.app-dialog-wide {
   max-width: 1100px; max-height: calc(100dvh - 2 * var(--space-4));
@@ -336,6 +380,9 @@ body {
 }
 .icon-search {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6'/%3E%3Cpath d='M15 15l5 5'/%3E%3C/svg%3E");
+}
+.icon-shared {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='3.25'/%3E%3Cpath d='M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5'/%3E%3Ccircle cx='17' cy='9' r='2.5'/%3E%3Cpath d='M16 14.2c2.4-.3 4.1 1.2 4.5 3.8'/%3E%3C/svg%3E");
 }
 .icon-trash {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6'/%3E%3C/svg%3E");

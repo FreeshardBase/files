@@ -8,9 +8,11 @@ import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
 import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import ItemMenu from './ItemMenu.vue';
 
-export type ItemAction = 'download' | 'rename' | 'cut' | 'copy' | 'trash';
-const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[] }>(),
-  { source: 'home', selected: () => [] });
+export type ItemAction = 'download' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
+// `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
+// offered, the change keys do nothing and rows are not dragged. `shareable`: the items are the caller's own (#146).
+const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
+  editable?: boolean; shareable?: boolean }>(), { source: 'home', selected: () => [], editable: true, shareable: false });
 const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
 }>();
@@ -41,8 +43,14 @@ function selectRange(i: number) {
 // An action on a row applies to the whole selection if the row is part of it, else to the row alone.
 const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path) ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
 
-const menuItems = computed(() => (['download', 'rename', 'cut', 'copy', 'trash'] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
-function fromMenu(i: number, id: string) { emit('action', id as ItemAction, id === 'rename' ? [props.entries[i]!] : targets(i)); }
+// The destructive action stays last; share and details sit between the file actions and it.
+const menuItems = computed(() => ([
+  'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []),
+  ...(props.shareable ? ['share'] as const : []), 'details', ...(props.editable ? ['trash'] as const : []),
+] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
+// Rename, share and details act on the row itself, never on the whole selection.
+const SINGLE = new Set(['rename', 'share', 'details']);
+function fromMenu(i: number, id: string) { emit('action', id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i)); }
 
 function focusRow(i: number) {
   active.value = Math.max(0, Math.min(props.entries.length - 1, i));
@@ -61,11 +69,11 @@ function onKey(e: KeyboardEvent, i: number) {
   if (key === 'ArrowDown' && handled()) focusRow(i + 1);
   else if (key === 'ArrowUp' && handled()) focusRow(i - 1);
   else if (key === ' ' && handled()) toggle(i);
-  else if (key === 'F2' && handled()) emit('action', 'rename', [entry]);
-  else if (key === 'Delete' && handled()) emit('action', 'trash', targets(i));
-  else if (mod && key === 'c' && handled()) emit('action', 'copy', targets(i));
-  else if (mod && key === 'x' && handled()) emit('action', 'cut', targets(i));
-  else if (mod && key === 'v' && handled()) emit('paste');
+  else if (props.editable && key === 'F2' && handled()) emit('action', 'rename', [entry]);
+  else if (props.editable && key === 'Delete' && handled()) emit('action', 'trash', targets(i));
+  else if (props.editable && mod && key === 'c' && handled()) emit('action', 'copy', targets(i));
+  else if (props.editable && mod && key === 'x' && handled()) emit('action', 'cut', targets(i));
+  else if (props.editable && mod && key === 'v' && handled()) emit('paste');
   else if (mod && key === 'a' && handled()) select(props.entries.map((x) => x.path));
   else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) void menus.value[i]?.show();
   else if (key === 'Enter' && handled()) emit('open', entry); // a folder opens, a file opens in the preview
@@ -87,11 +95,11 @@ function onContextMenu(e: MouseEvent, i: number) {
   void menus.value[i]?.show();
 }
 function onDragOver(e: DragEvent, entry: Entry) {
-  if (entry.type === 'directory' && acceptDrag(e)) dropTarget.value = entry.path;
+  if (props.editable && entry.type === 'directory' && acceptDrag(e)) dropTarget.value = entry.path;
 }
 function onDrop(e: DragEvent, entry: Entry) {
   dropTarget.value = null;
-  if (entry.type !== 'directory') return;
+  if (!props.editable || entry.type !== 'directory') return;
   const paths = droppedPaths(e);
   if (paths) emit('drop', paths.filter((p) => p !== entry.path), entry.path);
 }
@@ -150,7 +158,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
         :data-type="e.type"
         :aria-selected="chosen.has(e.path)"
         :class="{ selected: chosen.has(e.path), 'drop-target': dropTarget === e.path }"
-        draggable="true"
+        :draggable="editable"
         @click="onClick($event, i)"
         @focusin="active = i"
         @keydown="onKey($event, i)"

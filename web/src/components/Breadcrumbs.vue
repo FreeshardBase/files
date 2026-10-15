@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue';
 import { folderRoute } from '../api/paths.ts';
 import { acceptDrag, droppedPaths } from '../dnd.ts';
-const props = defineProps<{ source: string; path: string }>();
+// `rootLabel`: the first crumb ("My storage", or a share's name); `editable`: crumbs take drops only where moves are allowed.
+const props = withDefaults(defineProps<{ source: string; path: string; rootLabel?: string; editable?: boolean }>(), { rootLabel: '', editable: true });
 // Every crumb is a drop target: dragging list items onto it moves them into that folder.
 const emit = defineEmits<{ drop: [string[], string] }>();
 const parts = computed(() => {
@@ -11,9 +12,10 @@ const parts = computed(() => {
     .map((p) => ({ ...p, to: folderRoute(props.source, p.path) }));
 });
 const over = ref<string | null>(null);
-function onDragOver(e: DragEvent, path: string) { if (acceptDrag(e)) over.value = path; }
+function onDragOver(e: DragEvent, path: string) { if (props.editable && acceptDrag(e)) over.value = path; }
 function onDrop(e: DragEvent, path: string) {
   over.value = null;
+  if (!props.editable) return;
   const paths = droppedPaths(e);
   if (paths) emit('drop', paths, path);
 }
@@ -39,7 +41,7 @@ function onDrop(e: DragEvent, path: string) {
         @dragleave="over = over === p.path ? null : over"
         @drop="onDrop($event, p.path)"
       >
-        {{ p.name ?? $t('nav.breadcrumbRoot') }}
+        {{ p.name ?? (rootLabel || $t('nav.breadcrumbRoot')) }}
       </RouterLink>
     </template>
   </nav>

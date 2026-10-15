@@ -1,4 +1,4 @@
-// Where things live, for both the API and the SPA. A source is `home` today, later `conn:<id>` and `share:<id>`.
+// Where things live, for both the API and the SPA. A source is `home`, `share:<id>` (#146), later `conn:<id>`.
 
 /** API base for one source: `/api/v1/sources/<source>`. */
 export const sourceApi = (source: string): string => `/api/v1/sources/${encodeURIComponent(source)}`;
@@ -10,6 +10,7 @@ export const downloadHref = (source: string, items: readonly { path: string; typ
     : `${sourceApi(source)}/zip?${items.map((e) => `path=${encodeURIComponent(e.path)}`).join('&')}`;
 
 /** SPA location of a folder: `/<source>/<path…>`, each segment encoded. The source segment keeps folder
- * names such as `api` or `auth` from colliding with server routes on reload. */
+ * names such as `api` or `auth` from colliding with server routes on reload. A source's own `:` stays readable
+ * (`/share:<id>/…`); a source id has no other character that needs encoding. */
 export const folderRoute = (source: string, path: string): string =>
-  `/${encodeURIComponent(source)}` + path.split('/').filter(Boolean).map((s) => '/' + encodeURIComponent(s)).join('');
+  `/${encodeURIComponent(source).replace(/%3A/g, ':')}` + path.split('/').filter(Boolean).map((s) => '/' + encodeURIComponent(s)).join('');

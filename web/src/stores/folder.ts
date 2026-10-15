@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { CollisionPolicy, DeleteRequest, Entry, ListResponse, TransferRequest } from '@files/shared';
+import type { Access, CollisionPolicy, DeleteRequest, Entry, ListResponse, TransferRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { sourceApi } from '../api/paths.ts';
 
@@ -12,13 +12,19 @@ export const useFolderStore = defineStore('folder', {
     loading: false, // initial load of a folder: the list is replaced by a placeholder
     refreshing: false, // relist of the folder already shown: the list stays mounted
     seq: 0, // request token: only the newest open() may touch state
+    // What the caller may do in the source, from the newest listing (#146). The home is always `edit`; a share starts
+    // as `read`, so no change is offered before the server has said it is allowed.
+    access: 'edit' as Access,
     // Items marked with "Move"/"Copy" (Ctrl+X/C), pasted into whichever folder is open later. Survives navigation.
     clipboard: null as { mode: 'move' | 'copy'; source: string; entries: Entry[] } | null,
   }),
   actions: {
     async open(path: string, opts: { refresh?: boolean; source?: string } = {}) {
       const id = ++this.seq;
-      if (opts.source !== undefined) this.source = opts.source;
+      if (opts.source !== undefined && opts.source !== this.source) {
+        this.source = opts.source;
+        this.access = this.source === 'home' ? 'edit' : 'read';
+      }
       const base = sourceApi(this.source);
       this.path = path; this.error = null;
       if (opts.refresh) this.refreshing = true; else { this.loading = true; this.refreshing = false; }
@@ -27,7 +33,7 @@ export const useFolderStore = defineStore('folder', {
         do {
           const page: ListResponse = await api.get(`${base}/list`, cursor ? { path, cursor } : { path });
           if (id !== this.seq) return;
-          all.push(...page.entries); cursor = page.next;
+          all.push(...page.entries); cursor = page.next; this.access = page.access;
         } while (cursor);
         this.entries = all;
       } catch (e) {
