@@ -29,8 +29,9 @@ function safeName(name: string): string {
   return name;
 }
 
-function dosTime(iso: string): { time: number; date: number } {
-  const d = new Date(iso);
+// An item without a time (a Dropbox folder) gets the earliest DOS date, like one that cannot be read.
+function dosTime(iso: string | undefined): { time: number; date: number } {
+  const d = new Date(iso ?? NaN);
   if (Number.isNaN(d.getTime()) || d.getFullYear() < 1980) return { time: 0, date: (1 << 5) | 1 }; // 1980-01-01
   return {
     time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),

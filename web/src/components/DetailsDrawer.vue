@@ -42,8 +42,10 @@ onMounted(async () => {
         <dt>{{ t('details.size') }}</dt>
         <dd>{{ formatSize(entry.size, intlLocale(locale)) }}</dd>
       </template>
-      <dt>{{ t('details.modified') }}</dt>
-      <dd>{{ formatDate(entry.modified, intlLocale(locale)) }}</dd>
+      <template v-if="entry.modified">
+        <dt>{{ t('details.modified') }}</dt>
+        <dd>{{ formatDate(entry.modified, intlLocale(locale)) }}</dd>
+      </template>
       <dt>{{ t('details.location') }}</dt>
       <dd>{{ parentOf(entry.path) }}</dd>
     </dl>

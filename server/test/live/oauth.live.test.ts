@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { OAuthClient, systemClock, type Provider } from '../../src/cloud/oauth.ts';
 import { GOOGLE_DRIVE_ENDPOINTS } from '../../src/cloud/googleDrive.ts';
+import { DROPBOX_ENDPOINTS } from '../../src/cloud/dropbox.ts';
 
 // Live check of the OAuthClient against each provider's real token endpoint: a stored refresh token yields an access
 // token, and a rotated refresh token reaches the store. Runs only with `LIVE_<P>_REFRESH_TOKEN`, `LIVE_<P>_CLIENT_ID` and
 // `LIVE_<P>_CLIENT_SECRET` (server/.env.live); otherwise the suite is skipped, never passed. The endpoints move into the
-// provider modules with #149–#151 (Google Drive's has), which add their backends' live tests next to this one.
+// provider modules with #149–#151 (Google Drive's and Dropbox's have), which add their backends' live tests next to this one.
 const LIVE = [
   { name: 'Google Drive', env: 'GDRIVE', tokenEndpoint: GOOGLE_DRIVE_ENDPOINTS.token },
-  { name: 'Dropbox', env: 'DROPBOX', tokenEndpoint: 'https://api.dropboxapi.com/oauth2/token' },
+  { name: 'Dropbox', env: 'DROPBOX', tokenEndpoint: DROPBOX_ENDPOINTS.token },
   { name: 'Microsoft Graph', env: 'GRAPH', tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token' },
 ];
 
