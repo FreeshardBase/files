@@ -103,6 +103,43 @@ body {
   .app-dialog-actions .button { flex: 1 1 auto; justify-content: center; }
 }
 
+/* ---- Preview overlay (#142): a wide AppDialog; the content scrolls, the actions stay in view ---- */
+.app-dialog.app-dialog-wide {
+  max-width: 1100px; max-height: calc(100dvh - 2 * var(--space-4));
+  display: flex; flex-direction: column; box-sizing: border-box;
+}
+.app-dialog-wide .app-dialog-title { overflow-wrap: anywhere; }
+.app-dialog-wide .app-dialog-actions { margin-top: var(--space-4); align-items: center; }
+.preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; }
+.preview-media { display: block; max-width: 100%; max-height: 70dvh; object-fit: contain; border-radius: var(--radius-tile); }
+.preview-audio { width: 100%; margin: var(--space-5) 0; }
+.preview-note { align-self: stretch; margin: 0 0 var(--space-3); color: var(--ink-muted); font-size: var(--fs-small); }
+.preview-text, .markdown pre {
+  align-self: stretch; margin: 0; padding: var(--space-3); overflow: auto;
+  font-family: var(--font-mono); font-size: var(--fs-mono); white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--bg); border: var(--border-w) solid var(--border); border-radius: var(--radius-control);
+}
+.preview-nav { display: flex; align-items: center; gap: var(--space-2); margin-right: auto; }
+.preview-position { font-family: var(--font-mono); font-size: var(--fs-mono); letter-spacing: var(--ls-mono); color: var(--ink-muted); white-space: nowrap; }
+.button[aria-disabled='true'] { opacity: 0.45; cursor: default; }
+.pdf-view { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.pdf-pages { display: flex; align-items: center; gap: var(--space-2); }
+.pdf-view canvas { max-width: 100%; background: #fff; border: var(--border-w) solid var(--border); }
+.markdown { align-self: stretch; max-width: 72ch; margin: 0 auto; line-height: 1.55; overflow-wrap: anywhere; }
+.markdown h1 { font-size: var(--fs-h1); } .markdown h2 { font-size: var(--fs-h2); } .markdown h3 { font-size: var(--fs-h3); }
+.markdown a { color: var(--line); }
+.markdown code { font-family: var(--font-mono); font-size: var(--fs-mono); }
+.markdown blockquote { margin: 0 0 var(--space-3); padding-left: var(--space-3); border-left: var(--border-w-glyph) solid var(--border-cool); color: var(--ink-muted); }
+.markdown table { border-collapse: collapse; }
+.markdown th, .markdown td { padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--border); }
+.markdown .align-center { text-align: center; } .markdown .align-right { text-align: right; }
+.markdown hr { border: none; border-top: var(--border-w) solid var(--border); }
+.md-image { color: var(--ink-muted); font-style: italic; }
+@media (max-width: 600px) {
+  .app-dialog.app-dialog-wide { max-height: calc(100dvh - 2 * var(--space-2)); padding: var(--space-4); }
+  .preview-nav { flex: 1 1 100%; justify-content: space-between; margin-right: 0; }
+}
+
 .folder { max-width: 960px; margin: 0 auto; }
 .toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;

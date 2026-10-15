@@ -47,7 +47,10 @@ function focusRow(i: number) {
   active.value = Math.max(0, Math.min(props.entries.length - 1, i));
   rows.value[active.value]?.focus();
 }
-defineExpose({ focus: () => focusRow(active.value) }); // after an action took the focused row away
+defineExpose({
+  focus: () => focusRow(active.value), // after an action took the focused row away
+  focusPath: (path: string) => { const i = props.entries.findIndex((e) => e.path === path); if (i >= 0) focusRow(i); }, // after the preview
+});
 function onKey(e: KeyboardEvent, i: number) {
   if (e.target !== e.currentTarget) return; // keys inside the row's own controls belong to them
   const entry = props.entries[i]!;
@@ -64,16 +67,18 @@ function onKey(e: KeyboardEvent, i: number) {
   else if (mod && key === 'v' && handled()) emit('paste');
   else if (mod && key === 'a' && handled()) select(props.entries.map((x) => x.path));
   else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) void menus.value[i]?.show();
-  else if (key === 'Enter' && handled()) {
-    // A file's Enter is a download: the row's own link does it, same as a click.
-    if (entry.type === 'file') rows.value[i]?.querySelector('a')?.click();
-    else emit('open', entry);
-  }
+  else if (key === 'Enter' && handled()) emit('open', entry); // a folder opens, a file opens in the preview
 }
 function onClick(e: MouseEvent, i: number) {
   active.value = i;
   if (e.shiftKey) selectRange(i);
   else if (e.ctrlKey || e.metaKey) toggle(i);
+}
+// A plain click on a file's name previews it; the link itself (new tab, save link as) still downloads.
+function onFileClick(e: MouseEvent, entry: Entry) {
+  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  emit('open', entry);
 }
 function onContextMenu(e: MouseEvent, i: number) {
   e.preventDefault();
@@ -180,6 +185,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
               :href="fileHref(e)"
               tabindex="-1"
               draggable="false"
+              @click="onFileClick($event, e)"
             >{{ e.name }}</a>
             <button
               v-else

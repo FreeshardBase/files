@@ -11,7 +11,7 @@ import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { zipStream, type ZipRoot } from '../storage/zip.ts';
 
 // Allowlist, not denylist: anything not known to be inert in a browser is downloaded, never rendered.
-const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain']);
+const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf', 'text/plain']);
 const inlineSafe = (mime: string): boolean => {
   const base = mime.split(';')[0]!.trim().toLowerCase();
   return INLINE.has(base) || base.startsWith('video/') || base.startsWith('audio/');

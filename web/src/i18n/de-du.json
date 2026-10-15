@@ -166,6 +166,21 @@
     "OFFSET_MISMATCH": "Der Upload passt nicht mehr zum Stand auf dem Shard. Versuch es noch einmal.",
     "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Versuch es gleich noch einmal."
   },
+  "preview": {
+    "previous": "Zurück",
+    "next": "Weiter",
+    "position": "{n} von {total}",
+    "close": "Schließen",
+    "download": "Herunterladen",
+    "loading": "Wird geladen …",
+    "failed": "Die Vorschau konnte nicht geladen werden. Du kannst die Datei trotzdem herunterladen.",
+    "unsupported": "Dieser Dateityp lässt sich hier nicht anzeigen. Lade die Datei herunter, um sie zu öffnen.",
+    "truncated": "Angezeigt werden die ersten {shown} von {size}. Lade die Datei herunter, um alles zu sehen.",
+    "markdownImage": "Bild: {alt}",
+    "pdfPage": "Seite {n} von {total}",
+    "pdfPrevious": "Vorige Seite",
+    "pdfNext": "Nächste Seite"
+  },
   "a11y": {
     "fileList": "Dateien in {folder}",
     "breadcrumbs": "Pfad"

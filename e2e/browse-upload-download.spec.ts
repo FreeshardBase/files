@@ -14,7 +14,12 @@ test('log in, upload a real file, see it, download the same bytes', async ({ pag
   const link = page.getByRole('link', { name: fileName });
   await expect(link).toBeVisible();
 
-  const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
+  // A click previews the file; its Download button downloads it.
+  await link.click();
+  const preview = page.getByRole('dialog', { name: fileName });
+  await expect(preview.locator('pre')).toHaveText('hallo welt');
+  const [download] = await Promise.all([page.waitForEvent('download'),
+    preview.getByRole('link', { name: /^(Herunterladen|Download)$/ }).click()]);
   expect(download.suggestedFilename()).toBe(fileName);
   expect(readFileSync(await download.path()).toString()).toBe('hallo welt');
 });
@@ -43,10 +48,14 @@ test('file list is keyboard reachable and operable', async ({ page }, info) => {
   await page.keyboard.press('ArrowUp');
   expect(await rowName()).toBe(first);
 
-  // Focus the target file row, then Enter downloads it. The home root is shared by every spec, so the row can be far down.
+  // Focus the target file row, then Enter previews it. The home root is shared by every spec, so the row can be far down.
   for (let i = 0; i < 200 &&!(await rowName())?.startsWith(fileName); i++) await page.keyboard.press('ArrowDown');
   expect(await rowName()).toContain(fileName);
-  const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
+  await page.keyboard.press('Enter');
+  const preview = page.getByRole('dialog', { name: fileName });
+  await expect(preview.locator('pre')).toHaveText('kbd');
+  const [download] = await Promise.all([page.waitForEvent('download'),
+    preview.getByRole('link', { name: /^(Herunterladen|Download)$/ }).click()]);
   expect(download.suggestedFilename()).toBe(fileName);
 });
 

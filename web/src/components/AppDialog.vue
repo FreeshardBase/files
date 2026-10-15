@@ -3,7 +3,8 @@
 // inert, locks its scroll, closes on Esc (emits `close`, the parent unmounts it) and restores focus on unmount.
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
-const props = defineProps<{ title: string; returnFocus?: HTMLElement | null }>();
+// `wide`: a sheet for content (the preview) instead of a question; full screen on a phone.
+const props = defineProps<{ title: string; returnFocus?: HTMLElement | null; wide?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const host = ref<HTMLElement>();
 const box = ref<HTMLElement>();
@@ -60,6 +61,7 @@ onBeforeUnmount(() => {
       <div
         ref="box"
         class="app-dialog"
+        :class="{ 'app-dialog-wide': wide }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
