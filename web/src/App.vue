@@ -58,7 +58,7 @@ onMounted(async () => {
         <RouterLink
           v-for="c in connections.items"
           :key="c.id"
-          :to="folderRoute(c.source, '/')"
+          :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
           active-class="active"
           class="nav-connection"
           :data-status="c.status"
@@ -70,6 +70,10 @@ onMounted(async () => {
           <span class="nav-connection-text">
             <span class="nav-connection-provider">{{ c.providerName }}</span>
             {{ c.account }}
+            <span
+              v-if="c.library"
+              class="nav-connection-library"
+            >{{ c.library }}</span>
             <span
               v-if="c.status !== 'ok'"
               class="nav-connection-status"

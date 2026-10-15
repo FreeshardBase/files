@@ -1,21 +1,23 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Connection, ConnectionStatus, ProviderInfo } from '@files/shared';
+import type { Connection, ConnectionStatus, Library, ProviderInfo, Site } from '@files/shared';
 import type { Db } from '../db.ts';
 import { AppError } from '../errors.ts';
 import type { ConnectedBackend } from '../storage/backend.ts';
 import { orphanSourceRefs, type PathTable } from '../storage/pathRefs.ts';
-import { authorizationUrl, exchangeCode, OAuthClient, type Clock, type Provider, type TokenStore } from './oauth.ts';
+import { authorizationUrl, exchangeCode, OAuthClient, type Clock, type LibraryPicker, type Provider, type TokenStore } from './oauth.ts';
 import { open, seal } from './secretBox.ts';
 
 /** A consent flow must come back within this time. */
 export const CONNECT_TTL_MS = 10 * 60 * 1000;
 
 type Row = { id: string; user_id: string; provider: string; account_id: string; account_label: string; refresh_token: string;
-  status: 'ok' | 'reauth'; created_at: string; updated_at: string };
+  status: 'ok' | 'reauth'; created_at: string; updated_at: string; drive: string; drive_label: string | null };
 type Attempt = { state: string; user_id: string; provider: string; connection_id: string | null; verifier: string | null };
 
-const COLUMNS = 'id, user_id, provider, account_id, account_label, refresh_token, status, created_at, updated_at';
+const COLUMNS = 'id, user_id, provider, account_id, account_label, refresh_token, status, created_at, updated_at, drive, drive_label';
+/** A connection of a provider with a library picker shows nothing until a library is picked (#151). */
+const pending = (r: Row, p: Provider) => p.libraries !== undefined && r.drive === '';
 // The sealed token is bound to its row, so a ciphertext moved into another row does not open.
 const context = (id: string) => `connections/${id}/refresh_token`;
 const b64url = (b: Buffer) => b.toString('base64url');
@@ -48,9 +50,9 @@ export class CloudConnections {
 
   private view(r: Row): Connection {
     const provider = this.byId.get(r.provider);
-    const status: ConnectionStatus = provider ? r.status : 'unavailable';
+    const status: ConnectionStatus = !provider ? 'unavailable' : r.status === 'ok' && pending(r, provider) ? 'library' : r.status;
     return { id: r.id, source: `conn:${r.id}`, provider: r.provider, providerName: provider?.name ?? r.provider,
-      account: r.account_label, status, createdAt: r.created_at };
+      account: r.account_label, ...(r.drive_label !== null ? { library: r.drive_label } : {}), status, createdAt: r.created_at };
   }
 
   list(userId: string): Connection[] { return this.rows(userId).map((r) => this.view(r)); }
@@ -81,12 +83,55 @@ export class CloudConnections {
     return c;
   }
 
-  /** The member's connections whose provider the shard still offers, as backends (`conn:<id>`). Builds, never calls. */
+  /**
+   * The member's connections whose provider the shard still offers, as backends (`conn:<id>`). Builds, never calls. A
+   * connection still waiting for its library has none, so it is SOURCE_NOT_FOUND, never the account's other files.
+   */
   backends(userId: string): ConnectedBackend[] {
     return this.rows(userId).flatMap((r) => {
       const provider = this.byId.get(r.provider);
-      return provider ? [{ id: r.id, backend: provider.backend(this.client(r, provider)) }] : [];
+      return provider && !pending(r, provider) ? [{ id: r.id, backend: provider.backend(this.client(r, provider), r.drive) }] : [];
     });
+  }
+
+  /** The row and its provider's picker; NOT_FOUND for another member's connection or a provider without libraries. */
+  private picker(userId: string, id: string): { r: Row; provider: Provider; picker: LibraryPicker } {
+    const r = this.row(userId, id);
+    const provider = r && this.byId.get(r.provider);
+    if (!r || !provider?.libraries) throw new AppError('NOT_FOUND');
+    return { r, provider, picker: provider.libraries };
+  }
+
+  /** The sites the connection's account can reach whose name matches `query` (all of them for an empty one). */
+  sites(userId: string, id: string, query: string): Promise<Site[]> {
+    const { r, provider, picker } = this.picker(userId, id);
+    return picker.sites(this.client(r, provider), query);
+  }
+
+  libraries(userId: string, id: string, site: string): Promise<Library[]> {
+    const { r, provider, picker } = this.picker(userId, id);
+    return picker.libraries(this.client(r, provider), site);
+  }
+
+  /**
+   * Gives a pending connection its library, once: a picked library never changes, so shares and links into the
+   * connection keep pointing at the same files. The same library twice for one account is LIBRARY_ALREADY_CONNECTED.
+   */
+  async pickLibrary(userId: string, id: string, site: string, library: string): Promise<Connection> {
+    const { r, provider, picker } = this.picker(userId, id);
+    if (r.drive !== '') throw new AppError('VALIDATION');
+    const label = await picker.label(this.client(r, provider), site, library);
+    const { db, clock } = this.deps;
+    db.transaction(() => {
+      const now = this.row(userId, id);
+      if (!now || now.drive !== '') throw new AppError(now ? 'VALIDATION' : 'NOT_FOUND'); // picked or unlinked meanwhile
+      const taken = db.prepare('SELECT 1 FROM connections WHERE user_id = ? AND provider = ? AND account_id = ? AND drive = ?')
+        .get(userId, r.provider, r.account_id, library);
+      if (taken) throw new AppError('LIBRARY_ALREADY_CONNECTED');
+      db.prepare('UPDATE connections SET drive = ?, drive_label = ?, updated_at = ? WHERE id = ?')
+        .run(library, label, new Date(clock.now()).toISOString(), id);
+    }).immediate();
+    return this.view(this.row(userId, id)!);
   }
 
   /** Starts a consent flow for the session: a new account of `provider`, or signing in again to `connection`. */
@@ -117,9 +162,10 @@ export class CloudConnections {
 
   /**
    * The provider sent the browser back. Without a state that this session started, nothing is exchanged and nothing is
-   * stored. Returns the connection id; throws CONNECT_FAILED (logged with a reason, never with the query).
+   * stored. Returns the connection id and whether it still needs its library picked; throws CONNECT_FAILED (logged with
+   * a reason, never with the query).
    */
-  async complete(sessionHash: string, userId: string, q: CallbackQuery, log: FastifyBaseLogger): Promise<string> {
+  async complete(sessionHash: string, userId: string, q: CallbackQuery, log: FastifyBaseLogger): Promise<{ id: string; pick: boolean }> {
     const failed = (reason: string, err?: unknown): never => {
       log.warn({ reason, ...(err !== undefined ? { err } : {}) }, 'connect failed');
       throw new AppError('CONNECT_FAILED');
@@ -142,28 +188,32 @@ export class CloudConnections {
     let account;
     try { account = await provider.account(temp); }
     catch (err) { return failed('account lookup failed', err); } // handled: becomes CONNECT_FAILED for the member
-    return this.persist(userId, provider, attempt.connection_id, account, refresh);
+    const id = this.persist(userId, provider, attempt.connection_id, account, refresh);
+    return { id, pick: pending(this.row(userId, id)!, provider) };
   }
 
   // Writes the tokens of a finished consent: into the connection being re-authenticated, into the row of an account
-  // that is connected already, or into a new row.
+  // that is connected already (for a provider with libraries: the account's connection still waiting for its library),
+  // or into a new row.
   private persist(userId: string, provider: Provider, reauthId: string | null, account: { id: string; label: string }, refresh: string): string {
     const { db, key, clock } = this.deps;
     const now = new Date(clock.now()).toISOString();
     const id = db.transaction(() => {
-      const same = db.prepare('SELECT id FROM connections WHERE user_id = ? AND provider = ? AND account_id = ?').pluck()
-        .get(userId, provider.id, account.id) as string | undefined;
       if (reauthId !== null) {
-        if (!this.row(userId, reauthId)) throw new AppError('NOT_FOUND'); // unlinked during the consent
+        const r = this.row(userId, reauthId);
+        if (!r) throw new AppError('NOT_FOUND'); // unlinked during the consent
         // Another account under the same connection would hand its shares to files they were never about.
-        if (same !== reauthId) throw new AppError('CONNECT_ACCOUNT_MISMATCH');
+        if (r.account_id !== account.id) throw new AppError('CONNECT_ACCOUNT_MISMATCH');
       }
+      const same = db.prepare(`SELECT id FROM connections WHERE user_id = ? AND provider = ? AND account_id = ? AND drive = ''`).pluck()
+        .get(userId, provider.id, account.id) as string | undefined;
       const target = reauthId ?? same ?? randomBytes(16).toString('hex');
       if (target === same || target === reauthId) {
         db.prepare(`UPDATE connections SET refresh_token = ?, account_label = ?, status = 'ok', updated_at = ? WHERE id = ?`)
           .run(seal(key, refresh, context(target)), account.label, now, target);
       } else {
-        db.prepare(`INSERT INTO connections (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, 'ok', ?, ?)`)
+        db.prepare(`INSERT INTO connections (id, user_id, provider, account_id, account_label, refresh_token, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'ok', ?, ?)`)
           .run(target, userId, provider.id, account.id, account.label, seal(key, refresh, context(target)), now, now);
       }
       return target;

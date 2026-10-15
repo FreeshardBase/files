@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // "Cloud accounts" (#148): the member's own connections with their status, signing in again, unlinking (asked first,
 // since shares into the account end), and one button per provider the shard offers. A failed consent comes back here
-// with `?error=<code>`, shown once and then dropped from the URL.
+// with `?error=<code>`, shown once and then dropped from the URL. A new SharePoint connection comes back with
+// `?pick=<id>` and opens the library picker (#151); until a library is picked, its row offers "Choose library".
 import { nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -10,6 +11,7 @@ import { useConnectionsStore } from '../stores/connections.ts';
 import { ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import LibraryPicker from '../components/LibraryPicker.vue';
 
 const { t } = useI18n();
 const route = useRoute(); const router = useRouter();
@@ -17,6 +19,7 @@ const connections = useConnectionsStore();
 const status = ref('');
 const alert = ref('');
 const unlinking = ref<Connection | null>(null);
+const picking = ref<Connection | null>(null);
 const heading = ref<HTMLElement>();
 
 const report = (e: unknown) => {
@@ -27,8 +30,10 @@ const report = (e: unknown) => {
 onMounted(async () => {
   const code = route.query.error;
   if (typeof code === 'string' && (ERROR_CODES as readonly string[]).includes(code)) alert.value = t(`errors.${code as ErrorCode}`);
-  if (code !== undefined) await router.replace({ query: {} });
+  const pick = route.query.pick;
+  if (code !== undefined || pick !== undefined) await router.replace({ query: {} });
   await connections.load();
+  picking.value = connections.items.find((c) => c.id === pick && c.status === 'library') ?? null;
   // The stored status is what the last request saw; a live check per connection brings it up to date (#41).
   await Promise.all(connections.items.filter((c) => c.status !== 'unavailable').map((c) => connections.check(c.id).catch(report)));
 });
@@ -37,6 +42,12 @@ async function signIn(body: { provider: string } | { connection: string }) {
   alert.value = '';
   try { await connections.authorize(body); }
   catch (e) { report(e); } // handled: shown in the alert line
+}
+
+/** The library is picked: the connection opens like any other. */
+async function picked(c: Connection) {
+  picking.value = null;
+  await router.push(folderRoute(c.source, '/'));
 }
 
 async function unlink() {
@@ -127,7 +138,13 @@ async function unlink() {
                   class="icon icon-cloud"
                   aria-hidden="true"
                 />
-                {{ c.account }}
+                <span>
+                  {{ c.account }}
+                  <span
+                    v-if="c.library"
+                    class="connection-library"
+                  >{{ c.library }}</span>
+                </span>
               </div>
             </td>
             <td class="origin">
@@ -148,6 +165,15 @@ async function unlink() {
               >
                 {{ $t('connections.open') }}
               </RouterLink>
+              <button
+                v-if="c.status === 'library'"
+                type="button"
+                class="button primary"
+                :aria-label="$t('connections.chooseLibraryLabel', { account: c.account })"
+                @click="picking = c"
+              >
+                {{ $t('connections.chooseLibrary') }}
+              </button>
               <button
                 v-if="c.status === 'reauth'"
                 type="button"
@@ -200,6 +226,12 @@ async function unlink() {
       :confirm-label="$t('connections.unlink')"
       @confirm="unlink"
       @cancel="unlinking = null"
+    />
+    <LibraryPicker
+      v-if="picking"
+      :connection="picking"
+      @picked="picked"
+      @close="picking = null"
     />
   </section>
 </template>

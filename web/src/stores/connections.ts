@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
-import type { AuthorizeRequest, AuthorizeResponse, Connection, ConnectionList, ProviderInfo } from '@files/shared';
+import type { AuthorizeRequest, AuthorizeResponse, Connection, ConnectionList, Library, LibraryList, PickLibraryRequest, ProviderInfo,
+  Site, SiteList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 
 /** The member's own cloud connections (#148), for the sidebar and the "Cloud accounts" page. */
@@ -40,6 +41,19 @@ export const useConnectionsStore = defineStore('connections', {
     async check(id: string) {
       const c = await api.post<Connection>(`/api/v1/connections/${encodeURIComponent(id)}/check`, {});
       this.items = this.items.map((x) => (x.id === id ? c : x));
+    },
+    /** The SharePoint picker (#151): sites matching `q` (all for an empty one) and a site's document libraries. */
+    async sites(id: string, q: string): Promise<Site[]> {
+      return (await api.get<SiteList>(`/api/v1/connections/${encodeURIComponent(id)}/sites`, { q })).items;
+    },
+    async libraries(id: string, site: string): Promise<Library[]> {
+      return (await api.get<LibraryList>(`/api/v1/connections/${encodeURIComponent(id)}/sites/${encodeURIComponent(site)}/libraries`)).items;
+    },
+    /** Gives a pending SharePoint connection its library; answers the connection, now with its files. */
+    async pickLibrary(id: string, body: PickLibraryRequest): Promise<Connection> {
+      const c = await api.put<Connection>(`/api/v1/connections/${encodeURIComponent(id)}/library`, body);
+      this.items = this.items.map((x) => (x.id === id ? c : x));
+      return c;
     },
     async unlink(id: string) {
       await api.delete(`/api/v1/connections/${encodeURIComponent(id)}`);

@@ -51,6 +51,13 @@ const Schema = z.object({
   // The shard's Dropbox app (#150): its app key and secret. Optional as a pair: without it Dropbox is not offered.
   FILES_DROPBOX_CLIENT_ID: z.string().min(1).optional(),
   FILES_DROPBOX_CLIENT_SECRET: z.string().min(1).optional(),
+  // The shard's Azure app registration (#151) for OneDrive and SharePoint. Optional as a pair: without it neither is
+  // offered. The tenant is part of Microsoft's fixed sign-in URL: `common` (work and personal accounts), `organizations`,
+  // `consumers`, or one directory's id or domain for a single-tenant registration.
+  FILES_GRAPH_CLIENT_ID: z.string().min(1).optional(),
+  FILES_GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
+  FILES_GRAPH_TENANT: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$/, 'must be common, organizations, consumers, a tenant id or a domain')
+    .default('common'),
 }).refine((e) => (e.FILES_OIDC_ROLE_CLAIM === undefined) === (e.FILES_OIDC_ADMIN_VALUE === undefined), {
   path: ['FILES_OIDC_ROLE_CLAIM'],
   message: 'FILES_OIDC_ROLE_CLAIM and FILES_OIDC_ADMIN_VALUE must be set both or neither',
@@ -60,6 +67,9 @@ const Schema = z.object({
 }).refine((e) => (e.FILES_DROPBOX_CLIENT_ID === undefined) === (e.FILES_DROPBOX_CLIENT_SECRET === undefined), {
   path: ['FILES_DROPBOX_CLIENT_ID'],
   message: 'FILES_DROPBOX_CLIENT_ID and FILES_DROPBOX_CLIENT_SECRET must be set both or neither',
+}).refine((e) => (e.FILES_GRAPH_CLIENT_ID === undefined) === (e.FILES_GRAPH_CLIENT_SECRET === undefined), {
+  path: ['FILES_GRAPH_CLIENT_ID'],
+  message: 'FILES_GRAPH_CLIENT_ID and FILES_GRAPH_CLIENT_SECRET must be set both or neither',
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -93,6 +103,9 @@ export function loadConfig(env: Record<string, string | undefined>) {
       : undefined,
     dropbox: e.FILES_DROPBOX_CLIENT_ID !== undefined && e.FILES_DROPBOX_CLIENT_SECRET !== undefined
       ? { clientId: e.FILES_DROPBOX_CLIENT_ID, clientSecret: e.FILES_DROPBOX_CLIENT_SECRET }
+      : undefined,
+    graph: e.FILES_GRAPH_CLIENT_ID !== undefined && e.FILES_GRAPH_CLIENT_SECRET !== undefined
+      ? { clientId: e.FILES_GRAPH_CLIENT_ID, clientSecret: e.FILES_GRAPH_CLIENT_SECRET, tenant: e.FILES_GRAPH_TENANT }
       : undefined,
   };
 }
