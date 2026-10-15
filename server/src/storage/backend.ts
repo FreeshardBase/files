@@ -26,7 +26,9 @@ export interface StorageBackend {
    * opened file (it may throw RangeNotSatisfiable); `range` in the result is the one actually served.
    */
   read(path: string, range?: ByteRange | ((size: number) => ByteRange | undefined)):
-    Promise<{ entry: Entry; stream: Readable; etag: string; range?: ByteRange }>;
+    Promise<{ entry: Entry; stream: Readable; etag: string; range?: ByteRange;
+      /** The length is not known before the bytes are sent (a Google-native document's export): no ranges, no Content-Length. */
+      unsized?: boolean }>;
   write(path: string, body: Readable, opts: WriteOptions): Promise<Entry>;
   mkdir(path: string): Promise<Entry>;
   /** Rename or move within this source. A folder never moves into itself; "replace" sends the old target to the trash. */
@@ -45,7 +47,13 @@ export interface StorageBackend {
    * cloud backends ask their provider live (#149–#151). A failure is reported for this source only (routes/search.ts).
    */
   search?(query: string, limit: number): Promise<Entry[]>;
+  /** The provider's storage use and limit (cloud backends; the storage overview shows it). */
+  quota?(): Promise<{ used: number; total?: number }>;
+  /** The provider's stored revisions of a file, oldest first (cloud backends; restoring comes with versions). */
+  revisions?(path: string): Promise<Revision[]>;
 }
+
+export type Revision = { id: string; modified: string; size?: number };
 
 /** One of the member's own cloud connections, searched and addressed as the source `conn:<id>`. */
 export type ConnectedBackend = { id: string; backend: StorageBackend };

@@ -62,10 +62,12 @@ const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot
     account: connection.value.account }) : t('nav.connections'))
   : (shareName.value ?? t('nav.shared')));
 const folderName = computed(() => path.value === '/' ? (source.value === 'home' ? t('nav.home') : rootLabel.value) : path.value.split('/').pop()!);
-// What the caller may do here: change only with `edit` (re-checked by the server on every request); share and upload
-// only in their own home, since a share is never shared on and resumable uploads target the home (DECISIONS, #146).
+// What the caller may do here: change only with `edit` (re-checked by the server on every request); share only in their
+// own home, since a share is never shared on (DECISIONS, #146); upload in the home and into their own cloud connections
+// (#149), not into a share, whose placement and quota are #152.
 const editable = computed(() => folder.access === 'edit' && folder.source === source.value);
 const own = computed(() => source.value === 'home');
+const canUpload = computed(() => own.value || (source.value.startsWith('conn:') && editable.value));
 const sharing = ref<Entry | null>(null);
 const details = ref<Entry | null>(null);
 async function shareFromDetails() {
@@ -177,13 +179,13 @@ function upload(files: PickedFile[]) {
 
 // Files and folders dragged in from the desktop upload into the open folder.
 const dropActive = ref(false);
-function onFileDragOver(e: DragEvent) { if (own.value && acceptFileDrag(e)) dropActive.value = true; }
+function onFileDragOver(e: DragEvent) { if (canUpload.value && acceptFileDrag(e)) dropActive.value = true; }
 function onFileDragLeave(e: DragEvent) {
   if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) dropActive.value = false;
 }
 async function onFileDrop(e: DragEvent) {
   dropActive.value = false;
-  if (!own.value) return;
+  if (!canUpload.value) return;
   const files = droppedFiles(e);
   if (!files) return;
   const picked = await files;
@@ -307,7 +309,7 @@ function onDrop(paths: string[], dir: string) {
           </button>
         </div>
         <UploadButton
-          v-if="own"
+          v-if="canUpload"
           ref="uploadButton"
           @files="upload"
         />

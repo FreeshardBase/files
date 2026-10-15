@@ -329,7 +329,9 @@
     "CONNECT_FAILED": "Das Konto konnte nicht verbunden werden. Bitte versuche es erneut.",
     "CONNECT_ACCOUNT_MISMATCH": "Du hast dich mit einem anderen Konto angemeldet. Melde dich mit dem Konto dieser Verbindung an, oder verbinde das andere Konto zusätzlich.",
     "CONNECTION_REAUTH": "Der Cloud-Anbieter akzeptiert die Anmeldung nicht mehr. Melde dich unter „Cloud-Konten“ erneut an.",
-    "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuche es später erneut."
+    "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuche es später erneut.",
+    "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Einträge „{name}“. Öffne den Ordner neu und wähle einen davon.",
+    "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffne ihn beim Cloud-Anbieter."
   },
   "view": {
     "label": "Ansicht",

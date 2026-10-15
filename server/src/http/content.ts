@@ -36,13 +36,14 @@ export async function readRanged(b: StorageBackend, path: string, req: FastifyRe
 export function sendContent(reply: FastifyReply, r: Awaited<ReturnType<typeof readRanged>>, wantInline: boolean, cache: string) {
   const mime = r.entry.mime ?? 'application/octet-stream';
   const kind = wantInline && inlineSafe(mime) ? 'inline' : 'attachment';
-  reply.header('content-type', mime).header('etag', r.etag).header('accept-ranges', 'bytes')
+  reply.header('content-type', mime).header('etag', r.etag).header('accept-ranges', r.unsized ? 'none' : 'bytes')
     .header('content-disposition', disposition(kind, r.entry.name)).header('cache-control', cache)
     .header('content-security-policy', CONTENT_CSP).header('x-content-type-options', 'nosniff');
   if (r.range) {
     reply.status(206).header('content-range', `bytes ${r.range.start}-${r.range.end}/${r.entry.size}`)
       .header('content-length', r.range.end - r.range.start + 1);
-  } else {
+  } else if (!r.unsized) {
+    // An export's length is only known once it has been sent, so it goes out chunked: its listed size (0) would cut it off.
     reply.header('content-length', r.entry.size);
   }
   return reply.send(r.stream);

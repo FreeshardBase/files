@@ -28,6 +28,7 @@ import { ThumbnailCache } from './storage/thumbnails.ts';
 import { thumbsDir } from './paths.ts';
 import { CloudConnections } from './cloud/connections.ts';
 import { systemClock, type Clock, type Provider } from './cloud/oauth.ts';
+import { googleDriveProvider } from './cloud/googleDrive.ts';
 import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
 
 declare module 'fastify' {
@@ -40,13 +41,15 @@ declare module 'fastify' {
 export type Connections = (user: User) => Promise<ConnectedBackend[]>;
 
 /**
- * The cloud providers the shard offers. None yet: Google Drive, Dropbox and Microsoft Graph come with their backends
- * (#149–#151), each with fixed endpoints and client credentials from config.
+ * The cloud providers the shard offers: each one whose client credentials are configured, with its fixed endpoints.
+ * Google Drive (#149); Dropbox and Microsoft Graph come with their backends (#150, #151).
  */
-export const PROVIDERS: readonly Provider[] = [];
+export function configuredProviders(config: Config): Provider[] {
+  return config.google ? [googleDriveProvider(config.google)] : [];
+}
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
-  /** The providers members can connect; `PROVIDERS` unless a test or the E2E server brings fake ones. */
+  /** The providers members can connect; `configuredProviders` unless a test or the E2E server brings fake ones. */
   providers?: readonly Provider[];
   /** Time for token expiry and backoff; the system clock unless a test brings a fake one. */
   clock?: Clock;
@@ -61,7 +64,7 @@ export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) 
   onRoute?: (route: RouteOptions) => void };
 
 export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES,
-  connections, providers = PROVIDERS, clock = systemClock }: AppDeps): Promise<FastifyInstance> {
+  connections, providers = configuredProviders(config), clock = systemClock }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,

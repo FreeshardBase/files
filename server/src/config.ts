@@ -45,9 +45,15 @@ const Schema = z.object({
   FILES_THUMB_TIMEOUT_MS: z.coerce.number().int().min(1).max(600_000).default(30_000),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
+  // The shard's OAuth client at Google (#149). Optional as a pair: without it Google Drive is not offered.
+  FILES_GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  FILES_GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
 }).refine((e) => (e.FILES_OIDC_ROLE_CLAIM === undefined) === (e.FILES_OIDC_ADMIN_VALUE === undefined), {
   path: ['FILES_OIDC_ROLE_CLAIM'],
   message: 'FILES_OIDC_ROLE_CLAIM and FILES_OIDC_ADMIN_VALUE must be set both or neither',
+}).refine((e) => (e.FILES_GOOGLE_CLIENT_ID === undefined) === (e.FILES_GOOGLE_CLIENT_SECRET === undefined), {
+  path: ['FILES_GOOGLE_CLIENT_ID'],
+  message: 'FILES_GOOGLE_CLIENT_ID and FILES_GOOGLE_CLIENT_SECRET must be set both or neither',
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -76,5 +82,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
     thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,
     port: e.FILES_PORT,
     logLevel: e.FILES_LOG_LEVEL,
+    google: e.FILES_GOOGLE_CLIENT_ID !== undefined && e.FILES_GOOGLE_CLIENT_SECRET !== undefined
+      ? { clientId: e.FILES_GOOGLE_CLIENT_ID, clientSecret: e.FILES_GOOGLE_CLIENT_SECRET }
+      : undefined,
   };
 }
