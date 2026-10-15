@@ -7,6 +7,7 @@ function picked() {
   if (files.length) emit('files', files);
   if (input.value) input.value.value = '';
 }
+defineExpose({ input }); // the focus target a dialog opened by an upload returns to
 </script>
 <template>
   <label class="button primary upload">

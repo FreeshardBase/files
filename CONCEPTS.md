@@ -38,7 +38,7 @@ All file access goes through `StorageBackend` (`server/src/storage/backend.ts`):
 - it `lstat`s every existing component and rejects symlinks;
 - it `realpath`s the deepest existing ancestor and checks it lies under the root with a trailing separator.
 
-Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Keep both" names are `name (n).ext` within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
+Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Fail if exists" answers `FILE_EXISTS` with the taken `name` in `params` before the body is read, so the SPA can ask the collision question without uploading twice. "Keep both" names are `name (n).ext`, starting at `(1)`, within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
 
 ## Deny by default
 
@@ -103,7 +103,9 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `views/FolderView.vue` | The folder page: breadcrumbs, upload, list, states. |
 | `components/FileList.vue` | File table with roving tabindex and arrow-key navigation. |
 | `components/Breadcrumbs.vue` | Path navigation. |
-| `components/UploadButton.vue` | File picker emitting chosen files. |
+| `components/UploadButton.vue` | File picker emitting chosen files; exposes its input as the focus target for dialogs it causes. |
+| `components/AppDialog.vue` | The only dialog primitive (lint-enforced): `role="dialog"`, `aria-modal`, labelled title, focus trap, inert background, root scroll lock, Esc emits `close`, focus restored on unmount. |
+| `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Upload uses it now, move/copy/restore later. |
 | `i18n/index.ts` | vue-i18n setup and `resolveLocale` (stored, browser, default Deutsch Du). |
 | `i18n/htmlLang.ts` | Keeps `<html lang>` in step with the locale. |
 | `i18n/de-du.json`, `de-sie.json`, `en.json` | The three UI languages; every key in every file. |
@@ -116,7 +118,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 - Only the `home` source exists; `conn:` and `share:` are parsed by `resolveSource` but answer `SOURCE_NOT_FOUND` until #148 and #146.
 - No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
 - No rename, delete, move, copy, trash, versions, thumbnails, search, sharing or WebDAV. See spec §2.1 and the Phase D queue.
-- The details drawer, transfer panel and shared `<AppDialog>` from spec §3.8 are not built.
+- The details drawer and transfer panel from spec §3.8 are not built.
 - Routes Zod-parse params, query and body, but there are no Zod response schemas and no generated OpenAPI document (spec §3.3).
 - The web API client is handwritten (`web/src/api/client.ts`), not generated from `shared/` (spec §3.8).
 - No fake cloud-provider server scaffold exists yet (spec §3.9, Phase B); it arrives with the first cloud backend.

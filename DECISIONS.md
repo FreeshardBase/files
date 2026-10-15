@@ -89,3 +89,17 @@ Question: what source ids are valid, what answers an unknown one, where is acces
 `ifMatch` is allowed only with `onCollision: replace` (otherwise `VALIDATION`): a conditional write replaces exactly the version the client saw, and "fail" or "keep both" would contradict that. A missing file or a different ETag is `PRECONDITION_FAILED` (412). The check runs before the body is read and again right before the rename, which narrows the lost-update window but does not close it, since there is no lock. The route takes it from the `If-Match` header and compares it as an exact string. `*` and weak tags are not supported, because no client sends them. `size` is the declared length. The route passes `Content-Length` when there is one. More or fewer streamed bytes are `SIZE_MISMATCH` (400), and the temp file is removed. A declared size above `maxBytes` is `PAYLOAD_TOO_LARGE` before any byte is read.
 
 `read` returns the `Entry` with the stream and the ETag. The Range is resolved against the size of the file actually opened (a function range), so `GET content` needs one backend call. The old stat/read race on `Content-Range: bytes */<size>` cannot happen any more.
+
+## 2026-10-15: collision dialog and `<AppDialog>` (#136)
+
+Question: what do Esc, "apply to all" and "keep both" do, and how does the SPA find out about a collision without sending a file twice?
+
+Esc (closing the dialog) counts as "skip" for the current item only. Closing must never overwrite anything or decide for items the user has not seen. The batch goes on, and the summary reports skipped items separately from failures (`upload.summarySkipped`). The scrim does not close the dialog on click, so a stray tap cannot skip a file.
+
+"Apply to all remaining" is offered only when items follow. With "replace" or "keep both" for all, the remaining files are sent with that policy straight away. With "skip" for all, each one is still sent with `fail` first, so a file whose name is free is uploaded as usual and only the taken ones are skipped.
+
+The SPA always sends `onCollision=fail` first. `LocalBackend.write` now answers `FILE_EXISTS` with `{ name }` in `params` before it reads the body, and the route closes the connection on any rejection that leaves the body unread. The SPA sends the file a second time only after the user has chosen. The hard-link in `place()` still catches a name that is taken between that check and the rename.
+
+The first "keep both" name is `name (1).ext`, as the issue states, not `(2)` as before. Nothing has been deployed, so nothing depends on the old numbering. The dialog shows the name from the server's `params`, because the server decides which entry conflicts.
+
+`<AppDialog>` is open while it is mounted. It makes every other child of `<body>` `inert`, sets `overflow: hidden` on `<html>`, traps Tab, and restores focus on unmount to `returnFocus` (for an upload, the upload button's input) or to the element focused before. It uses no native `<dialog>`, because `showModal()` lets Tab leave into the browser chrome and it would be a second code path to keep accessible. The lint config bans `role="dialog"`/`alertdialog`, a bound `:role` and `<dialog>` outside `AppDialog.vue`.

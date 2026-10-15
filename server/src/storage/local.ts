@@ -165,6 +165,8 @@ export class LocalBackend implements StorageBackend {
     const current = () => lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
     const st = await current();
     if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    // Fail fast so the client can ask the user before sending the body; place() still catches a name taken meanwhile.
+    if (st && opts.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
     // Checked before the body is read (fail fast) and again just before the rename (narrows the lost-update window).
     const checkIfMatch = (s: Awaited<ReturnType<typeof current>>) => {
       if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
@@ -198,7 +200,7 @@ export class LocalBackend implements StorageBackend {
 
   private async place(tmp: string, target: string, policy: CollisionPolicy): Promise<string> {
     if (policy === 'replace') { await rename(tmp, target); return target; }
-    const candidates = policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i + 1));
+    const candidates = policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i));
     for (const c of candidates) {
       try { await link(tmp, c); await unlink(tmp); return c; }
       catch (e) { if (!isErr(e, 'EEXIST')) throw e; }

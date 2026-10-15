@@ -19,20 +19,6 @@ test('log in, upload a real file, see it, download the same bytes', async ({ pag
   expect(readFileSync(await download.path()).toString()).toBe('hallo welt');
 });
 
-test('uploading the same name twice reports the failure, not a crash', async ({ page }, info) => {
-  const fileName = `dup-${info.project.name}.txt`;
-  await page.goto('/');
-  const files = page.getByTestId('upload-input');
-  await files.setInputFiles({ name: fileName, ...input, buffer: Buffer.from('1') });
-  await expect(page.getByRole('status')).toContainText(/1 von 1|1 of 1/);
-  await expect(page.getByRole('link', { name: fileName })).toBeVisible();
-  await files.setInputFiles({ name: fileName, ...input, buffer: Buffer.from('2') });
-  await expect(page.getByRole('status')).toContainText(/0 von 1|0 of 1/);
-  const failure = page.locator('.upload-failures li');
-  await expect(failure).toContainText(`${fileName}: `);
-  await expect(failure).toContainText(/existiert bereits|already exists/);
-});
-
 test('file list is keyboard reachable and operable', async ({ page }, info) => {
   const fileName = `kbd-${info.project.name}.txt`;
   await page.goto('/');

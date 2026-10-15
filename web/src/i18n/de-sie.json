@@ -25,12 +25,18 @@
     "button": "Hochladen",
     "progress": "{name}: {percent} %",
     "done": "{name} hochgeladen",
-    "keepBoth": "Als Kopie hochladen",
-    "replace": "Ersetzen",
-    "skip": "Überspringen",
     "summary": "{done} von {total} hochgeladen",
+    "summarySkipped": "{done} von {total} hochgeladen, {skipped} übersprungen",
     "failedHeading": "Nicht hochgeladen:",
     "failedItem": "{name}: {reason}"
+  },
+  "collision": {
+    "title": "Name bereits vergeben",
+    "message": "„{name}“ ist hier bereits vorhanden. Was soll geschehen?",
+    "replace": "Ersetzen",
+    "keepBoth": "Beide behalten",
+    "skip": "Überspringen",
+    "applyAll": "Für alle weiteren Einträge übernehmen ({count})"
   },
   "errors": {
     "UNAUTHENTICATED": "Sie sind nicht mehr angemeldet.",
