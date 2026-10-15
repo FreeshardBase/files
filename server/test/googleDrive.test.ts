@@ -10,6 +10,7 @@ import { MAX_JITTER_MS, type Clock } from '../src/cloud/oauth.ts';
 import { ConfigError } from '../src/config.ts';
 import { getUser } from '../src/users.ts';
 import type { StorageBackend } from '../src/storage/backend.ts';
+import { GOOGLE_DRIVE_ENDPOINTS } from '../src/cloud/googleDrive.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { startFakeProvider, type FakeProvider, type FakeRequest } from './support/fakeProvider.ts';
 import { DRIVE_CHUNK_UNIT, generatedByte, NATIVE } from './support/fakeDrive.ts';
@@ -72,6 +73,9 @@ beforeAll(async () => {
   fake.drive.put('/range.txt', '0123456789abcdef', { mimeType: 'text/plain' });
   fake.drive.put('/Budget', null, { mimeType: NATIVE.spreadsheet });
   fake.drive.put('/Survey', null, { mimeType: NATIVE.form });
+  fake.drive.put('/Notes', null, { mimeType: NATIVE.document,
+    thumbnail: await sharp({ create: { width: 300, height: 400, channels: 3, background: '#36c' } }).png().toBuffer() });
+  fake.drive.put('/Deck', null, { mimeType: NATIVE.presentation, thumbnail: true }); // a link whose image Drive has not rendered
   fake.drive.put('/Dup/same.txt', 'first');
   fake.drive.put('/Dup/same.txt', 'second');
   fake.drive.put('/big.bin', { generated: 1024 ** 3 });
@@ -187,6 +191,34 @@ describe('browsing and downloading', () => {
       expect(r.headers.location).toBeUndefined();
     }
     expect(Buffer.compare((await content(id, '/photo.png')).rawPayload, png)).toBe(0);
+  });
+
+  it('thumbnails Google Docs through their docs.google.com/feeds/vt link; the token never reaches the redirected image (#203)', async () => {
+    const id = await connect(a);
+    const before = fake.requests.length;
+    const th = await as(a, 'GET', `${src(id)}/thumbnail?${q('/Notes.docx')}&size=128`);
+    expect(th.statusCode, th.body).toBe(200);
+    expect(th.headers['content-type']).toBe('image/webp');
+    const meta = await sharp(th.rawPayload).metadata();
+    expect([meta.format, meta.width, meta.height]).toEqual(['webp', 96, 128]);
+    const feed = since(before).filter((x) => x.path === '/feeds/vt');
+    expect(feed.map((x) => x.query)).toEqual(['s128']); // the requested size, in `sz`
+    expect(feed[0]!.token).toBeTruthy(); // Drive's link of a private file needs the credentialed request
+    const signed = since(before).filter((x) => x.path.startsWith('/drive-thumb-signed/'));
+    expect(signed).toHaveLength(1);
+    expect(signed[0]!.token).toBe('');
+    // A link Drive answers 404 for is no thumbnail, not a server error.
+    expect((await as(a, 'GET', `${src(id)}/thumbnail?${q('/Deck.pptx')}&size=128`)).json()).toEqual({ code: 'NO_THUMBNAIL' });
+  });
+
+  it('follows a thumbnail redirect only to a content host', async () => {
+    const id = await connect(a);
+    fake.drive.contentOrigin = 'http://127.0.0.1:9';
+    const before = fake.requests.length;
+    const r = await as(a, 'GET', `${src(id)}/thumbnail?${q('/Notes.docx')}&size=128`);
+    expect(r.statusCode).toBe(500);
+    expect(since(before).some((x) => x.path === '/feeds/vt')).toBe(true);
+    expect(since(before).some((x) => x.path.startsWith('/drive-thumb-signed/'))).toBe(false);
   });
 });
 
@@ -384,5 +416,13 @@ describe('the production provider', () => {
         scope: 'https://www.googleapis.com/auth/drive', access_type: 'offline', prompt: 'consent', code_challenge_method: 'S256',
         redirect_uri: `${ORIGIN}/api/v1/connections/callback` }));
     } finally { await g.close(); }
+  });
+
+  it('takes thumbnails only from Google thumbnail hosts over https (#203)', () => {
+    const host = (s: string) => GOOGLE_DRIVE_ENDPOINTS.thumbnailHost(new URL(s));
+    expect(host('https://lh3.googleusercontent.com/abc=s220')).toBe(true);
+    expect(host('https://docs.google.com/feeds/vt?gd=true&id=x&sz=s220')).toBe(true);
+    for (const s of ['http://docs.google.com/feeds/vt', 'https://docs.google.com.example.com/x', 'https://example.com/a=s220',
+      'https://www.googleapis.com/drive/v3/files']) expect(host(s), s).toBe(false);
   });
 });

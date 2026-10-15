@@ -12,10 +12,17 @@ export const solidPng = (width: number, height: number, background: string): Pro
 // `alt=media` answered by a 302 to a pre-signed URL that honours Range, exports of Google-native documents, resumable
 // upload sessions (308 with `Range` until the last chunk), trash by `trashed: true`, revisions, quota and thumbnails.
 // Bearer tokens, injected failures and 401s are handled by the fake provider before a request gets here.
+//
+// Thumbnails come in Drive's two link shapes (#203): a stored file's `thumbnailLink` is `…/drive-thumb/<id>=s220`
+// (Google's `lh3.googleusercontent.com/…=s220`), a Google Doc's, Sheet's or Slides' is `…/feeds/vt?…&sz=s220` (Google's
+// `docs.google.com/feeds/vt`), which answers a 302 to a pre-signed image URL. Drive documents that the link of a file
+// not shared publicly must be fetched with credentials, so both need the bearer token; the pre-signed hop does not and
+// records whether one arrived anyway.
 
 export const FOLDER = 'application/vnd.google-apps.folder';
 export const NATIVE = {
   document: 'application/vnd.google-apps.document',
+  presentation: 'application/vnd.google-apps.presentation',
   spreadsheet: 'application/vnd.google-apps.spreadsheet',
   form: 'application/vnd.google-apps.form',
 } as const;
@@ -34,7 +41,7 @@ const BLOCK = Buffer.from(Array.from({ length: 65536 }, (_, i) => generatedByte(
 
 type Content = { kind: 'bytes'; data: Buffer } | { kind: 'generated'; size: number } | { kind: 'counted'; size: number; md5: string };
 export type DriveFile = { id: string; name: string; mimeType: string; parents: string[]; trashed: boolean; modifiedTime: string;
-  content?: Content; thumbnail?: boolean; revisions: { id: string; modifiedTime: string; size: number }[] };
+  content?: Content; thumbnail?: boolean | Buffer; revisions: { id: string; modifiedTime: string; size: number }[] };
 type Session = { fileId?: string; meta: { name?: string; parents?: string[]; mimeType?: string }; size: number; received: number;
   parts: Buffer[]; md5: ReturnType<typeof createHash> };
 
@@ -53,6 +60,7 @@ export class FakeDrive {
   contentOrigin: string | undefined;
   quota = { limit: 15 * 1024 ** 3, usage: 1234 };
   private blobs = new Map<string, string>(); // pre-signed id → file id
+  private thumbs = new Map<string, string>(); // pre-signed thumbnail key → file id
   private sessions = new Map<string, Session>();
 
   constructor(private url: () => string, private pageSize: number) {
@@ -74,8 +82,9 @@ export class FakeDrive {
   /**
    * Adds a file (string/Buffer content, `{ generated: n }` for n pattern bytes, or `null` for a folder) under `path`,
    * creating parent folders. A second `put` of the same name adds another item with that name (Drive allows it).
+   * `thumbnail: true` serves the file's own bytes as its thumbnail; a Buffer is the image Drive rendered (Google Docs).
    */
-  put(path: string, content: string | Buffer | null | { generated: number }, o: { mimeType?: string; thumbnail?: boolean } = {}): string {
+  put(path: string, content: string | Buffer | null | { generated: number }, o: { mimeType?: string; thumbnail?: boolean | Buffer } = {}): string {
     const segs = path.split('/').filter(Boolean);
     let parent = this.rootId;
     for (const seg of segs.slice(0, -1)) {
@@ -86,7 +95,7 @@ export class FakeDrive {
       ? { kind: 'generated', size: content.generated } : { kind: 'bytes', data: Buffer.from(content) };
     const f = this.create({ name: segs.at(-1)!, mimeType: o.mimeType ?? (content === null ? FOLDER : 'application/octet-stream'),
       parents: [parent] }, c);
-    if (o.thumbnail) f.thumbnail = true;
+    if (o.thumbnail) f.thumbnail = o.thumbnail;
     return f.id;
   }
 
@@ -114,7 +123,41 @@ export class FakeDrive {
     const md5 = file ? this.md5(f.id) : undefined;
     return { kind: 'drive#file', id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, trashed: f.trashed,
       modifiedTime: f.modifiedTime, ...(file ? { size: String(sizeOf(f.content)) } : {}), ...(md5 ? { md5Checksum: md5 } : {}),
-      ...(f.thumbnail ? { thumbnailLink: `${this.url()}/drive-thumb/${f.id}=s220` } : {}) };
+      ...(f.thumbnail ? { thumbnailLink: this.thumbnailLink(f) } : {}) };
+  }
+  private thumbnailLink(f: DriveFile): string {
+    if (!f.mimeType.startsWith('application/vnd.google-apps.')) return `${this.url()}/drive-thumb/${f.id}=s220`;
+    const sig = randomBytes(12).toString('base64url');
+    return `${this.url()}/feeds/vt?gd=true&id=${encodeURIComponent(f.id)}&v=3&s=${sig}&sz=s220`;
+  }
+  private thumbImage(f: DriveFile | undefined): Buffer | undefined {
+    if (Buffer.isBuffer(f?.thumbnail)) return f.thumbnail;
+    return f?.thumbnail && f.content?.kind === 'bytes' ? f.content.data : undefined;
+  }
+
+  /** The two thumbnailLink shapes, reached with a valid bearer token. Answers false for other paths. */
+  thumbnail(req: http.IncomingMessage, res: http.ServerResponse, u: URL, rec: FakeRequest): boolean {
+    if (req.method !== 'GET') return false;
+    const notFound = () => res.writeHead(404, { 'content-type': 'text/html' }).end('<html>Not Found</html>');
+    const direct = /^\/drive-thumb\/([A-Za-z0-9_-]+)=s(\d+)$/.exec(u.pathname);
+    if (direct) {
+      rec.query = `s${direct[2]}`;
+      const img = this.thumbImage(this.files.get(direct[1]!));
+      if (!img) notFound();
+      else res.writeHead(200, { 'content-type': 'image/png' }).end(img);
+      return true;
+    }
+    if (u.pathname === '/feeds/vt') {
+      const id = u.searchParams.get('id') ?? '';
+      const sz = /^s(\d+)$/.exec(u.searchParams.get('sz') ?? '');
+      rec.query = sz ? `s${sz[1]}` : u.search;
+      if (!this.thumbImage(this.files.get(id)) || !sz) { notFound(); return true; }
+      const key = randomBytes(18).toString('base64url');
+      this.thumbs.set(key, id);
+      res.writeHead(302, { location: `${this.contentOrigin ?? this.url()}/drive-thumb-signed/${key}=s${sz[1]}` }).end();
+      return true;
+    }
+    return false;
   }
 
   private query(q: string): DriveFile[] {
@@ -244,7 +287,7 @@ export class FakeDrive {
     return true;
   }
 
-  /** Pre-signed URLs (no bearer token): content blobs, upload sessions and thumbnails. Answers false for other paths. */
+  /** Pre-signed URLs (no bearer token): content blobs, upload sessions and redirected thumbnails. Answers false for other paths. */
   async presigned(req: http.IncomingMessage, res: http.ServerResponse, u: URL, rec: FakeRequest): Promise<boolean> {
     const json = (status: number, body: unknown, headers: Record<string, string | number> = {}) =>
       res.writeHead(status, { 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
@@ -309,12 +352,13 @@ export class FakeDrive {
       await this.stream(res, f.content, start, end + 1);
       return true;
     }
-    const thumb = /^\/drive-thumb\/([A-Za-z0-9_-]+)=s(\d+)$/.exec(u.pathname);
-    if (thumb && req.method === 'GET') {
-      const f = this.files.get(thumb[1]!);
-      rec.query = `s${thumb[2]}`;
-      if (!f?.thumbnail || f.content?.kind !== 'bytes') { json(404, {}); return true; }
-      res.writeHead(200, { 'content-type': 'image/png' }).end(f.content.data);
+    const signed = /^\/drive-thumb-signed\/([A-Za-z0-9_-]+)=s\d+$/.exec(u.pathname);
+    if (signed && req.method === 'GET') {
+      // The URL is the capability; a bearer token sent here anyway is recorded, so a test can show none arrives.
+      rec.token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      const img = this.thumbImage(this.files.get(this.thumbs.get(signed[1]!) ?? ''));
+      if (!img) { json(404, {}); return true; }
+      res.writeHead(200, { 'content-type': 'image/png' }).end(img);
       return true;
     }
     return false;

@@ -199,6 +199,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     rec.token = token;
     const t = accessTokens.get(token);
     if (!t || t.expiresAt <= Date.now()) return json(res, 401, { error: 'invalid_token' });
+    if (drive.thumbnail(req, res, u, rec)) return;
     if (await drive.api(req, res, u, rec, t.account, FAKE_ACCOUNTS[t.account]!)) return;
     if (await dropbox.api(req, res, u, rec, t.account, FAKE_ACCOUNTS[t.account]!)) return;
     if (await graph.api(req, res, u, rec, t.account, FAKE_ACCOUNTS[t.account]!)) return;
@@ -301,11 +302,14 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   const server = http.createServer((req, res) => {
     const u = new URL(req.url ?? '/', url);
     const rec: FakeRequest = { method: req.method ?? 'GET', path: u.pathname, at: Date.now() };
-    // Drive's API needs the bearer token; its upload session URIs (`upload_id`) are pre-signed, like Google's. Every
+    // Drive's API needs the bearer token, and so do its thumbnailLinks (Drive: a file not shared publicly needs a
+    // credentialed request); its upload session URIs (`upload_id`) and the thumbnail `/feeds/vt` redirects to are
+    // pre-signed, like Google's. Every
     // Dropbox endpoint needs the bearer token, content ones included. Graph's API needs it; its download, upload-session
     // and copy-monitor URLs are pre-signed.
     const driveApi = u.pathname.startsWith('/drive/') || u.pathname.startsWith('/dropbox/') || u.pathname.startsWith('/graph/')
-      || (u.pathname.startsWith('/upload/drive/') && !u.searchParams.has('upload_id'));
+      || (u.pathname.startsWith('/upload/drive/') && !u.searchParams.has('upload_id'))
+      || u.pathname.startsWith('/drive-thumb/') || u.pathname === '/feeds/vt';
     const handle = u.pathname.startsWith('/oauth/') ? oauth : u.pathname.startsWith('/api/') || driveApi ? api : presigned;
     // Recorded on arrival, so a hook sees the state the request was sent in (`token`/`grant` are filled in while handling).
     requests.push(rec);
@@ -333,7 +337,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     }),
     driveProvider: (o = {}) => googleDriveProvider({ clientId: FAKE_CLIENT.id, clientSecret: FAKE_CLIENT.secret }, {
       endpoints: { authorization: `${url}/oauth/authorize`, token: `${url}/oauth/token`, api: `${url}/drive/v3`,
-        upload: `${url}/upload/drive/v3`, contentHost: (h) => h.origin === url },
+        upload: `${url}/upload/drive/v3`, contentHost: (h) => h.origin === url, thumbnailHost: (h) => h.origin === url },
       ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
     }),
     drive,
