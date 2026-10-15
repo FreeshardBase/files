@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import sharp from 'sharp';
 import { z } from 'zod';
-import { GraphId, type CollisionPolicy, type Entry, type Library, type Site, type ThumbSize } from '@files/shared';
+import { GraphId, type CollisionPolicy, type Entry, type Library, type ProviderQuota, type Site, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
@@ -406,9 +406,11 @@ export class GraphBackend implements StorageBackend {
     for (const i of items) await this.remove(i);
   }
 
-  async quota(): Promise<{ used: number; total?: number }> {
-    const r = z.object({ quota: z.object({ used: z.number(), total: z.number().optional() }) })
+  /** Null where the drive reports no usage: Graph's `quota` facet is optional, and some SharePoint libraries lack it (#205). */
+  async quota(): Promise<ProviderQuota | null> {
+    const r = z.object({ quota: z.object({ used: z.number().optional(), total: z.number().optional() }).optional() })
       .parse(await (await this.call('GET', this.base, 'drive')).json());
+    if (r.quota?.used === undefined) return null;
     return { used: r.quota.used, ...(r.quota.total !== undefined ? { total: r.quota.total } : {}) };
   }
 

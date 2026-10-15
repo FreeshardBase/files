@@ -80,6 +80,7 @@ beforeAll(async () => {
   fake.graph.put('/Grüße & Co/50% #1.txt', 'odd names');
   fake.graph.put('/big.bin', { generated: 1024 ** 3 });
   fake.graph.addSite(SITE, 'Team Site', [[LIBRARY, 'Documents'], ['b!team-archive', 'Archive']]);
+  fake.graph.quotaless.add('b!team-archive'); // its drive has no `quota` facet (#205)
   fake.graph.addSite('contoso.sharepoint.com,33333333-cccc,44444444-dddd', 'Marketing', [['b!marketing-assets', 'Assets']]);
   fake.graph.put('/Plans/roadmap.txt', 'from the team library', { drive: LIBRARY });
   t = await startTestApp({}, undefined, undefined, { providers: fake.graphProviders({ chunkBytes: CHUNK }), clock });
@@ -325,6 +326,15 @@ describe('search, quota, memory', () => {
   it('reports the drive quota', async () => {
     const id = await connect();
     expect(await (await backendOf(id)).quota!()).toEqual({ used: 9876, total: 5 * 1024 ** 3 });
+  });
+
+  it('a library whose drive reports no quota is "unknown" in the storage overview, not an error (#205)', async () => {
+    const id = /pick=([0-9a-f]{32})$/.exec(await consent(a, { provider: 'sharepoint' }))![1]!;
+    const pick = await as(a, 'PUT', `/api/v1/connections/${id}/library`, { site: SITE, library: 'b!team-archive' });
+    expect(pick.statusCode, pick.body).toBe(200);
+    const r = await as(a, 'GET', '/api/v1/storage');
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().connections).toEqual([{ source: `conn:${id}`, quota: null }]);
   });
 
   it('moves 1 GB down and 1 GB up through the backend with bounded memory', { timeout: 300_000 }, async () => {

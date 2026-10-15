@@ -51,6 +51,8 @@ export class FakeGraph {
   /** The next content redirect points at another origin than the fake's (the backend must not follow it). */
   foreignRedirect = false;
   quota = { used: 9876, total: 5 * 1024 ** 3 };
+  /** Drives that answer without the `quota` facet, as Graph does for some SharePoint libraries (the facet is optional). */
+  readonly quotaless = new Set<string>();
   private roots = new Map<string, string>(); // drive → root id
   private sessions = new Map<string, Session>();
   private blobs = new Map<string, { id: string; thumb: boolean }>();
@@ -207,7 +209,8 @@ export class FakeGraph {
     const tail = d[2] ?? '';
     if (tail === '' && method === 'GET') {
       json(200, { id: drive, driveType: drive === ONEDRIVE_ID ? 'personal' : 'documentLibrary',
-        quota: { used: this.quota.used, total: this.quota.total, remaining: this.quota.total - this.quota.used, state: 'normal' } });
+        ...(this.quotaless.has(drive) ? {}
+          : { quota: { used: this.quota.used, total: this.quota.total, remaining: this.quota.total - this.quota.used, state: 'normal' } }) });
       return true;
     }
     const search = /^\/root\/search\(q='(.*)'\)$/.exec(tail);

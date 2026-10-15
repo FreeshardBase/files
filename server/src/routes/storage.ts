@@ -27,6 +27,7 @@ export async function registerStorageRoutes(app: FastifyInstance): Promise<void>
       if (!backend.quota) return { source, error: { code: 'NOT_SUPPORTED' } };
       try {
         const q = await backend.quota();
+        if (q === null) return { source, quota: null };
         return { source, quota: { used: q.used, ...(q.total !== undefined ? { total: q.total } : {}) } };
       } catch (e) { // handled: reported as this connection's error code next to the other sources; logged if unexpected
         const code = e instanceof AppError ? e.code : 'PROVIDER_UNAVAILABLE';

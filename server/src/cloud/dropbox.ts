@@ -50,6 +50,9 @@ const Deleted = z.object({ '.tag': z.literal('deleted'), name: z.string() });
 const Metadata = z.discriminatedUnion('.tag', [File, Folder, Deleted]);
 type Item = z.infer<typeof File> | z.infer<typeof Folder>;
 const ListPage = z.object({ entries: z.array(Metadata), cursor: z.string(), has_more: z.boolean() });
+// Search hits may lack both paths: Dropbox omits them for items outside the user's namespace (#205).
+const unplaced = { path_lower: true, path_display: true } as const;
+const SearchMetadata = z.discriminatedUnion('.tag', [File.partial(unplaced), Folder.partial(unplaced), Deleted]);
 const DropboxError = z.object({ error_summary: z.string() });
 
 /** Dropbox's root is the empty path. */
@@ -58,6 +61,8 @@ const lower = (p: string) => p.toLowerCase();
 const inside = (p: string, dir: string) => lower(p).startsWith(`${lower(dir)}/`);
 const isFolder = (i: Item) => i['.tag'] === 'folder';
 const live = (m: z.infer<typeof Metadata>): m is Item => m['.tag'] !== 'deleted';
+const placed = (m: z.infer<typeof SearchMetadata>): m is Item =>
+  m['.tag'] !== 'deleted' && m.path_lower !== undefined && m.path_display !== undefined;
 const etagOf = (i: Item) => `"${i['.tag'] === 'file' ? i.rev : i.id}"`;
 const fromWeb = (body: ReadableStream<Uint8Array>) => Readable.fromWeb(body as WebReadableStream<Uint8Array>);
 const discard = async (res: Response) => { await res.body?.cancel(); };
@@ -407,18 +412,19 @@ export class DropboxBackend implements StorageBackend {
 
   /**
    * Dropbox's `search_v2` matches words; its results are narrowed to names that contain the query anywhere, ignoring
-   * case, like the home's search. Paths are Dropbox's `path_display`.
+   * case, like the home's search. Paths are Dropbox's `path_display`. A hit outside the user's namespace (an unmounted
+   * shared folder) has no path and cannot be opened, so it is skipped (#205).
    */
   async search(query: string, limit: number): Promise<Entry[]> {
     const needle = query.normalize('NFC').toLowerCase();
-    const Page = z.object({ matches: z.array(z.object({ metadata: z.object({ metadata: Metadata }) })), has_more: z.boolean(),
+    const Page = z.object({ matches: z.array(z.object({ metadata: z.object({ metadata: SearchMetadata }) })), has_more: z.boolean(),
       cursor: z.string().optional() });
     const out: Entry[] = [];
     let page = Page.parse(await this.rpc('files/search_v2', { query,
       options: { path: '', max_results: Math.min(1000, Math.max(limit, 1)), file_status: 'active', filename_only: true } }));
     for (;;) {
       for (const { metadata: { metadata: m } } of page.matches) {
-        if (!live(m) || !m.name.normalize('NFC').toLowerCase().includes(needle)) continue;
+        if (!placed(m) || !m.name.normalize('NFC').toLowerCase().includes(needle)) continue;
         out.push(this.entry(m, m.path_display));
         if (out.length >= limit) return out;
       }

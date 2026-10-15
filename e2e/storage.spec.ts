@@ -114,4 +114,32 @@ test.describe('with a cloud account', () => {
       }
     }
   });
+
+  test('a SharePoint library whose drive reports no quota shows its usage as unknown, not an error (#205)', async ({ page }) => {
+    await page.goto('/auth/login?returnTo=%2Fconnections');
+    await expect(page.getByRole('heading', { name: /Cloud-Konten|Cloud accounts/ })).toBeVisible();
+    const { headers } = await headersOf(page);
+    const connections = async () => (await (await page.request.get('/api/v1/connections')).json()).items as { id: string }[];
+    for (const c of await connections()) expect((await page.request.delete(`/api/v1/connections/${c.id}`, { headers })).status()).toBe(204);
+    await page.reload();
+    await page.getByRole('button', { name: /SharePoint verbinden|Connect SharePoint/ }).click();
+    await page.getByRole('button', { name: 'Allow' }).click();
+    const picker = page.getByRole('dialog', { name: /SharePoint-Bibliothek wählen|Choose a SharePoint library/ });
+    await picker.getByRole('searchbox').fill('team');
+    await picker.getByRole('button', { name: /^(Suchen|Search)$/ }).click();
+    await picker.getByRole('radio', { name: /Team Site/ }).check();
+    await picker.getByRole('radio', { name: 'Archive', exact: true }).check();
+    await picker.getByRole('button', { name: /Bibliothek verbinden|Connect library/ }).click();
+    await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+    try {
+      await openPlaces(page);
+      await storageLink(page).click();
+      const source = page.locator('.storage-clouds li', { hasText: /SharePoint/ });
+      await expect(source).toContainText(/Belegung unbekannt|Usage unknown/);
+      await expect(source.locator('.storage-error')).toHaveCount(0);
+      await expect(source.getByRole('meter')).toHaveCount(0);
+    } finally {
+      for (const c of await connections()) expect((await page.request.delete(`/api/v1/connections/${c.id}`, { headers })).status()).toBe(204);
+    }
+  });
 });
