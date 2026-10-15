@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { openPlaces } from './places.ts';
 
 // #146: internal shares. `testuser` owns and shares, `member` receives, `member2` is a third member for the picker.
 // Both projects share one server; every test works in its own folder named after the project and test.
@@ -60,6 +61,7 @@ test('owner shares a folder read-only; the member opens it under "Shared with me
   await expect(d).toHaveCount(0);
 
   await member.reload();
+  await openPlaces(member);
   await nav(member).getByRole('link', { name: /Mit mir geteilt|Shared with me/ }).click();
   await expect(member).toHaveURL(/\/shared$/);
   const shared = member.locator('tbody tr', { has: member.getByText(dir, { exact: true }) });

@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #156: the storage overview and the admin's quotas. `testuser` is the admin (role from the IdP's claim), `member` is
 // not. Both projects share one server; every test sets what it needs and removes the quota again at its end.
@@ -27,10 +28,12 @@ test('the admin sets a quota for member on the members page; member sees it as a
   page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
   // A member is known to the shard once they have signed in.
   const member = await signedIn(browser, info, baseURL!, 'member');
+  await openPlaces(member);
   await expect(storageLink(member)).toBeVisible();
   await expect(membersLink(member)).toHaveCount(0); // not the admin: no members page in the sidebar
 
   await page.goto('/home');
+  await openPlaces(page);
   await membersLink(page).click();
   await expect(page.getByRole('heading', { name: /^(Mitglieder|Members)$/ })).toBeVisible();
   const row = page.locator('tbody tr', { hasText: 'member@example.com' });
@@ -51,6 +54,7 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await expect(amount).not.toHaveAttribute('aria-invalid', 'true');
 
   // The member sees the quota as a bar on the overview.
+  await openPlaces(member);
   await storageLink(member).click();
   await expect(member.getByRole('heading', { name: /Speicherbelegung|Storage usage/ })).toBeVisible();
   await expect(shardBar(member)).toBeVisible();
@@ -91,6 +95,7 @@ test.describe('with a cloud account', () => {
     expect(put.status()).toBe(201);
     expect((await page.request.put(`/api/v1/admin/members/${id}/quota`, { headers, data: { quotaBytes: 1_000_000_000 } })).status()).toBe(200);
     try {
+      await openPlaces(page);
       await storageLink(page).click();
       await expect(shardBar(page)).toBeVisible();
       await expect(shardBar(page)).toHaveAttribute('aria-valuemax', '1000000000');

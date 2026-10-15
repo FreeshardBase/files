@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { openPlaces } from './places.ts';
 
 // #150: a Dropbox connection, browsed live through the same folder view as the home. Runs against the cloud server
 // (e2e/cloudServer.ts), whose Dropbox provider talks to the fake Dropbox (server/test/support/fakeDropbox.ts):
@@ -30,6 +31,7 @@ test('browse a Dropbox connection and download a file with the same bytes', asyn
   await page.getByRole('button', { name: 'Allow' }).click();
 
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  await openPlaces(page);
   await expect(nav(page).getByRole('link', { name: /testuser@example\.com/ })).toContainText('Dropbox');
   // Dropbox keeps no time for a folder, so its row shows none instead of a made-up date.
   await expect(row(page, 'Reports')).toBeVisible();

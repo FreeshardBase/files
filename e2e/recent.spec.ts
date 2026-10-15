@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #141: the Recent view. Both projects share one server and one `testuser`; every test uses names unique to the
 // project and test. The empty state needs a member who never wrote anything, which is `member`.
@@ -23,6 +24,7 @@ test('upload a file, find it in Recent, and open its folder from there', async (
   await page.getByTestId('upload-input').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from('hallo') });
   await expect(page.getByRole('status').first()).toContainText(/1 von 1|1 of 1/);
 
+  await openPlaces(page);
   await nav(page).getByRole('link', { name: /^(Zuletzt|Recent)$/ }).click();
   await expect(page).toHaveURL(/\/recent$/);
   await expect(page.getByRole('heading', { name: /Zuletzt geändert|Recent/ })).toBeVisible();
@@ -44,5 +46,6 @@ test('an empty Recent view shows its own empty-state text, not the folder one (#
   await expect(page.getByText(/Noch nichts da\.|Nothing here yet\./)).toBeVisible();
   await expect(page.getByText(/Dieser Ordner ist leer\.|This folder is empty\./)).toHaveCount(0);
   await expect(page.locator('table')).toHaveCount(0);
+  await openPlaces(page);
   await expect(nav(page).getByRole('link', { name: /^(Zuletzt|Recent)$/ })).toHaveClass(/active/);
 });

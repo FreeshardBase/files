@@ -491,3 +491,27 @@ Address forms. The checks for Du and Sie forms skip exactly the language names (
 Screenshots. Baselines of the folder view (the `section.folder` element, not the whole page, since the transfer panel shows other tests' jobs) for both themes and all three languages, per Playwright project; the modification dates are masked.
 
 Not in this issue: more languages, a platform preference (freeshard#168), and an explicit theme for the installed app's title bar (`theme-color` follows the device).
+
+## 2026-10-15: the polish pass (#160, absorbs #10, #17, #29, #50, #59, #116, #124, #125, #127)
+
+Question: what does "collapsible sidebar", "mouse back/forward", "roving tabindex in lists", "contrast per guide" and "touch targets ≥ 44 px" mean concretely, which shortcuts exist and where they are listed, are spring-loaded folders in, and how is "no dead UI" proven?
+
+Sidebar on a phone. Below 600 px the places collapse behind one "Places" toggle (`aria-expanded`, `aria-controls`) at the top of the `<nav>`; open, they are a list of 44 px rows in the page flow, and choosing a place closes them. The `<nav>` landmark itself stays visible, so "where am I" is one tap away without a drawer overlay. On a wide screen the toggle is hidden and the column always shows.
+
+History. Every folder change is a `router.push`, so the browser's back and forward (Alt+←/→, the mouse's side buttons, the phone's back gesture) walk the folder history natively. The app adds no `mouseup` handler for buttons 3 and 4: Chrome and Firefox already navigate on them, and a handler of our own would navigate twice in one of them.
+
+Keyboard. Roving tabindex covers the two item lists: the file table (↑/↓, Home/End) and the gallery (←/→, ↑/↓ by one row of tiles, Home/End); each is one Tab stop. Trash, Recent, Favourites and Shared stay plain tables whose buttons are in the Tab order, because each row has at most two actions and nothing to select. No new shortcuts are invented; "?" (outside a text field, with no other dialog open) and a header button open "Keyboard shortcuts", an `<AppDialog>` listing what the list, the menu and the dialogs already handle, with translated key names ("Strg", "Entf").
+
+Contrast. The guide's light `--ink-muted` (#6b7d82) and `--accent` (#c8761f) measure 3.9:1 and 3.2:1 on the paper ground, below WCAG AA (4.5:1) for the small text they colour, and axe reports that as serious. The app darkens both along their hue in the light theme only (#5a6b70, 5.1:1; #9f5c16, 4.8:1) in `app.css`; `tokens.css` stays the guide's copy. Recorded in DESIGN.md as a deviation to feed back into the guide.
+
+Touch targets. On a phone every button, link (except a link inside a sentence), field and select is at least 44 × 44 px; a native checkbox or radio keeps its drawn size and takes the target from the label around it. Desktop sizes are unchanged.
+
+Long-press. A touch held still for 500 ms on a row opens the row's action menu, the same one as "⋮", the context menu and Shift+F10; the click that the lifted finger may produce is swallowed. Moving more than 10 px cancels it (a scroll).
+
+Spring-loaded folders (#59). Not built: hovering a dragged item over a folder does not open it. Dropping onto a folder row or onto any breadcrumb (#137, checked again in `file-actions.spec.ts`) reaches every ancestor and every visible subfolder, and "Move"/"Move here" reaches the rest, so a timer that opens folders under the pointer would add a second, harder to control path. Revisit if members ask for it.
+
+No dead UI. `e2e/polish.spec.ts` opens each main screen (folder, trash, Recent, Favourites, Shared with me, settings, storage, admin) on both projects, clicks every visible enabled `button`/`[role=button]` one at a time on a freshly loaded page, and requires a DOM change, a navigation or a download. The one exception is the current choice of a segmented toggle (list/gallery), which is already in effect. The same spec runs axe (no serious or critical violation) on those screens and on the preview, share, details and shortcuts dialogs in both themes, checks names and focus rings, and adds screenshot baselines of the Trash, Recent and Shared lists in both themes and three languages beside the folder baselines of `settings.spec.ts`.
+
+Header. The member's display name from the OIDC `name` claim (`/api/v1/me`) sits at the right of the header, muted, with the e-mail as its tooltip.
+
+Memory bound in the provider tests. The 1 GB down/up tests of Drive, Dropbox and Graph sample `heapUsed + arrayBuffers`, which counts garbage that has not been collected yet; under a parallel suite run the Graph test peaked at 101 MB against a 96 MB bound without any buffering. The bound is now 256 MB in all three: GC timing no longer fails it, and buffering the 1 GB file would still exceed it fourfold.

@@ -614,5 +614,45 @@
       "kept": "Kept",
       "progressLabel": "Progress of deleting the originals of {name}"
     }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "key": "Key",
+    "action": "Action",
+    "closeButton": "Close",
+    "keys": {
+      "arrows": "↑ ↓",
+      "galleryArrows": "← → ↑ ↓",
+      "homeEnd": "Home / End",
+      "open": "Enter",
+      "select": "Space",
+      "selectAll": "Ctrl + A",
+      "rename": "F2",
+      "trash": "Delete",
+      "cut": "Ctrl + X",
+      "copy": "Ctrl + C",
+      "paste": "Ctrl + V",
+      "menu": "Shift + F10",
+      "close": "Esc",
+      "history": "Alt + ← / →",
+      "help": "?"
+    },
+    "actions": {
+      "arrows": "Move between the items of the list",
+      "galleryArrows": "Move between the tiles of the gallery",
+      "homeEnd": "Go to the first or last item",
+      "open": "Open the folder or preview the file",
+      "select": "Select or deselect the item",
+      "selectAll": "Select all items",
+      "rename": "Rename",
+      "trash": "Move to trash",
+      "cut": "Mark for moving",
+      "copy": "Mark for copying",
+      "paste": "Move or copy the marked items here",
+      "menu": "Open the item menu",
+      "close": "Close the dialog or menu",
+      "history": "Back or forward in the folder history, also with the mouse’s side buttons",
+      "help": "Show this help"
+    }
   }
 }

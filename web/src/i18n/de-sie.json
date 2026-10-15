@@ -614,5 +614,45 @@
       "kept": "Behalten",
       "progressLabel": "Fortschritt beim Löschen der Originale von {name}"
     }
+  },
+  "shortcuts": {
+    "title": "Tastenkürzel",
+    "key": "Taste",
+    "action": "Aktion",
+    "closeButton": "Schließen",
+    "keys": {
+      "arrows": "↑ ↓",
+      "galleryArrows": "← → ↑ ↓",
+      "homeEnd": "Pos1 / Ende",
+      "open": "Eingabe",
+      "select": "Leertaste",
+      "selectAll": "Strg + A",
+      "rename": "F2",
+      "trash": "Entf",
+      "cut": "Strg + X",
+      "copy": "Strg + C",
+      "paste": "Strg + V",
+      "menu": "Umschalt + F10",
+      "close": "Esc",
+      "history": "Alt + ← / →",
+      "help": "?"
+    },
+    "actions": {
+      "arrows": "Zwischen den Einträgen der Liste wechseln",
+      "galleryArrows": "Zwischen den Kacheln der Galerie wechseln",
+      "homeEnd": "Zum ersten oder letzten Eintrag",
+      "open": "Ordner öffnen oder Datei in der Vorschau zeigen",
+      "select": "Eintrag auswählen oder abwählen",
+      "selectAll": "Alle Einträge auswählen",
+      "rename": "Umbenennen",
+      "trash": "In den Papierkorb",
+      "cut": "Zum Verschieben vormerken",
+      "copy": "Zum Kopieren vormerken",
+      "paste": "Vorgemerkte Einträge hierher verschieben oder kopieren",
+      "menu": "Aktionsmenü des Eintrags öffnen",
+      "close": "Dialog oder Menü schließen",
+      "history": "Im Ordnerverlauf zurück oder vor, auch mit den Seitentasten der Maus",
+      "help": "Diese Hilfe anzeigen"
+    }
   }
 }

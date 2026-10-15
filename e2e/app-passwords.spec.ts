@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #157: app passwords for WebDAV in settings. Created and shown once, listed without the password, revoked; a create
 // the server refuses shows its error instead of closing silently (#122). Both projects share one server and `testuser`,
@@ -24,6 +25,7 @@ test('create an app password in settings, see it once, use it for WebDAV, then r
   page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
   await page.goto('/home');
   await revokeAll(page);
+  await openPlaces(page);
   await settingsLink(page).click();
   await expect(page.getByRole('heading', { name: /^(Einstellungen|Settings)$/ })).toBeVisible();
   // How to connect: the address of the WebDAV tree on this server.
@@ -76,6 +78,7 @@ test('a create the server refuses shows its error and keeps the form (#122)', as
     const r = await page.request.post('/api/v1/app-passwords', { headers, data: { label: `Test device ${i}` } });
     expect(r.status()).toBe(201);
   }
+  await openPlaces(page);
   await settingsLink(page).click();
   await expect(page.locator('tbody tr')).toHaveCount(20);
   const label = page.getByRole('textbox', { name: /Gerät oder Programm|Device or program/ });
@@ -90,6 +93,7 @@ test('a create the server refuses shows its error and keeps the form (#122)', as
 
 test('an empty label is refused in the form before anything is sent', async ({ page }) => {
   await page.goto('/home');
+  await openPlaces(page);
   await settingsLink(page).click();
   let posted = false;
   page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/v1/app-passwords')) posted = true; });

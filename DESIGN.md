@@ -20,7 +20,7 @@ The guide has no recipe for these. A selected row takes a teal tint (`--data` at
 
 ## Sidebar and trash
 
-The guide has no navigation recipe. The source sidebar is a 200 px column on the surface tone with a hairline border; entries carry a line icon, and the current place is marked by a teal hairline at its left edge and teal text, never a fill. On phone width it becomes a row of tabs under the header with the hairline underneath. The trash view reuses the file-list table; each row has "Restore" (outline) and "Delete permanently" (danger hairline). "Empty trash" is a danger outline button, dimmed when the trash is empty. Every permanent delete asks first in `ConfirmDialog`, where "Cancel" takes the initial focus, because the safe choice should be the default. The Recent view (between "My storage" and "Trash", line clock icon) reuses the same table with name, location, changed time and one outline "Open folder" link per row; its empty state is a muted sentence of its own, never the folder's.
+The guide has no navigation recipe. The source sidebar is a 200 px column on the surface tone with a hairline border; entries carry a line icon, and the current place is marked by a teal hairline at its left edge and teal text, never a fill. On phone width it collapses behind a "Places" toggle under the header (see "Header, phone sidebar, keyboard help and touch targets"). The trash view reuses the file-list table; each row has "Restore" (outline) and "Delete permanently" (danger hairline). "Empty trash" is a danger outline button, dimmed when the trash is empty. Every permanent delete asks first in `ConfirmDialog`, where "Cancel" takes the initial focus, because the safe choice should be the default. The Recent view (between "My storage" and "Trash", line clock icon) reuses the same table with name, location, changed time and one outline "Open folder" link per row; its empty state is a muted sentence of its own, never the folder's.
 
 ## Upload panel and drop zone
 
@@ -66,6 +66,15 @@ Offline, a one-line banner sits under the header: a line "cloud crossed out" ico
 
 The guide has no settings recipe. Language and theme sit at the top of Settings, each a group of native radio buttons under a `.fs-label` legend, tinted with `accent-color: var(--data)` like the share dialog's radios, so they keep native keyboard behaviour (arrow keys move and choose). There is no save button: a choice is saved at once, confirmed in the status line, and a refusal is shown in the danger-coloured alert line. The language names are written in their own language ("Deutsch (Sie)", "English") and carry their `lang`. The theme sets `data-theme` on `<html>`; "Same as the device" follows `prefers-color-scheme`. `color-scheme` follows the theme, so native controls and scrollbars match it.
 
+## Header, phone sidebar, keyboard help and touch targets
+
+The header carries, after the search, the member's display name in small muted text (the e-mail as tooltip) and a borderless icon button with a line keyboard glyph that opens "Keyboard shortcuts". That dialog is a plain `<AppDialog>` with a hairline table: the key in the mono face inside a `--border-cool` hairline box, the action beside it, and "Close" as a plain outline.
+
+On phone width the sidebar collapses behind a "Places" row (line "menu" icon, three strokes) under the header, on the surface tone with the hairline underneath. Open, the places list below it in 44 px rows; the current place keeps the teal hairline at its left edge. There is no overlay and no scrim: the list pushes the page down, so nothing is covered and nothing needs a shadow.
+
+Touch targets on phone width are at least 44 × 44 px. Outline buttons and fields grow to 44 px height; icon buttons, breadcrumbs and a row's name fill 44 px; a row's native checkbox keeps its 18 px box and gets a 44 px label around it, which reaches into the row's padding so the row does not grow. A long press on a row opens the same action menu as "⋮".
+
 ## Deviations
 
-None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.
+- **Light-theme contrast.** The guide's light `--ink-muted` (#6b7d82) and `--accent` (#c8761f) stay below WCAG AA 4.5:1 for small text on the paper and surface tones (3.9:1 and 3.2:1; table headers, sizes, dates, notes and the forward action's label are all small). `app.css` darkens them along their own hue in the light theme only, to #5a6b70 (5.1:1 on paper) and #9f5c16 (4.8:1). The dark theme's values pass and are unchanged. `tokens.css` keeps the guide's values, so the guide can take these over in its next version.
+- The file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

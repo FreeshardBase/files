@@ -17,6 +17,11 @@ body {
   background: var(--bg); color: var(--ink);
   font: 400 var(--fs-body)/1.5 var(--font-ui);
 }
+/* Contrast (#160, DESIGN.md "Deviations"): in the light theme the guide's muted ink (#6b7d82) and amber (#c8761f) stay
+   under 4.5:1 for small text on the paper and surface tones (3.9 and 3.2). Both are darkened along their own hue until
+   they reach it; the dark theme's values already pass and stay. */
+:root:not([data-theme="dark"]):not(.theme-dark) { --ink-muted: #5a6b70; --accent: #9f5c16; }
+
 /* Focus ring: teal hairline outline, never amber, never a fill (design guide, keyboard navigation). */
 :focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
 
@@ -27,6 +32,18 @@ body {
   background: var(--surface); border-bottom: var(--border-w) solid var(--border);
 }
 .app-title { font-size: var(--fs-h3); font-weight: 600; color: var(--ink); }
+/* The signed-in member's display name from OIDC (#160), quiet, then the keyboard help button. */
+.app-user { margin-left: auto; font-size: var(--fs-small); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
+.search + .app-user { margin-left: 0; }
+/* Keyboard help (#160): the key in the mono face on a hairline, the action beside it. */
+.shortcuts { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.shortcuts td { padding: var(--space-2) 0; border-bottom: var(--border-w) solid var(--border); vertical-align: top; }
+.shortcuts tr:last-child td { border-bottom: 0; }
+.shortcut-keys { width: 1%; padding-right: var(--space-4) !important; white-space: nowrap; }
+.shortcuts kbd {
+  font: 400 var(--fs-mono)/1.3 var(--font-mono); letter-spacing: var(--ls-mono); color: var(--ink);
+  padding: 2px 6px; border: var(--border-w) solid var(--border-cool); border-radius: 4px;
+}
 .app-main { flex: 1; min-width: 0; padding: var(--space-5); }
 
 /* Source sidebar: a quiet column on the surface tone; the current place is marked by a teal hairline, never a fill. */
@@ -41,6 +58,9 @@ body {
   border-left: 2px solid transparent; border-radius: var(--radius-control);
   color: var(--ink); text-decoration: none; font-size: var(--fs-small);
 }
+.nav-places { display: flex; flex-direction: column; gap: var(--space-1); }
+/* The places toggle exists for the phone only (#160). */
+.nav-toggle { display: none; }
 .app-nav a:hover { color: var(--line); }
 .app-nav a.active { border-left-color: var(--line); color: var(--line); font-weight: 500; }
 /* A cloud connection (#148): the provider as a small label over the account; a connection that needs signing in again
@@ -62,11 +82,16 @@ body {
 .connections-add { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
 .connection-status[data-status='reauth'] { color: var(--danger); }
 @media (max-width: 600px) {
+  /* Phone: the places collapse behind one toggle under the header and open as a list in the page flow, 44 px rows. */
   .app-body { flex-direction: column; }
-  .app-nav { width: auto; flex-direction: row; overflow-x: auto; padding: var(--space-2) var(--space-3);
-    border-right: 0; border-bottom: var(--border-w) solid var(--border); }
-  .app-nav a { border-left: 0; border-bottom: 2px solid transparent; border-radius: 0; }
-  .app-nav a.active { border-bottom-color: var(--line); }
+  .app-nav { width: auto; padding: var(--space-1) var(--space-3); border-right: 0; border-bottom: var(--border-w) solid var(--border); }
+  .nav-toggle {
+    display: flex; align-items: center; gap: var(--space-3); min-height: 44px; width: 100%; padding: 0 var(--space-3);
+    font: 500 var(--fs-small)/1 var(--font-ui); color: var(--ink); background: none; border: 0; cursor: pointer; text-align: left;
+  }
+  .app-nav:not(.open) .nav-places { display: none; }
+  .app-nav.open .nav-places { padding-bottom: var(--space-2); }
+  .app-nav a { min-height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
 }
 
 /* ---- name search in the header (#145): a field with a sheet-like results popup, no shadow ---- */
@@ -98,7 +123,8 @@ body {
 /* Phone width: the field takes its own full-width row under the title, and the results popup that width. */
 @media (max-width: 600px) {
   .app-header { flex-wrap: wrap; row-gap: var(--space-2); padding: var(--space-3) var(--space-4); }
-  .search { flex-basis: 100%; max-width: none; margin-left: 0; }
+  .search { flex-basis: 100%; max-width: none; margin-left: 0; order: 3; }
+  .search + .app-user { margin-left: auto; }
   .search-input { min-height: 44px; }
   .search-option { min-height: 44px; }
 }
@@ -464,6 +490,12 @@ body {
 .app-dialog-form .fs-field__error { margin: calc(-1 * var(--space-3)) 0 var(--space-4); }
 
 /* 24px line icons (stroke 1.5, round) used as masks so they take currentColor. */
+.icon-menu {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E");
+}
+.icon-keyboard {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6' width='18' height='12' rx='2'/%3E%3Cpath d='M7 10h.01M11 10h.01M15 10h.01M7 14h10'/%3E%3C/svg%3E");
+}
 .icon-more {
   background: var(--ink-muted);
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='5.5' cy='12' r='1.25'/%3E%3Ccircle cx='12' cy='12' r='1.25'/%3E%3Ccircle cx='18.5' cy='12' r='1.25'/%3E%3C/svg%3E");
@@ -570,3 +602,16 @@ body {
   .trash-list td.actions .button { flex: 1 1 auto; justify-content: center; }
   .trash-list td.actions .button + .button { margin-left: 0; }
 }
+
+/* Touch targets on the phone (#160): every control is at least 44 × 44 px. Small native checkboxes and radios keep their
+   size and get the target from the label around them; text controls in a row grow into the row's padding. */
+@media (max-width: 600px) {
+  .button, .fs-input { min-height: 44px; box-sizing: border-box; }
+  .button { justify-content: center; }
+  .icon-button { min-width: 44px; min-height: 44px; }
+  .breadcrumbs a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+  .file-list .check-target { width: 44px; height: 44px; margin: -13px; }
+  .file-list .name-inner > a, .file-list .name-inner > .link { flex: 1 1 auto; display: flex; align-items: center; min-height: 44px; margin: -10px 0; }
+  .share-radio, .settings-radio { min-height: 44px; }
+}
+.file-list .check-target { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
