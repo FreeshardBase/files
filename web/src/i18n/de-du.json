@@ -9,6 +9,7 @@
     "breadcrumbRoot": "Mein Speicher",
     "sources": "Orte",
     "recent": "Zuletzt",
+    "shared": "Mit mir geteilt",
     "trash": "Papierkorb"
   },
   "recent": {
@@ -94,6 +95,8 @@
     "select": "{name} auswählen",
     "selectColumn": "Auswahl",
     "download": "Herunterladen",
+    "share": "Teilen",
+    "details": "Details",
     "rename": "Umbenennen",
     "cut": "Verschieben",
     "copy": "Kopieren",
@@ -149,6 +152,56 @@
     "emptied": "Papierkorb geleert",
     "openFolder": "Ordner öffnen"
   },
+  "share": {
+    "title": "„{name}“ teilen",
+    "member": "Mitglied",
+    "memberPlaceholder": "Namen eingeben",
+    "options": "Mitglieder",
+    "noMatch": "Kein Mitglied passt zu „{query}“.",
+    "noMembers": "Es gibt noch keine anderen Mitglieder. Mitglieder erscheinen hier nach ihrer ersten Anmeldung.",
+    "pickMember": "Wähle ein Mitglied aus der Liste.",
+    "access": "Zugriff",
+    "read": "Darf ansehen",
+    "edit": "Darf bearbeiten",
+    "submit": "Teilen",
+    "whoHasAccess": "Wer hat Zugriff",
+    "onlyYou": "Nur du.",
+    "remove": "Zugriff entfernen",
+    "removeLabel": "Zugriff für {name} entfernen",
+    "shared": "Mit {name} geteilt: {access}",
+    "removed": "Zugriff für {name} entfernt",
+    "close": "Schließen"
+  },
+  "shared": {
+    "title": "Mit mir geteilt",
+    "empty": "Mit dir wurde noch nichts geteilt.",
+    "columns": {
+      "name": "Name",
+      "owner": "Geteilt von",
+      "access": "Zugriff",
+      "shared": "Geteilt am",
+      "actions": "Aktionen"
+    },
+    "open": "Öffnen",
+    "openLabel": "{name} öffnen",
+    "download": "Herunterladen",
+    "downloadLabel": "{name} herunterladen",
+    "orphaned": "Nicht mehr verfügbar",
+    "remove": "Aus der Liste entfernen",
+    "removeLabel": "{name} aus der Liste entfernen",
+    "removed": "„{name}“ aus der Liste entfernt"
+  },
+  "details": {
+    "title": "Details zu „{name}“",
+    "type": "Art",
+    "folder": "Ordner",
+    "file": "Datei",
+    "size": "Größe",
+    "modified": "Geändert",
+    "location": "Ort",
+    "you": "Du",
+    "share": "Teilen …"
+  },
   "errors": {
     "UNAUTHENTICATED": "Du bist nicht mehr angemeldet.",
     "FORBIDDEN": "Dafür fehlt dir die Berechtigung.",
@@ -177,7 +230,8 @@
     "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Versuch es gleich noch einmal.",
     "NO_THUMBNAIL": "Für diesen Dateityp gibt es kein Vorschaubild.",
     "THUMBNAIL_FAILED": "Das Vorschaubild konnte nicht erstellt werden.",
-    "SEARCH_FAILED": "Die Suche bei diesem Anbieter ist fehlgeschlagen."
+    "SEARCH_FAILED": "Die Suche bei diesem Anbieter ist fehlgeschlagen.",
+    "SHARE_ORPHANED": "Das Geteilte gibt es nicht mehr: Die Person, die es geteilt hat, hat es gelöscht."
   },
   "view": {
     "label": "Ansicht",

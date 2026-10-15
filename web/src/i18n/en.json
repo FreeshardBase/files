@@ -9,6 +9,7 @@
     "breadcrumbRoot": "My storage",
     "sources": "Places",
     "recent": "Recent",
+    "shared": "Shared with me",
     "trash": "Trash"
   },
   "recent": {
@@ -94,6 +95,8 @@
     "select": "Select {name}",
     "selectColumn": "Selection",
     "download": "Download",
+    "share": "Share",
+    "details": "Details",
     "rename": "Rename",
     "cut": "Move",
     "copy": "Copy",
@@ -149,6 +152,56 @@
     "emptied": "Trash emptied",
     "openFolder": "Open folder"
   },
+  "share": {
+    "title": "Share “{name}”",
+    "member": "Member",
+    "memberPlaceholder": "Type a name",
+    "options": "Members",
+    "noMatch": "No member matches “{query}”.",
+    "noMembers": "There are no other members yet. Members appear here after they first sign in.",
+    "pickMember": "Choose a member from the list.",
+    "access": "Access",
+    "read": "Can view",
+    "edit": "Can edit",
+    "submit": "Share",
+    "whoHasAccess": "Who has access",
+    "onlyYou": "Only you.",
+    "remove": "Remove access",
+    "removeLabel": "Remove access for {name}",
+    "shared": "Shared with {name}: {access}",
+    "removed": "Access for {name} removed",
+    "close": "Close"
+  },
+  "shared": {
+    "title": "Shared with me",
+    "empty": "Nothing has been shared with you yet.",
+    "columns": {
+      "name": "Name",
+      "owner": "Shared by",
+      "access": "Access",
+      "shared": "Shared on",
+      "actions": "Actions"
+    },
+    "open": "Open",
+    "openLabel": "Open {name}",
+    "download": "Download",
+    "downloadLabel": "Download {name}",
+    "orphaned": "No longer available",
+    "remove": "Remove from list",
+    "removeLabel": "Remove {name} from the list",
+    "removed": "“{name}” removed from the list"
+  },
+  "details": {
+    "title": "Details of “{name}”",
+    "type": "Type",
+    "folder": "Folder",
+    "file": "File",
+    "size": "Size",
+    "modified": "Modified",
+    "location": "Location",
+    "you": "You",
+    "share": "Share …"
+  },
   "errors": {
     "UNAUTHENTICATED": "You are no longer signed in.",
     "FORBIDDEN": "You don't have permission to do that.",
@@ -177,7 +230,8 @@
     "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment.",
     "NO_THUMBNAIL": "There is no thumbnail for this file type.",
     "THUMBNAIL_FAILED": "The thumbnail could not be created.",
-    "SEARCH_FAILED": "The search at this provider failed."
+    "SEARCH_FAILED": "The search at this provider failed.",
+    "SHARE_ORPHANED": "This shared item is gone: the person who shared it has deleted it."
   },
   "view": {
     "label": "View",

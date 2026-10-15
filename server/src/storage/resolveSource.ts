@@ -1,12 +1,14 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { Access } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { homeRoot } from '../paths.ts';
-import type { User } from '../users.ts';
+import { getUser, type User } from '../users.ts';
 import type { StorageBackend } from './backend.ts';
 import { LocalBackend } from './local.ts';
+import { grantedShare, ShareBackend, type ShareRow } from './shares.ts';
 
-export type Access = 'read' | 'edit';
+export type { Access };
 export type ResolvedSource = { backend: StorageBackend; access: Access };
 export type SourceRef = { kind: 'home' } | { kind: 'conn'; id: string } | { kind: 'share'; id: string };
 
@@ -25,21 +27,43 @@ async function resolveConnection(_user: User, _id: string): Promise<ResolvedSour
   throw new AppError('SOURCE_NOT_FOUND');
 }
 
-// #146: the share row granted to the caller, re-checked on every access; its access level comes from the row.
-async function resolveShare(_user: User, _id: string): Promise<ResolvedSource> {
-  throw new AppError('SOURCE_NOT_FOUND');
+/** The home of `userId`, with that member's rows. Only the caller's home, or a share's owner's home, is ever built. */
+function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
+  const { config, db, pathTables, trashTables, thumbs } = deps;
+  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs });
+}
+
+// The owner's own source behind a share, reached on the server: their home, or their cloud connection (#148). A
+// connection the owner has unlinked leaves the share orphaned; it never falls back to another source (#95).
+async function ownerSource(deps: FastifyInstance['deps'], row: ShareRow): Promise<StorageBackend> {
+  if (row.source === 'home') return homeOf(deps, row.owner_id);
+  const ref = parseSource(row.source);
+  const owner = getUser(deps.db, row.owner_id);
+  if (ref.kind !== 'conn' || !owner) throw new Error(`share ${row.id} has an invalid source ${row.source}`);
+  const conn = (await deps.connections(owner)).find((c) => c.id === ref.id);
+  if (!conn) throw new AppError('SHARE_ORPHANED');
+  return conn.backend;
+}
+
+// #146: the share row granted to the caller, read again on every request; its access level comes from the row. A
+// share of someone else, an unknown id and a revoked share are all SOURCE_NOT_FOUND; a deleted target is SHARE_ORPHANED.
+async function resolveShare(req: FastifyRequest, user: User, id: string): Promise<ResolvedSource> {
+  const deps = req.server.deps;
+  const row = grantedShare(deps.db, id, user.id);
+  if (!row) throw new AppError('SOURCE_NOT_FOUND');
+  if (row.orphaned_at !== null) throw new AppError('SHARE_ORPHANED');
+  return { backend: new ShareBackend(await ownerSource(deps, row), row.path), access: row.access };
 }
 
 /** The caller's own home. Used by `resolveSource` and by the trash routes, which exist only for the home. */
 export function homeBackend(req: FastifyRequest): LocalBackend {
   const { user } = requireUser(req);
-  const { config, db, pathTables, trashTables, thumbs } = req.server.deps;
-  return new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables, trashTables, thumbs });
+  return homeOf(req.server.deps, user.id);
 }
 
 /**
  * Every source the caller can search, home first: their home and each of their own cloud connections (#148 fills
- * `connections`). Sources shared with the caller are not searched (#146 decides).
+ * `connections`). Sources shared with the caller are not searched (DECISIONS, #146).
  */
 export async function searchableSources(req: FastifyRequest): Promise<{ source: string; backend: StorageBackend }[]> {
   const { user } = requireUser(req);
@@ -54,6 +78,6 @@ export async function resolveSource(req: FastifyRequest, source: string): Promis
   switch (ref.kind) {
     case 'home': return { backend: homeBackend(req), access: 'edit' };
     case 'conn': return resolveConnection(user, ref.id);
-    case 'share': return resolveShare(user, ref.id);
+    case 'share': return resolveShare(req, user, ref.id);
   }
 }

@@ -4,8 +4,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import type { CollisionPolicy, Entry, ErrorCode } from '@files/shared';
 import { join, useFolderStore } from '../stores/folder.ts';
-import { ApiFailure } from '../api/client.ts';
-import { downloadHref, folderRoute } from '../api/paths.ts';
+import { api, ApiFailure } from '../api/client.ts';
+import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
+import ShareDialog from '../components/ShareDialog.vue';
+import DetailsDrawer from '../components/DetailsDrawer.vue';
 import FileList, { type ItemAction } from '../components/FileList.vue';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
@@ -39,7 +41,32 @@ watch(() => folder.entries, (entries) => {
 });
 const selectedEntries = computed(() => folder.entries.filter((e) => selected.value.includes(e.path)));
 
-const folderName = computed(() => path.value === '/' ? t('nav.home') : path.value.split('/').pop()!);
+// A share (#146) is named after the shared item, from its own `stat`; the folders above it in the owner's home stay hidden.
+const shareName = ref<string | null>(null);
+watch(source, async (s) => {
+  shareName.value = null;
+  if (s === 'home') return;
+  try {
+    const root = await api.get<Entry>(`${sourceApi(s)}/stat`, { path: '/' });
+    if (source.value === s) shareName.value = root.name;
+  } catch (e) {
+    if (!(e instanceof ApiFailure)) throw e; // handled: the listing of the same source reports the failure
+  }
+}, { immediate: true });
+const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot') : (shareName.value ?? t('nav.shared')));
+const folderName = computed(() => path.value === '/' ? (source.value === 'home' ? t('nav.home') : rootLabel.value) : path.value.split('/').pop()!);
+// What the caller may do here: change only with `edit` (re-checked by the server on every request); share and upload
+// only in their own home, since a share is never shared on and resumable uploads target the home (DECISIONS, #146).
+const editable = computed(() => folder.access === 'edit' && folder.source === source.value);
+const own = computed(() => source.value === 'home');
+const sharing = ref<Entry | null>(null);
+const details = ref<Entry | null>(null);
+async function shareFromDetails() {
+  const e = details.value!;
+  details.value = null;
+  await nextTick(); // the drawer has put the focus back on the row, which the share dialog then returns to
+  sharing.value = e;
+}
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 // The preview steps through the folder's files in list order.
@@ -143,12 +170,13 @@ function upload(files: PickedFile[]) {
 
 // Files and folders dragged in from the desktop upload into the open folder.
 const dropActive = ref(false);
-function onFileDragOver(e: DragEvent) { if (acceptFileDrag(e)) dropActive.value = true; }
+function onFileDragOver(e: DragEvent) { if (own.value && acceptFileDrag(e)) dropActive.value = true; }
 function onFileDragLeave(e: DragEvent) {
   if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) dropActive.value = false;
 }
 async function onFileDrop(e: DragEvent) {
   dropActive.value = false;
+  if (!own.value) return;
   const files = droppedFiles(e);
   if (!files) return;
   const picked = await files;
@@ -208,6 +236,8 @@ function download(entries: Entry[]) {
 
 function onAction(action: ItemAction, entries: Entry[]) {
   if (action === 'download') download(entries);
+  else if (action === 'share') sharing.value = entries[0]!;
+  else if (action === 'details') details.value = entries[0]!;
   else if (action === 'rename') renaming.value = entries[0]!;
   else if (action === 'trash') void trash(entries);
   else {
@@ -216,13 +246,16 @@ function onAction(action: ItemAction, entries: Entry[]) {
     status.value = t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length });
   }
 }
+// Items move and copy within their own source only (moves between sources are #152).
+const canPaste = computed(() => editable.value && folder.clipboard?.source === source.value);
 async function paste() {
   const clip = folder.clipboard;
-  if (!clip) return;
+  if (!clip || !canPaste.value) return;
   if (clip.mode === 'move') folder.clipboard = null; // a moved item is gone from where it was marked
   await transfer(clip.mode, clip.entries.map((e) => ({ from: e.path, name: e.name })), folder.path, clip.source);
 }
 function onDrop(paths: string[], dir: string) {
+  if (!editable.value) return;
   void transfer('move', paths.map((p) => ({ from: p, name: baseName(p) })), dir);
 }
 </script>
@@ -245,6 +278,8 @@ function onDrop(paths: string[], dir: string) {
       <Breadcrumbs
         :source="source"
         :path="path"
+        :root-label="rootLabel"
+        :editable="editable"
         @drop="onDrop"
       />
       <div class="toolbar-actions">
@@ -265,13 +300,14 @@ function onDrop(paths: string[], dir: string) {
           </button>
         </div>
         <UploadButton
+          v-if="own"
           ref="uploadButton"
           @files="upload"
         />
       </div>
     </div>
     <div
-      v-if="selectedEntries.length || folder.clipboard"
+      v-if="selectedEntries.length || canPaste"
       class="selection-bar"
       role="group"
       :aria-label="$t('actions.toolbar')"
@@ -284,37 +320,39 @@ function onDrop(paths: string[], dir: string) {
         >
           {{ $t('actions.download') }}
         </a>
-        <button
-          v-if="selectedEntries.length === 1"
-          type="button"
-          class="button"
-          @click="onAction('rename', selectedEntries)"
-        >
-          {{ $t('actions.rename') }}
-        </button>
-        <button
-          type="button"
-          class="button"
-          @click="onAction('cut', selectedEntries)"
-        >
-          {{ $t('actions.cut') }}
-        </button>
-        <button
-          type="button"
-          class="button"
-          @click="onAction('copy', selectedEntries)"
-        >
-          {{ $t('actions.copy') }}
-        </button>
-        <button
-          type="button"
-          class="button danger"
-          @click="onAction('trash', selectedEntries)"
-        >
-          {{ $t('actions.trash') }}
-        </button>
+        <template v-if="editable">
+          <button
+            v-if="selectedEntries.length === 1"
+            type="button"
+            class="button"
+            @click="onAction('rename', selectedEntries)"
+          >
+            {{ $t('actions.rename') }}
+          </button>
+          <button
+            type="button"
+            class="button"
+            @click="onAction('cut', selectedEntries)"
+          >
+            {{ $t('actions.cut') }}
+          </button>
+          <button
+            type="button"
+            class="button"
+            @click="onAction('copy', selectedEntries)"
+          >
+            {{ $t('actions.copy') }}
+          </button>
+          <button
+            type="button"
+            class="button danger"
+            @click="onAction('trash', selectedEntries)"
+          >
+            {{ $t('actions.trash') }}
+          </button>
+        </template>
       </template>
-      <template v-if="folder.clipboard">
+      <template v-if="folder.clipboard && canPaste">
         <button
           type="button"
           class="button primary"
@@ -344,6 +382,20 @@ function onDrop(paths: string[], dir: string) {
       :is-folder="renaming.type === 'directory'"
       @submit="rename"
       @cancel="renaming = null"
+    />
+    <ShareDialog
+      v-if="sharing"
+      :source="source"
+      :entry="sharing"
+      @close="sharing = null"
+    />
+    <DetailsDrawer
+      v-if="details"
+      :source="source"
+      :entry="details"
+      :access="folder.access"
+      @close="details = null"
+      @share="shareFromDetails"
     />
     <PreviewDialog
       v-if="preview"
@@ -400,6 +452,8 @@ function onDrop(paths: string[], dir: string) {
       :entries="folder.entries"
       :folder-name="folderName"
       :source="source"
+      :editable="editable"
+      :shareable="own"
       @open="open"
       @action="onAction"
       @paste="paste"

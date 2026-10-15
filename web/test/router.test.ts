@@ -4,6 +4,8 @@ import { routes } from '../src/router.ts';
 import FolderView from '../src/views/FolderView.vue';
 import TrashView from '../src/views/TrashView.vue';
 import RecentView from '../src/views/RecentView.vue';
+import SharedView from '../src/views/SharedView.vue';
+import { folderRoute } from '../src/api/paths.ts';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
 
@@ -34,6 +36,22 @@ describe('router', () => {
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(RecentView);
     await r.push('/home/recent');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+  });
+  it('routes a share to the folder view with `share:<id>` as its source, and /shared to "Shared with me"', async () => {
+    const r = mk();
+    await r.push(folderRoute('share:0123abcd', '/Fotos/2026'));
+    expect(r.currentRoute.value.path).toBe('/share:0123abcd/Fotos/2026');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+    expect(r.currentRoute.value.params).toEqual({ source: 'share:0123abcd', path: ['Fotos', '2026'] });
+    await r.push('/shared');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(SharedView);
+    await r.push('/home/shared');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+    // Anything else that looks like a source is not one.
+    for (const bad of ['/share:/x', '/share:a.b/x', '/conn:x/y', '/sharex/y']) {
+      await r.push(bad);
+      expect(r.currentRoute.value.path, bad).toBe('/home');
+    }
   });
   it('treats /home as the root folder', async () => {
     const r = mk();

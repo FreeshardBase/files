@@ -1,0 +1,161 @@
+import { expect, test, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+// #146: internal shares. `testuser` owns and shares, `member` receives, `member2` is a third member for the picker.
+// Both projects share one server; every test works in its own folder named after the project and test.
+const tag = (info: TestInfo) => `${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
+const crumbs = (page: Page) => page.getByRole('navigation', { name: /Pfad|Path/ });
+const nav = (page: Page) => page.getByRole('navigation', { name: /Orte|Places/ });
+const row = (page: Page, name: string): Locator =>
+  page.locator('tbody tr', { has: page.locator('.name').getByText(name, { exact: true }) });
+const shareDialog = (page: Page) => page.getByRole('dialog', { name: /teilen|Share/ });
+const menuButton = (page: Page, name: string) =>
+  row(page, name).getByRole('button', { name: new RegExp(`(Aktionen für|Actions for) ${name.replace(/[.()]/g, '\\$&')}`) });
+
+/** A second browser context signed in as `login`, with the project's device. */
+async function signedIn(browser: Browser, info: TestInfo, baseURL: string, login: string, returnTo = '/'): Promise<Page> {
+  const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = info.project.use;
+  const ctx = await browser.newContext({ baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+  const p = await ctx.newPage();
+  await p.goto(`/auth/login?login_hint=${login}&returnTo=${encodeURIComponent(returnTo)}`);
+  await expect(nav(p)).toBeVisible();
+  return p;
+}
+
+/** Creates `/<dir>` with files through the API as the page's user, then opens it in the SPA. */
+async function setup(page: Page, dir: string, files: Record<string, string>) {
+  await page.goto('/');
+  await expect(crumbs(page)).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  for (const [name, text] of Object.entries(files)) {
+    const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/${name}`)}&onCollision=fail`,
+      { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from(text) });
+    expect(r.status()).toBe(201);
+  }
+  await page.goto('/home');
+  await expect(row(page, dir)).toBeVisible();
+}
+
+test('owner shares a folder read-only; the member opens it under "Shared with me" and downloads a file, upload is not offered', async ({ page, browser, baseURL }, info) => {
+  const dialogs: string[] = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+  // A member is known to the shard once they have signed in.
+  const member = await signedIn(browser, info, baseURL!, 'member', '/shared');
+  const dir = `share-read-${tag(info)}`;
+  await setup(page, dir, { 'plan.txt': 'shared bytes' });
+
+  await menuButton(page, dir).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  const d = shareDialog(page);
+  await expect(d).toBeVisible();
+  await d.getByRole('combobox', { name: /Mitglied|Member/ }).fill('Test Mem');
+  await d.getByRole('option', { name: 'Test Member' }).click();
+  await expect(d.getByRole('radio', { name: /ansehen|view/ })).toBeChecked(); // read is the default
+  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).click();
+  await expect(d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText('Test Member');
+  await expect(d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText(/Darf ansehen|Can view/);
+  await page.keyboard.press('Escape');
+  await expect(d).toHaveCount(0);
+
+  await member.reload();
+  await nav(member).getByRole('link', { name: /Mit mir geteilt|Shared with me/ }).click();
+  await expect(member).toHaveURL(/\/shared$/);
+  const shared = member.locator('tbody tr', { has: member.getByText(dir, { exact: true }) });
+  await expect(shared).toContainText('Test User');
+  await expect(shared).toContainText(/Darf ansehen|Can view/);
+  await shared.getByRole('link', { name: new RegExp(`(${dir} öffnen|Open ${dir})`) }).click();
+  await expect(member).toHaveURL(/\/share:[0-9a-f]{32}$/);
+  await expect(crumbs(member)).toContainText(dir);
+  await expect(row(member, 'plan.txt')).toBeVisible();
+  // Read only: no upload, no rename, move or trash anywhere.
+  await expect(member.getByTestId('upload-input')).toHaveCount(0);
+  await expect(member.getByRole('button', { name: /Hochladen|Upload/ })).toHaveCount(0);
+  await menuButton(member, 'plan.txt').click();
+  await expect(member.getByRole('menu').getByRole('menuitem')).toHaveText([/Herunterladen|Download/, 'Details']);
+  const [download] = await Promise.all([member.waitForEvent('download'),
+    member.getByRole('menu').getByRole('menuitem', { name: /Herunterladen|Download/ }).click()]);
+  expect(download.suggestedFilename()).toBe('plan.txt');
+  expect(readFileSync(await download.path()).toString()).toBe('shared bytes');
+  expect(dialogs).toEqual([]);
+  await member.context().close();
+});
+
+test('the share dialog works with the keyboard alone, and the member picker filters by name', async ({ page, browser, baseURL }, info) => {
+  // The picker offers members the shard knows, i.e. who has signed in once.
+  for (const login of ['member', 'member2']) await (await signedIn(browser, info, baseURL!, login)).context().close();
+  const dir = `share-keys-${tag(info)}`;
+  await setup(page, dir, { 'a.txt': 'a' });
+  await row(page, dir).focus();
+  await page.keyboard.press('Shift+F10');
+  await expect(page.getByRole('menu')).toBeVisible();
+  for (let i = 0; i < 6 && !(await page.getByRole('menuitem', { name: /^(Teilen|Share)$/ }).evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press('ArrowDown');
+  }
+  await page.keyboard.press('Enter');
+  const d = shareDialog(page);
+  const picker = d.getByRole('combobox', { name: /Mitglied|Member/ });
+  await expect(picker).toBeFocused();
+
+  // Filtering: only names containing the typed text, ignoring case.
+  await page.keyboard.type('second');
+  await expect(d.getByRole('option')).toHaveText(['Second Member']);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('zzz');
+  await expect(d.getByRole('option')).toHaveCount(0);
+  await expect(d).toContainText(/Kein Mitglied passt zu|No member matches/);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('MEM');
+  await expect(d.getByRole('option')).toHaveText(['Second Member', 'Test Member']);
+  // Arrow keys move the active option; Enter picks it; Esc in the open list closes only the list.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(picker).toHaveAttribute('aria-activedescendant', /.+/);
+  await page.keyboard.press('Enter');
+  await expect(picker).toHaveValue('Test Member');
+  await expect(d.getByRole('option')).toHaveCount(0);
+
+  // Tab to the access radios, arrow to "edit", Tab to Share, Enter.
+  await page.keyboard.press('Tab');
+  await expect(d.getByRole('radio', { name: /ansehen|view/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(d.getByRole('radio', { name: /bearbeiten|edit/ })).toBeChecked();
+  await page.keyboard.press('Tab');
+  await expect(d.getByRole('button', { name: /^(Teilen|Share)$/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  const who = d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ });
+  await expect(who).toContainText('Test Member');
+  await expect(who).toContainText(/Darf bearbeiten|Can edit/);
+
+  // Revoke with the keyboard: Tab reaches "Remove access", Enter removes it.
+  const remove = d.getByRole('button', { name: /(Zugriff für Test Member entfernen|Remove access for Test Member)/ });
+  for (let i = 0; i < 6 && !(await remove.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+  await expect(remove).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(who).toHaveCount(0);
+  await expect(d).toContainText(/Nur du|Nur Sie|Only you/);
+  await expect(picker).toBeFocused(); // the removed row's button is gone; the focus stays in the dialog
+
+  // Share again (read), then Esc closes the dialog and the focus goes back to the row.
+  await page.keyboard.type('test');
+  await page.keyboard.press('Enter');
+  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).focus();
+  await page.keyboard.press('Enter');
+  await expect(who).toContainText('Test Member');
+  await page.keyboard.press('Escape');
+  await expect(d).toHaveCount(0);
+  await expect(row(page, dir)).toBeFocused();
+
+  // The details drawer lists who has access.
+  await page.keyboard.press('Shift+F10');
+  for (let i = 0; i < 8 && !(await page.getByRole('menuitem', { name: /^Details$/ }).evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press('ArrowDown');
+  }
+  await page.keyboard.press('Enter');
+  const drawer = page.getByRole('dialog', { name: new RegExp(`Details (zu|of) .${dir}.`) });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText(/Test Member.*(Darf ansehen|Can view)/);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+});

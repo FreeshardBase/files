@@ -54,6 +54,16 @@ onMounted(async () => {
           {{ $t('nav.recent') }}
         </RouterLink>
         <RouterLink
+          to="/shared"
+          active-class="active"
+        >
+          <span
+            class="icon icon-shared"
+            aria-hidden="true"
+          />
+          {{ $t('nav.shared') }}
+        </RouterLink>
+        <RouterLink
           to="/trash"
           active-class="active"
         >

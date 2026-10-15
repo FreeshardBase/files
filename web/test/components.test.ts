@@ -88,6 +88,27 @@ describe('FileList actions', () => {
     await key(w, 1, 'Delete');
     expect(w.emitted('action')![3]).toEqual(['trash', [entries[1]]]);
   });
+  it('in a source that is not editable (a read share) only download and details are offered, and change keys do nothing', async () => {
+    const w = mount(FileList, { props: { ...both, editable: false }, attachTo: document.body, global: { plugins: [i18n] } });
+    for (const [k, mods] of [['F2', {}], ['Delete', {}], ['c', { ctrlKey: true }], ['x', { ctrlKey: true }], ['v', { ctrlKey: true }]] as const) {
+      await key(w, 1, k, mods);
+    }
+    expect(w.emitted('action')).toBeUndefined();
+    expect(w.emitted('paste')).toBeUndefined();
+    expect(w.findAll('tbody tr').map((r) => r.attributes('draggable'))).toEqual(['false', 'false']);
+    await w.findAll('.icon-button')[1]!.trigger('click');
+    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details']);
+    w.unmount();
+  });
+  it('the member\'s own items offer "Share", which acts on the row alone', async () => {
+    const w = mount(FileList, { props: { ...both, shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
+    await w.findAll('.icon-button')[0]!.trigger('click');
+    const items = w.findAll('[role=menuitem]');
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Share', 'Details', 'Move to trash']);
+    await items[4]!.trigger('click');
+    expect(w.emitted('action')).toEqual([['share', [entries[0]]]]);
+    w.unmount();
+  });
   it('Ctrl+V pastes and Ctrl+A selects everything', async () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
     await key(w, 0, 'v', { ctrlKey: true }); await key(w, 0, 'a', { ctrlKey: true });
@@ -107,11 +128,11 @@ describe('FileList actions', () => {
     const menu = w.find('[role=menu]');
     expect(menu.attributes('aria-label')).toBe('Actions for a b.txt');
     const items = menu.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Details', 'Move to trash']);
     expect(document.activeElement).toBe(items[0]!.element);
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]!.element);
-    await items[4]!.trigger('click');
+    await items[5]!.trigger('click');
     expect(w.find('[role=menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(w.findAll('tbody tr')[1]!.element);
     expect(w.emitted('action')).toEqual([['trash', [entries[1]]]]);

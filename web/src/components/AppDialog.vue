@@ -4,7 +4,8 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 // `wide`: a sheet for content (the preview) instead of a question; full screen on a phone.
-const props = defineProps<{ title: string; returnFocus?: HTMLElement | null; wide?: boolean }>();
+// `drawer`: a sheet at the right edge, full height (the details drawer); a bottom sheet on a phone.
+const props = defineProps<{ title: string; returnFocus?: HTMLElement | null; wide?: boolean; drawer?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const host = ref<HTMLElement>();
 const box = ref<HTMLElement>();
@@ -57,11 +58,12 @@ onBeforeUnmount(() => {
     <div
       ref="host"
       class="app-dialog-scrim"
+      :class="{ 'app-dialog-scrim-drawer': drawer }"
     >
       <div
         ref="box"
         class="app-dialog"
-        :class="{ 'app-dialog-wide': wide }"
+        :class="{ 'app-dialog-wide': wide, 'app-dialog-drawer': drawer }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
