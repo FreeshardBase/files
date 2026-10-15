@@ -11,7 +11,7 @@ import type { StorageBackend } from './backend.ts';
 import { lookupMime } from './mime.ts';
 
 const INTERNAL = '.files';
-const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
+export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
 const MAX_NAME_BYTES = 255;
 const MAX_LIMIT = 1000;
 const isErr = (e: unknown, code: string) => (e as NodeJS.ErrnoException).code === code;
