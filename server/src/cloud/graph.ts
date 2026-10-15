@@ -24,7 +24,9 @@ export type GraphEndpoints = {
   /** Hosts of pre-signed URLs: content and thumbnail redirects, upload sessions, copy monitors. Nothing else is called. */
   contentHost(u: URL): boolean;
 };
-const CONTENT_HOST_SUFFIXES = ['.sharepoint.com', '.1drv.com', '.livefilestore.com', '.onedrive.com'];
+// Personal OneDrive downloads come from `my.microsoftpersonalcontent.com`; SharePoint and OneDrive for Business
+// thumbnails redirect to the media service, `<region>-mediap.svc.ms/transform/thumbnail` (#202).
+const CONTENT_HOST_SUFFIXES = ['.sharepoint.com', '.1drv.com', '.livefilestore.com', '.onedrive.com', '.microsoftpersonalcontent.com', '-mediap.svc.ms'];
 export const graphEndpoints = (tenant: string): GraphEndpoints => ({
   authorization: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
   token: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,

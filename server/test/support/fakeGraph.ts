@@ -10,6 +10,13 @@ import { generatedByte } from './fakeDrive.ts';
 // pre-signed URL that honours Range; uploads go through `createUploadSession` (pre-signed, `Content-Range` chunks in
 // multiples of 320 KiB); copies are asynchronous behind a monitor URL; delete moves into the recycle bin. Bearer tokens,
 // injected failures and 401s are handled by the fake provider before a request gets here.
+//
+// Pre-signed URLs carry the Microsoft host the real Graph hands out for them (#202), as `/ms/<host>/…` on the fake's
+// origin: the personal OneDrive (`ONEDRIVE_ID`) downloads and thumbnails from `my.microsoftpersonalcontent.com` and has
+// its upload sessions and copy monitors on `api.onedrive.com`; a SharePoint library downloads, uploads and monitors on
+// `contoso.sharepoint.com` and redirects thumbnails to `eus1-mediap.svc.ms/transform/thumbnail`. The fake provider's
+// `contentHost` checks that host against the production allowlist, so a host the allowlist misses fails as it would
+// against Microsoft.
 
 /** Graph wants every upload-session chunk but the last in multiples of 320 KiB. */
 export const GRAPH_CHUNK_UNIT = 320 * 1024;
@@ -29,6 +36,17 @@ type Site = { id: string; displayName: string; webUrl: string; drives: { id: str
 const sizeOf = (c?: Content) => (c === undefined ? 0 : c.kind === 'bytes' ? c.data.length : c.size);
 const lower = (s: string) => s.toLowerCase();
 const conflictOf = (v: unknown) => (typeof v === 'string' ? v : 'fail');
+type PresignedKind = 'download' | 'thumbnail' | 'upload' | 'monitor';
+/** The Microsoft host Graph puts a pre-signed URL of this kind for this drive on. */
+export const graphContentHost = (drive: string, kind: PresignedKind) => {
+  if (drive === ONEDRIVE_ID) return kind === 'download' || kind === 'thumbnail' ? 'my.microsoftpersonalcontent.com' : 'api.onedrive.com';
+  return kind === 'thumbnail' ? 'eus1-mediap.svc.ms' : 'contoso.sharepoint.com';
+};
+/** `/ms/<host>/<rest>` → the Microsoft host and the fake's own path; null for any other path. */
+export const msHostOf = (pathname: string) => {
+  const m = /^\/ms\/([a-z0-9.-]+)(\/.*)$/.exec(pathname);
+  return m ? { host: m[1]!, path: m[2]! } : null;
+};
 
 export class FakeGraph {
   /** Every item of every drive, by id. */
@@ -253,7 +271,7 @@ export class FakeGraph {
       const sid = randomBytes(12).toString('hex');
       this.sessions.set(sid, { drive, parent: pathTarget.parent.id, name: pathTarget.name, received: 0,
         conflict: conflictOf((body.item as Record<string, unknown> | undefined)?.['@microsoft.graph.conflictBehavior']), parts: [], md5: createHash('md5') });
-      json(200, { uploadUrl: `${this.url()}/graph-upload/${sid}`, expirationDateTime: new Date(Date.now() + 3600_000).toISOString() });
+      json(200, { uploadUrl: `${this.on(drive, 'upload')}/graph-upload/${sid}`, expirationDateTime: new Date(Date.now() + 3600_000).toISOString() });
       return true;
     }
     if (method === 'PUT' && suffix === '/content') {
@@ -317,12 +335,12 @@ export class FakeGraph {
         const mid = randomBytes(9).toString('hex');
         if (this.child(parent.id, name)) this.monitors.set(mid, { target: '', error: 'nameAlreadyExists', polls: 0 });
         else this.monitors.set(mid, { target: this.relocate(item, parent.id, name, true).id, polls: 0 });
-        res.writeHead(202, { location: `${this.url()}/graph-monitor/${mid}` }).end();
+        res.writeHead(202, { location: `${this.on(drive, 'monitor')}/graph-monitor/${mid}` }).end();
         return true;
       }
       case 'GET /content': {
         if (item.folder) { fail(400, 'invalidRequest'); return true; }
-        this.redirect(res, item.id, false);
+        this.redirect(res, item, false);
         return true;
       }
       case 'GET /versions': {
@@ -345,7 +363,7 @@ export class FakeGraph {
     if (method === 'GET' && thumb) {
       rec.query = thumb[1];
       if (!item.thumbnail) { fail(404, 'itemNotFound'); return true; }
-      this.redirect(res, item.id, true);
+      this.redirect(res, item, true);
       return true;
     }
     fail(400, `fake graph: no endpoint ${method} ${suffix}`);
@@ -359,12 +377,19 @@ export class FakeGraph {
       ...(end < all.length ? { '@odata.nextLink': next(end) } : {}) }));
   }
 
-  private redirect(res: http.ServerResponse, id: string, thumb: boolean) {
+  /** Where a pre-signed URL of this kind for this drive lives: the fake's origin, tagged with Microsoft's host. */
+  private on(drive: string, kind: PresignedKind, origin = this.url()) {
+    return `${origin}/ms/${graphContentHost(drive, kind)}`;
+  }
+
+  private redirect(res: http.ServerResponse, item: GraphItem, thumb: boolean) {
     const token = randomBytes(12).toString('hex');
-    this.blobs.set(token, { id, thumb });
-    const origin = this.foreignRedirect ? this.url().replace('127.0.0.1', 'localhost') : this.url();
+    this.blobs.set(token, { id: item.id, thumb });
+    const base = this.on(item.drive, thumb ? 'thumbnail' : 'download', this.foreignRedirect ? this.url().replace('127.0.0.1', 'localhost') : this.url());
     this.foreignRedirect = false;
-    res.writeHead(302, { location: `${origin}/graph-dl/${token}` }).end();
+    // A SharePoint thumbnail comes from the media service's transform endpoint, the capability in the query.
+    const location = thumb && item.drive !== ONEDRIVE_ID ? `${base}/transform/thumbnail?provider=spo&token=${token}` : `${base}/graph-dl/${token}`;
+    res.writeHead(302, { location }).end();
   }
 
   /** Puts finished bytes at `name` in `parent` under the conflict behaviour; an error code when it is refused. */
@@ -382,7 +407,10 @@ export class FakeGraph {
 
   /** Pre-signed URLs, like Graph's: no bearer token, the URL itself is the capability. False when not Graph's. */
   async presigned(req: http.IncomingMessage, res: http.ServerResponse, u: URL, rec: FakeRequest): Promise<boolean> {
-    const [, kind, id] = u.pathname.split('/');
+    const ms = msHostOf(u.pathname);
+    if (!ms) return false;
+    rec.host = ms.host; rec.path = ms.path;
+    const [, kind, id] = ms.path === '/transform/thumbnail' ? ['', 'graph-dl', u.searchParams.get('token') ?? ''] : ms.path.split('/');
     const json = (status: number, body: unknown) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
     if (kind !== 'graph-dl' && kind !== 'graph-upload' && kind !== 'graph-monitor') return false;
     if (req.headers.authorization !== undefined) { json(400, { error: { code: 'invalidRequest', message: 'pre-signed URLs take no token' } }); return true; }

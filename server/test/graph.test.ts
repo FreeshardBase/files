@@ -6,6 +6,7 @@ import type { Connection } from '@files/shared';
 import { MAX_JITTER_MS, type Clock } from '../src/cloud/oauth.ts';
 import { ConfigError } from '../src/config.ts';
 import { getUser } from '../src/users.ts';
+import { graphEndpoints } from '../src/cloud/graph.ts';
 import type { StorageBackend } from '../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { startFakeProvider, type FakeProvider } from './support/fakeProvider.ts';
@@ -136,6 +137,7 @@ describe('browsing and downloading', () => {
     const blobs = since(before).filter((x) => x.path.startsWith('/graph-dl/'));
     expect(blobs).toHaveLength(1);
     expect(blobs[0]!.token).toBeUndefined();
+    expect(blobs[0]!.host).toBe('my.microsoftpersonalcontent.com'); // personal OneDrive's download host (#202)
     const part = await content(id, '/range.txt', { range: 'bytes=2-5' });
     expect(part.statusCode).toBe(206);
     expect(part.body).toBe('2345');
@@ -170,6 +172,49 @@ describe('browsing and downloading', () => {
     expect(since(before).filter((x) => x.path.endsWith('/content') && x.path.includes('/thumbnails/')).map((x) => x.query)).toEqual(['medium']);
     expect((await as(a, 'GET', `${src(id)}/thumbnail?${q('/range.txt')}&size=128`)).json()).toEqual({ code: 'NO_THUMBNAIL' });
     expect(JSON.stringify(th.headers)).not.toContain(fake.url);
+  });
+});
+
+describe("Microsoft's real content hosts (#202)", () => {
+  it('the allowlist takes personal OneDrive content and SharePoint thumbnail hosts, https only, and nothing that merely ends alike', () => {
+    const ok = graphEndpoints('common').contentHost;
+    for (const u of ['https://my.microsoftpersonalcontent.com/personal/x/_layouts/15/download.aspx', 'https://eus1-mediap.svc.ms/transform/thumbnail?provider=spo',
+      'https://southcentralus1-mediap.svc.ms/transform/thumbnail', 'https://contoso-my.sharepoint.com/x', 'https://public.bn1303.livefilestore.com/y',
+      'https://api.onedrive.com/rup/z', 'https://x.1drv.com/y']) expect(ok(new URL(u)), u).toBe(true);
+    for (const u of ['http://my.microsoftpersonalcontent.com/x', 'https://microsoftpersonalcontent.com.evil.example/x', 'https://evilmicrosoftpersonalcontent.com/x',
+      'https://svc.ms.evil.example/x', 'https://evil.example/eus1-mediap.svc.ms', 'https://graph.microsoft.com.evil.example/x', 'https://example.com/']) {
+      expect(ok(new URL(u)), u).toBe(false);
+    }
+  });
+
+  it('personal OneDrive: uploads and copies run on its hosts without the token', async () => {
+    const id = await connect();
+    const before = fake.requests.length;
+    expect((await put(id, '/HostCheck/up.bin', randomBytes(CHUNK + 10))).statusCode).toBe(201);
+    fake.graph.put('/HostCheck/c.txt', 'C');
+    expect((await op(id, 'copy', '/HostCheck/c.txt', '/HostCheck/c2.txt')).statusCode).toBe(201);
+    expect((await content(id, '/HostCheck/c2.txt')).body).toBe('C');
+    const presigned = since(before).filter((x) => x.host !== undefined);
+    expect(new Set(presigned.map((x) => `${x.path.split('/')[1]} ${x.host}`))).toEqual(new Set([
+      'graph-upload api.onedrive.com', 'graph-monitor api.onedrive.com', 'graph-dl my.microsoftpersonalcontent.com']));
+    expect(presigned.filter((x) => x.token !== undefined)).toEqual([]);
+  });
+
+  it('SharePoint: downloads, uploads and thumbnails (redirected to the media service) work, without the token', async () => {
+    const id = /pick=([0-9a-f]{32})$/.exec(await consent(a, { provider: 'sharepoint' }))![1]!;
+    expect((await as(a, 'PUT', `/api/v1/connections/${id}/library`, { site: SITE, library: 'b!team-archive' })).statusCode).toBe(200);
+    fake.graph.put('/team-photo.png', png, { thumbnail: true, drive: 'b!team-archive' });
+    const before = fake.requests.length;
+    const th = await as(a, 'GET', `${src(id)}/thumbnail?${q('/team-photo.png')}&size=128`);
+    expect(th.statusCode, th.body).toBe(200);
+    const meta = await sharp(th.rawPayload).metadata();
+    expect([meta.format, meta.width, meta.height]).toEqual(['webp', 128, 96]);
+    expect((await content(id, '/team-photo.png')).rawPayload.equals(png)).toBe(true);
+    expect((await put(id, '/team-new.txt', Buffer.from('t'))).statusCode).toBe(201);
+    const presigned = since(before).filter((x) => x.host !== undefined);
+    expect(presigned.map((x) => `${x.path} ${x.host}`)).toEqual(expect.arrayContaining(['/transform/thumbnail eus1-mediap.svc.ms']));
+    expect(presigned.find((x) => x.path.startsWith('/graph-dl/'))?.host).toBe('contoso.sharepoint.com');
+    expect(presigned.filter((x) => x.token !== undefined)).toEqual([]);
   });
 });
 
