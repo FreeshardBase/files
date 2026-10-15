@@ -329,7 +329,9 @@
     "CONNECT_FAILED": "The account could not be connected. Please try again.",
     "CONNECT_ACCOUNT_MISMATCH": "You signed in with a different account. Sign in with the account of this connection, or connect the other account as well.",
     "CONNECTION_REAUTH": "The cloud provider no longer accepts the sign-in. Sign in again under “Cloud accounts”.",
-    "PROVIDER_UNAVAILABLE": "The cloud provider cannot be reached right now. Please try again later."
+    "PROVIDER_UNAVAILABLE": "The cloud provider cannot be reached right now. Please try again later.",
+    "AMBIGUOUS_NAME": "Several items in this folder are called “{name}”. Open the folder again and pick one.",
+    "NOT_EXPORTABLE": "This document type can't be downloaded. Open it at the cloud provider."
   },
   "view": {
     "label": "View",

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import type { CollisionPolicy, ErrorCode } from '@files/shared';
 import { ApiFailure } from '../api/client.ts';
 import { ResumableUpload } from '../api/tus.ts';
+import { DirectUpload } from '../api/directUpload.ts';
 import { join } from './folder.ts';
 import type { CollisionChoice } from '../components/CollisionDialog.vue';
 
@@ -22,7 +23,7 @@ const FINAL: ReadonlySet<UploadState> = new Set(['done', 'skipped', 'failed', 'c
 // Outside the reactive state: File objects and upload handles are not data for the view.
 type Batch = { forAll: CollisionChoice['policy'] | null; returnFocus?: HTMLElement | null; settled(s: BatchSummary): void };
 const batches = new Map<number, Batch>();
-const jobs = new Map<number, { upload: ResumableUpload; policy: CollisionPolicy | null }>();
+const jobs = new Map<number, { upload: ResumableUpload | DirectUpload; policy: CollisionPolicy | null }>();
 let nextId = 1;
 let pumping = false;
 
@@ -44,10 +45,13 @@ export const useUploadsStore = defineStore('uploads', {
       for (const f of files) {
         const id = nextId++;
         this.items.push({ id, batch, name: f.rel, size: f.file.size, sent: 0, state: 'queued', error: null });
-        const upload = new ResumableUpload(f.file, { source: at.source, path: join(at.dir, f.rel) }, (sent) => {
+        const target = { source: at.source, path: join(at.dir, f.rel) };
+        const progress = (sent: number) => {
           const item = this.item(id);
           if (item) item.sent = sent;
-        });
+        };
+        // tus places only into the home; a cloud connection gets one streaming PUT, passed on to the provider's session.
+        const upload = at.source === 'home' ? new ResumableUpload(f.file, target, progress) : new DirectUpload(f.file, target, progress);
         jobs.set(id, { upload, policy: null });
       }
       void this.pump();
