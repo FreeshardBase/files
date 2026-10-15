@@ -48,12 +48,18 @@ const Schema = z.object({
   // The shard's OAuth client at Google (#149). Optional as a pair: without it Google Drive is not offered.
   FILES_GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   FILES_GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  // The shard's Dropbox app (#150): its app key and secret. Optional as a pair: without it Dropbox is not offered.
+  FILES_DROPBOX_CLIENT_ID: z.string().min(1).optional(),
+  FILES_DROPBOX_CLIENT_SECRET: z.string().min(1).optional(),
 }).refine((e) => (e.FILES_OIDC_ROLE_CLAIM === undefined) === (e.FILES_OIDC_ADMIN_VALUE === undefined), {
   path: ['FILES_OIDC_ROLE_CLAIM'],
   message: 'FILES_OIDC_ROLE_CLAIM and FILES_OIDC_ADMIN_VALUE must be set both or neither',
 }).refine((e) => (e.FILES_GOOGLE_CLIENT_ID === undefined) === (e.FILES_GOOGLE_CLIENT_SECRET === undefined), {
   path: ['FILES_GOOGLE_CLIENT_ID'],
   message: 'FILES_GOOGLE_CLIENT_ID and FILES_GOOGLE_CLIENT_SECRET must be set both or neither',
+}).refine((e) => (e.FILES_DROPBOX_CLIENT_ID === undefined) === (e.FILES_DROPBOX_CLIENT_SECRET === undefined), {
+  path: ['FILES_DROPBOX_CLIENT_ID'],
+  message: 'FILES_DROPBOX_CLIENT_ID and FILES_DROPBOX_CLIENT_SECRET must be set both or neither',
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -84,6 +90,9 @@ export function loadConfig(env: Record<string, string | undefined>) {
     logLevel: e.FILES_LOG_LEVEL,
     google: e.FILES_GOOGLE_CLIENT_ID !== undefined && e.FILES_GOOGLE_CLIENT_SECRET !== undefined
       ? { clientId: e.FILES_GOOGLE_CLIENT_ID, clientSecret: e.FILES_GOOGLE_CLIENT_SECRET }
+      : undefined,
+    dropbox: e.FILES_DROPBOX_CLIENT_ID !== undefined && e.FILES_DROPBOX_CLIENT_SECRET !== undefined
+      ? { clientId: e.FILES_DROPBOX_CLIENT_ID, clientSecret: e.FILES_DROPBOX_CLIENT_SECRET }
       : undefined,
   };
 }

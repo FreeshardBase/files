@@ -7,15 +7,18 @@ import { AppError } from '../../src/errors.ts';
 import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from '../../src/storage/backend.ts';
 import type { OAuthClient, Provider } from '../../src/cloud/oauth.ts';
 import { googleDriveProvider } from '../../src/cloud/googleDrive.ts';
+import { dropboxProvider } from '../../src/cloud/dropbox.ts';
 import { FakeDrive } from './fakeDrive.ts';
+import { FakeDropbox } from './fakeDropbox.ts';
 
 // A fake cloud provider (spec §3.9): an OAuth 2 authorization server with a consent page, plus a small file API with the
 // behaviour every real provider has and the backends must handle: pagination, 401 on an expired access token, rotated
 // refresh tokens, 429 with Retry-After, resumable upload sessions and content served through a 302 to a pre-signed URL.
 // The provider backends (#149–#151) extend it with each provider's own protocol subset: Google Drive's is `drive`
-// (support/fakeDrive.ts), reached through `driveProvider()`.
+// (support/fakeDrive.ts), reached through `driveProvider()`; Dropbox's is `dropbox` (support/fakeDropbox.ts), reached
+// through `dropboxProvider()`.
 
-/** `query` is the query string (or a session chunk's Content-Range), `body` a parsed JSON body (Drive requests). */
+/** `query` is the query string (or a session chunk's Content-Range), `body` a parsed JSON body or Dropbox-API-Arg. */
 export type FakeRequest = { method: string; path: string; at: number; token?: string; grant?: string; query?: string; body?: unknown };
 type FakeFile = { type: 'file' | 'directory'; data: Buffer; modified: string };
 
@@ -43,6 +46,10 @@ export type FakeProvider = {
   driveProvider(o?: { chunkBytes?: number }): Provider;
   /** The Drive v3 subset (support/fakeDrive.ts): its files, sessions and controls. */
   drive: FakeDrive;
+  /** The real Dropbox provider (`dropboxProvider`) with this server's endpoints in place of Dropbox's. */
+  dropboxProvider(o?: { chunkBytes?: number }): Provider;
+  /** The Dropbox API v2 subset (support/fakeDropbox.ts): its items, sessions and controls. */
+  dropbox: FakeDropbox;
   /** Puts a file (or, with `null`, a folder) into the fake's store; parent folders are created. */
   put(path: string, content: string | null): void;
   /** Every request in order. `token` is the bearer (API) or the refresh token (refresh grant). */
@@ -93,6 +100,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   let refreshGrants = 0;
   let url = '';
   const drive = new FakeDrive(() => url, pageSize);
+  const dropbox = new FakeDropbox(pageSize);
 
   const entry = (path: string, f: FakeFile): Entry => ({ name: nameOf(path) || '/', path, type: f.type, size: f.data.length,
     modified: f.modified, ...(f.type === 'file' ? { mime: mimeOf(nameOf(path)) } : {}) });
@@ -180,6 +188,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     const t = accessTokens.get(token);
     if (!t || t.expiresAt <= Date.now()) return json(res, 401, { error: 'invalid_token' });
     if (await drive.api(req, res, u, rec, t.account, FAKE_ACCOUNTS[t.account]!)) return;
+    if (await dropbox.api(req, res, u, rec, t.account, FAKE_ACCOUNTS[t.account]!)) return;
     const q = u.searchParams;
     const body = req.method === 'POST' ? JSON.parse((await readBody(req)).toString() || '{}') as Record<string, string | number> : {};
     const at = (p: unknown) => (typeof p === 'string' ? files.get(p) : undefined);
@@ -273,8 +282,10 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   const server = http.createServer((req, res) => {
     const u = new URL(req.url ?? '/', url);
     const rec: FakeRequest = { method: req.method ?? 'GET', path: u.pathname, at: Date.now() };
-    // Drive's API needs the bearer token; its upload session URIs (`upload_id`) are pre-signed, like Google's.
-    const driveApi = u.pathname.startsWith('/drive/') || (u.pathname.startsWith('/upload/drive/') && !u.searchParams.has('upload_id'));
+    // Drive's API needs the bearer token; its upload session URIs (`upload_id`) are pre-signed, like Google's. Every
+    // Dropbox endpoint needs the bearer token, content ones included.
+    const driveApi = u.pathname.startsWith('/drive/') || u.pathname.startsWith('/dropbox/')
+      || (u.pathname.startsWith('/upload/drive/') && !u.searchParams.has('upload_id'));
     const handle = u.pathname.startsWith('/oauth/') ? oauth : u.pathname.startsWith('/api/') || driveApi ? api : presigned;
     // Recorded on arrival, so a hook sees the state the request was sent in (`token`/`grant` are filled in while handling).
     requests.push(rec);
@@ -306,6 +317,12 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
       ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
     }),
     drive,
+    dropboxProvider: (o = {}) => dropboxProvider({ clientId: FAKE_CLIENT.id, clientSecret: FAKE_CLIENT.secret }, {
+      endpoints: { authorization: `${url}/oauth/authorize`, token: `${url}/oauth/token`, api: `${url}/dropbox/api/2`,
+        content: `${url}/dropbox/content/2` },
+      ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
+    }),
+    dropbox,
     refreshGrants: () => refreshGrants,
     validRefreshTokens: () => [...refreshTokens.keys()],
     expireAccessTokens: () => accessTokens.clear(),

@@ -30,7 +30,7 @@ export const hasThumbnail = (e: Entry): boolean =>
 
 /** The thumbnail route; `v` (the modified time) gives a changed file a new URL, so the browser may cache each one. */
 export const thumbnailHref = (source: string, e: Entry, size: ThumbSize): string =>
-  `${sourceApi(source)}/thumbnail?path=${encodeURIComponent(e.path)}&size=${size}&v=${encodeURIComponent(e.modified)}`;
+  `${sourceApi(source)}/thumbnail?path=${encodeURIComponent(e.path)}&size=${size}&v=${encodeURIComponent(e.modified ?? '')}`;
 
 /** URL the viewers load: the content route without `download=1`, inline for the allowlist. */
 export const contentHref = (source: string, path: string): string => `${sourceApi(source)}/content?path=${encodeURIComponent(path)}`;

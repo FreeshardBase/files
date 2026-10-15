@@ -229,7 +229,9 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
           class="num date"
           role="cell"
         >
-          {{ formatDate(e.modified, intlLocale(locale)) }}
+          <template v-if="e.modified">
+            {{ formatDate(e.modified, intlLocale(locale)) }}
+          </template>
         </td>
         <td
           class="menu-cell"

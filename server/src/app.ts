@@ -29,6 +29,7 @@ import { thumbsDir } from './paths.ts';
 import { CloudConnections } from './cloud/connections.ts';
 import { systemClock, type Clock, type Provider } from './cloud/oauth.ts';
 import { googleDriveProvider } from './cloud/googleDrive.ts';
+import { dropboxProvider } from './cloud/dropbox.ts';
 import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
 
 declare module 'fastify' {
@@ -42,10 +43,10 @@ export type Connections = (user: User) => Promise<ConnectedBackend[]>;
 
 /**
  * The cloud providers the shard offers: each one whose client credentials are configured, with its fixed endpoints.
- * Google Drive (#149); Dropbox and Microsoft Graph come with their backends (#150, #151).
+ * Google Drive (#149) and Dropbox (#150); Microsoft Graph comes with its backend (#151).
  */
 export function configuredProviders(config: Config): Provider[] {
-  return config.google ? [googleDriveProvider(config.google)] : [];
+  return [...(config.google ? [googleDriveProvider(config.google)] : []), ...(config.dropbox ? [dropboxProvider(config.dropbox)] : [])];
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;

@@ -6,7 +6,8 @@ export const EntrySchema = z.object({
   path: z.string().startsWith('/'),
   type: z.enum(['file', 'directory']),
   size: z.number().int().nonnegative(),
-  modified: z.iso.datetime(),
+  /** Absent where the source keeps no time for the item (a Dropbox folder, #150). */
+  modified: z.iso.datetime().optional(),
   mime: z.string().optional(),
 });
 export type Entry = z.infer<typeof EntrySchema>;
