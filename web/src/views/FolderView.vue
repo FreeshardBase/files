@@ -16,11 +16,13 @@ import RenameDialog from '../components/RenameDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
+import { useConnectionsStore } from '../stores/connections.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
 const route = useRoute(); const router = useRouter(); const { t } = useI18n();
 const folder = useFolderStore();
 const uploads = useUploadsStore();
+const connections = useConnectionsStore();
 const status = ref('');
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
@@ -45,7 +47,7 @@ const selectedEntries = computed(() => folder.entries.filter((e) => selected.val
 const shareName = ref<string | null>(null);
 watch(source, async (s) => {
   shareName.value = null;
-  if (s === 'home') return;
+  if (s === 'home' || s.startsWith('conn:')) return;
   try {
     const root = await api.get<Entry>(`${sourceApi(s)}/stat`, { path: '/' });
     if (source.value === s) shareName.value = root.name;
@@ -53,7 +55,12 @@ watch(source, async (s) => {
     if (!(e instanceof ApiFailure)) throw e; // handled: the listing of the same source reports the failure
   }
 }, { immediate: true });
-const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot') : (shareName.value ?? t('nav.shared')));
+// A connection (#148) is named after its provider account, as in the sidebar.
+const connection = computed(() => connections.bySource(source.value));
+const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot')
+  : source.value.startsWith('conn:') ? (connection.value ? t('nav.connection', { provider: connection.value.providerName,
+    account: connection.value.account }) : t('nav.connections'))
+  : (shareName.value ?? t('nav.shared')));
 const folderName = computed(() => path.value === '/' ? (source.value === 'home' ? t('nav.home') : rootLabel.value) : path.value.split('/').pop()!);
 // What the caller may do here: change only with `edit` (re-checked by the server on every request); share and upload
 // only in their own home, since a share is never shared on and resumable uploads target the home (DECISIONS, #146).

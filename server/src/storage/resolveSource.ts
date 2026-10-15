@@ -22,9 +22,12 @@ export function parseSource(source: string): SourceRef {
   throw new AppError('SOURCE_NOT_FOUND');
 }
 
-// #148: the caller's own connection row only; another member's connection is SOURCE_NOT_FOUND.
-async function resolveConnection(_user: User, _id: string): Promise<ResolvedSource> {
-  throw new AppError('SOURCE_NOT_FOUND');
+// #148: only among the caller's own connections, so another member's connection is SOURCE_NOT_FOUND like an unknown id.
+// The member has full access to their own cloud account.
+async function resolveConnection(req: FastifyRequest, user: User, id: string): Promise<ResolvedSource> {
+  const conn = (await req.server.deps.connections(user)).find((c) => c.id === id);
+  if (!conn) throw new AppError('SOURCE_NOT_FOUND');
+  return { backend: conn.backend, access: 'edit' };
 }
 
 /** The home of `userId`, with that member's rows. Only the caller's home, or a share's owner's home, is ever built. */
@@ -78,7 +81,7 @@ export async function resolveSource(req: FastifyRequest, source: string): Promis
   const ref = parseSource(source);
   switch (ref.kind) {
     case 'home': return { backend: homeBackend(req), access: 'edit' };
-    case 'conn': return resolveConnection(user, ref.id);
+    case 'conn': return resolveConnection(req, user, ref.id);
     case 'share': return resolveShare(req, user, ref.id);
   }
 }

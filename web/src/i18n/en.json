@@ -10,7 +10,37 @@
     "sources": "Places",
     "recent": "Recent",
     "shared": "Shared with me",
-    "trash": "Trash"
+    "trash": "Trash",
+    "connections": "Cloud accounts",
+    "connection": "{provider}: {account}"
+  },
+  "connections": {
+    "title": "Cloud accounts",
+    "intro": "Connect your own cloud accounts. Only you see them; the files stay with the provider and are shown live.",
+    "empty": "You have not connected a cloud account yet.",
+    "columns": {
+      "account": "Account",
+      "provider": "Provider",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "ok": "Connected",
+      "reauth": "Needs signing in again",
+      "unavailable": "No longer offered on this shard"
+    },
+    "open": "Open",
+    "openLabel": "Open {account}",
+    "reauth": "Sign in again",
+    "reauthLabel": "Sign in to {account} again",
+    "unlink": "Unlink",
+    "unlinkLabel": "Unlink {account}",
+    "unlinkTitle": "Unlink {account}?",
+    "unlinkMessage": "Shared items and public links from this account stop working, even if you connect it again later. Your files stay with {provider}; to revoke the access completely, remove it in your {provider} account settings.",
+    "unlinked": "{account} unlinked",
+    "add": "Connect an account",
+    "connect": "Connect {provider}",
+    "noProviders": "No cloud provider is set up on this shard yet."
   },
   "recent": {
     "title": "Recent",
@@ -295,7 +325,11 @@
     "DOWNLOAD_LIMIT_REACHED": "This link has no downloads left.",
     "PASSWORD_REQUIRED": "Enter the password of this link first.",
     "PASSWORD_WRONG": "The password is not correct.",
-    "TOO_MANY_ATTEMPTS": "Too many wrong passwords. Please wait a few minutes and try again."
+    "TOO_MANY_ATTEMPTS": "Too many wrong passwords. Please wait a few minutes and try again.",
+    "CONNECT_FAILED": "The account could not be connected. Please try again.",
+    "CONNECT_ACCOUNT_MISMATCH": "You signed in with a different account. Sign in with the account of this connection, or connect the other account as well.",
+    "CONNECTION_REAUTH": "The cloud provider no longer accepts the sign-in. Sign in again under “Cloud accounts”.",
+    "PROVIDER_UNAVAILABLE": "The cloud provider cannot be reached right now. Please try again later."
   },
   "view": {
     "label": "View",

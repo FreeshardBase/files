@@ -6,7 +6,10 @@ import { loginFailed } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
 import SearchBox from './components/SearchBox.vue';
 import { isPublicPage } from './router.ts';
+import { useConnectionsStore } from './stores/connections.ts';
+import { folderRoute } from './api/paths.ts';
 const session = useSessionStore();
+const connections = useConnectionsStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
 // A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
@@ -14,6 +17,7 @@ const publicPage = isPublicPage(location.pathname);
 onMounted(async () => {
   if (publicPage) return;
   await session.load();
+  if (session.me) void connections.load(); // the member's clouds in the sidebar (#148)
   if (!showLoginFailed) return;
   // The alert is decided; drop the flag from the URL so a reload or bookmark does not repeat it.
   await router.isReady();
@@ -50,6 +54,37 @@ onMounted(async () => {
             aria-hidden="true"
           />
           {{ $t('nav.home') }}
+        </RouterLink>
+        <RouterLink
+          v-for="c in connections.items"
+          :key="c.id"
+          :to="folderRoute(c.source, '/')"
+          active-class="active"
+          class="nav-connection"
+          :data-status="c.status"
+        >
+          <span
+            class="icon icon-cloud"
+            aria-hidden="true"
+          />
+          <span class="nav-connection-text">
+            <span class="nav-connection-provider">{{ c.providerName }}</span>
+            {{ c.account }}
+            <span
+              v-if="c.status !== 'ok'"
+              class="nav-connection-status"
+            >{{ $t(`connections.status.${c.status}`) }}</span>
+          </span>
+        </RouterLink>
+        <RouterLink
+          to="/connections"
+          active-class="active"
+        >
+          <span
+            class="icon icon-cloud-add"
+            aria-hidden="true"
+          />
+          {{ $t('nav.connections') }}
         </RouterLink>
         <RouterLink
           to="/recent"

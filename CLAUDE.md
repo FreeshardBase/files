@@ -8,6 +8,7 @@ export PATH=~/.local/node22/bin:$PATH
 pnpm install
 pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile Chromium, Firefox for the PDF preview); picks free ports itself
+pnpm test:live                              # real cloud providers; skipped (never passed) without LIVE_* tokens in server/.env.live
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped. The image has no `USER`: `main.ts` starts as root, chowns `/data` itself (never recursively, `server/src/dataDir.ts`) and drops to `node` (uid 1000) before opening anything. Do not add `USER node` to the image or `user: 0:0` to the app template.
@@ -35,4 +36,5 @@ Container: with podman use `podman build --format docker .`, otherwise the `HEAL
 - **Migration.** Add a new `server/migrations/NNN_name.sql` with the next number. Never edit a migration that has been applied anywhere; fix forward with a new one.
 - **Route.** Register it under `/api/v1/…`. Zod-parse `req.params`, `req.query` and the body inside the handler; take the user from `requireUser(req)`. Add `config: { public: true }` only with a stated reason. The route-inventory test picks it up automatically (401 without a session, 403 CSRF on mutating methods).
 - **Test harness.** `startTestApp(overrides?, extend?)` in `server/test/support/harness.ts` boots the real app on a temp data dir with `NODE_ENV=production`; `t.routes` lists every registered route. `login(t, user)` runs the real OIDC flow against the fake IdP (`testuser` is admin, `member` is a member) and returns `{ cookie, csrf }`. Mutating requests need `origin: t.config.publicUrl.origin` (`https://files.example.com`) and `x-csrf-token: csrf`. Each test sets up its own files; never rely on another test having run.
+- **Cloud provider tests.** Start `startFakeProvider()` from `server/test/support/fakeProvider.ts` and pass `{ providers: [fake.provider()], clock? }` as the harness's fourth argument; `fake.consent(url)` plays the consent page, and its controls expire tokens, revoke grants and inject 429/5xx. A real provider gets its fixed endpoints in its own module, never from a request. UI tests of connections run against the E2E cloud server (`e2e/cloudServer.ts`, `test.use({ baseURL: ... E2E_CLOUD_PORT })`).
 - **Catch blocks.** A `catch` that does not rethrow must say why on the same line: `// handled: <what happens instead>`. No empty or silent catch.

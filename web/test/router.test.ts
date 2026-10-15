@@ -5,6 +5,7 @@ import FolderView from '../src/views/FolderView.vue';
 import TrashView from '../src/views/TrashView.vue';
 import RecentView from '../src/views/RecentView.vue';
 import SharedView from '../src/views/SharedView.vue';
+import ConnectionsView from '../src/views/ConnectionsView.vue';
 import { folderRoute } from '../src/api/paths.ts';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
@@ -48,10 +49,21 @@ describe('router', () => {
     await r.push('/home/shared');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
     // Anything else that looks like a source is not one.
-    for (const bad of ['/share:/x', '/share:a.b/x', '/conn:x/y', '/sharex/y']) {
+    for (const bad of ['/share:/x', '/share:a.b/x', '/conn:/y', '/conn:a.b/y', '/sharex/y']) {
       await r.push(bad);
       expect(r.currentRoute.value.path, bad).toBe('/home');
     }
+  });
+  it('routes a connection to the folder view with `conn:<id>` as its source, and /connections to "Cloud accounts" (#148)', async () => {
+    const r = mk();
+    await r.push(folderRoute('conn:0123abcd', '/Docs'));
+    expect(r.currentRoute.value.path).toBe('/conn:0123abcd/Docs');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+    expect(r.currentRoute.value.params).toEqual({ source: 'conn:0123abcd', path: ['Docs'] });
+    await r.push('/connections?error=CONNECT_FAILED');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(ConnectionsView);
+    await r.push('/home/connections');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
   });
   it('treats /home as the root folder', async () => {
     const r = mk();

@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest';
+import { OAuthClient, systemClock, type Provider } from '../../src/cloud/oauth.ts';
+
+// Live check of the OAuthClient against each provider's real token endpoint: a stored refresh token yields an access
+// token, and a rotated refresh token reaches the store. Runs only with `LIVE_<P>_REFRESH_TOKEN`, `LIVE_<P>_CLIENT_ID` and
+// `LIVE_<P>_CLIENT_SECRET` (server/.env.live); otherwise the suite is skipped, never passed. The endpoints move into the
+// provider modules with #149–#151, which add their backends' live tests next to this one.
+const LIVE = [
+  { name: 'Google Drive', env: 'GOOGLE', tokenEndpoint: 'https://oauth2.googleapis.com/token' },
+  { name: 'Dropbox', env: 'DROPBOX', tokenEndpoint: 'https://api.dropboxapi.com/oauth2/token' },
+  { name: 'Microsoft Graph', env: 'GRAPH', tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token' },
+];
+
+const unused = (): never => { throw new Error('not part of the live token check'); };
+
+for (const p of LIVE) {
+  const vars = ['REFRESH_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET'].map((v) => process.env[`LIVE_${p.env}_${v}`]);
+  const [refresh, clientId, clientSecret] = vars;
+  describe.skipIf(vars.some((v) => !v))(`live: ${p.name} (LIVE_${p.env}_*)`, () => {
+    it('refreshes an access token with the stored refresh token', async () => {
+      const provider: Provider = { id: p.env.toLowerCase(), name: p.name, authorizationEndpoint: p.tokenEndpoint,
+        tokenEndpoint: p.tokenEndpoint, clientId: clientId!, clientSecret: clientSecret!, scopes: [], pkce: false,
+        account: unused, backend: unused };
+      let stored = refresh!; const statuses: string[] = [];
+      const client = new OAuthClient(provider, { refreshToken: () => stored, saveRefreshToken: (t) => { stored = t; },
+        setStatus: (s) => { statuses.push(s); } }, systemClock);
+      expect((await client.accessToken()).length).toBeGreaterThan(0);
+      expect(statuses).toEqual(['ok']);
+      // The token itself is never printed; only that it changed, so the env file can be updated through the UI flow.
+      if (stored !== refresh) console.warn(`${p.name} rotated the refresh token; reconnect to refresh LIVE_${p.env}_REFRESH_TOKEN`);
+    });
+  });
+}

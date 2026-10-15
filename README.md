@@ -16,10 +16,13 @@ export PATH=~/.local/node22/bin:$PATH
 pnpm install
 pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile)
+pnpm test:live                              # real-provider tests; skipped without LIVE_* tokens in server/.env.live
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 
 Sign-in always goes through OIDC. `pnpm dev` starts a fake identity provider for you; there are no local accounts. See `CLAUDE.md` for the rules contributors and agents follow, `CONCEPTS.md` for the model and module map, and `DECISIONS.md` for decisions.
+
+Members connect their own cloud accounts under "Cloud accounts". No provider is offered yet: Google Drive, Dropbox and Microsoft Graph arrive with their backends. Refresh tokens are stored encrypted with `FILES_ENCRYPTION_KEY`; changing that key makes every connection fail until it is connected again. The live tests (`pnpm test:live`) read `LIVE_<GOOGLE|DROPBOX|GRAPH>_REFRESH_TOKEN`, `_CLIENT_ID` and `_CLIENT_SECRET` from the untracked `server/.env.live`; without them they report skipped.
 
 Thumbnails need `ffmpeg` (video frames) and `pdftoppm` from poppler-utils (PDF pages) on the `PATH`; images use `sharp`, which brings its own libvips. The container image installs both tools. `FILES_THUMB_CACHE_BYTES` caps the thumbnail cache (default 512 MiB) and `FILES_THUMB_TIMEOUT_MS` limits each generator run (default 30 000).
 

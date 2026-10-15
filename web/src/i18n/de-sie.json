@@ -10,7 +10,37 @@
     "sources": "Orte",
     "recent": "Zuletzt",
     "shared": "Mit mir geteilt",
-    "trash": "Papierkorb"
+    "trash": "Papierkorb",
+    "connections": "Cloud-Konten",
+    "connection": "{provider}: {account}"
+  },
+  "connections": {
+    "title": "Cloud-Konten",
+    "intro": "Verbinden Sie Ihre eigenen Cloud-Konten. Nur Sie sehen sie; die Dateien bleiben beim Anbieter und werden live angezeigt.",
+    "empty": "Sie haben noch kein Cloud-Konto verbunden.",
+    "columns": {
+      "account": "Konto",
+      "provider": "Anbieter",
+      "status": "Status",
+      "actions": "Aktionen"
+    },
+    "status": {
+      "ok": "Verbunden",
+      "reauth": "Erneute Anmeldung nötig",
+      "unavailable": "Auf diesem Shard nicht mehr angeboten"
+    },
+    "open": "Öffnen",
+    "openLabel": "{account} öffnen",
+    "reauth": "Erneut anmelden",
+    "reauthLabel": "Bei {account} erneut anmelden",
+    "unlink": "Trennen",
+    "unlinkLabel": "{account} trennen",
+    "unlinkTitle": "{account} trennen?",
+    "unlinkMessage": "Geteilte Elemente und öffentliche Links aus diesem Konto funktionieren danach nicht mehr, auch wenn Sie es später wieder verbinden. Ihre Dateien bleiben bei {provider}; den Zugriff ganz widerrufen können Sie in Ihren Kontoeinstellungen bei {provider}.",
+    "unlinked": "{account} getrennt",
+    "add": "Konto verbinden",
+    "connect": "{provider} verbinden",
+    "noProviders": "Auf diesem Shard ist noch kein Cloud-Anbieter eingerichtet."
   },
   "recent": {
     "title": "Zuletzt geändert",
@@ -295,7 +325,11 @@
     "DOWNLOAD_LIMIT_REACHED": "Für diesen Link sind keine Downloads mehr übrig.",
     "PASSWORD_REQUIRED": "Geben Sie zuerst das Passwort dieses Links ein.",
     "PASSWORD_WRONG": "Das Passwort stimmt nicht.",
-    "TOO_MANY_ATTEMPTS": "Zu viele falsche Passwörter. Bitte warten Sie ein paar Minuten und versuchen Sie es dann erneut."
+    "TOO_MANY_ATTEMPTS": "Zu viele falsche Passwörter. Bitte warten Sie ein paar Minuten und versuchen Sie es dann erneut.",
+    "CONNECT_FAILED": "Das Konto konnte nicht verbunden werden. Bitte versuchen Sie es erneut.",
+    "CONNECT_ACCOUNT_MISMATCH": "Sie haben sich mit einem anderen Konto angemeldet. Melden Sie sich mit dem Konto dieser Verbindung an, oder verbinden Sie das andere Konto zusätzlich.",
+    "CONNECTION_REAUTH": "Der Cloud-Anbieter akzeptiert die Anmeldung nicht mehr. Melden Sie sich unter „Cloud-Konten“ erneut an.",
+    "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuchen Sie es später erneut."
   },
   "view": {
     "label": "Ansicht",

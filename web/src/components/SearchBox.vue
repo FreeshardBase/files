@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { useSearchStore } from '../stores/search.ts';
 import { folderRoute } from '../api/paths.ts';
+import { useConnectionsStore } from '../stores/connections.ts';
 
 const DEBOUNCE_MS = 200;
 const { t } = useI18n();
@@ -19,9 +20,15 @@ const active = ref(-1); // index into `flat`
 let timer: ReturnType<typeof setTimeout> | undefined;
 onBeforeUnmount(() => clearTimeout(timer));
 
-const sourceLabel = (source: string) => source === 'home' ? t('nav.home') : source;
+const connections = useConnectionsStore();
+// A connection's group is named like its sidebar entry (#148).
+const sourceLabel = (source: string) => {
+  if (source === 'home') return t('nav.home');
+  const c = connections.bySource(source);
+  return c ? t('nav.connection', { provider: c.providerName, account: c.account }) : source;
+};
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
-const folderLabel = (p: string) => p === '/' ? t('nav.home') : p;
+const folderLabel = (source: string, p: string) => p === '/' ? sourceLabel(source) : p;
 
 type Result = { source: string; entry: Entry; id: string };
 // Groups with results, in the server's order (home first); every option has a stable id for aria-activedescendant.
@@ -150,7 +157,7 @@ function onFocusOut(e: FocusEvent) {
               aria-hidden="true"
             />
             <span class="search-name">{{ r.entry.name }}</span>
-            <span class="search-location">{{ folderLabel(parentOf(r.entry.path)) }}</span>
+            <span class="search-location">{{ folderLabel(r.source, parentOf(r.entry.path)) }}</span>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
 export default defineConfig({
-  test: { environment: 'node', pool: 'forks', testTimeout: 15000, env: { NODE_ENV: 'production' } },
+  // Live provider tests run only under `pnpm test:live` (vitest.live.config.ts).
+  test: { environment: 'node', pool: 'forks', testTimeout: 15000, env: { NODE_ENV: 'production' }, exclude: ['test/live/**', '**/node_modules/**'] },
 });

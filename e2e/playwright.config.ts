@@ -3,6 +3,8 @@ import { freePort } from './freePort.ts';
 
 // Config is re-evaluated in worker processes; workers inherit env from the runner, so pick once.
 process.env.E2E_PORT ??= String(await freePort());
+// A second server with the fake cloud provider (#148, e2e/cloudServer.ts); e2e/connections.spec.ts runs against it.
+process.env.E2E_CLOUD_PORT ??= String(await freePort());
 
 export default defineConfig({
   testDir: '.',
