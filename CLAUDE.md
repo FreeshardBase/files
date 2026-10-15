@@ -7,7 +7,7 @@ Read `docs/superpowers/specs/2026-10-14-files-rebuild-design.md` first. It is th
 export PATH=~/.local/node22/bin:$PATH
 pnpm install
 pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
-pnpm e2e                                    # build + Playwright (desktop + mobile); picks free ports itself
+pnpm e2e                                    # build + Playwright (desktop + mobile Chromium, Firefox for the PDF preview); picks free ports itself
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped. The image has no `USER`: `main.ts` starts as root, chowns `/data` itself (never recursively, `server/src/dataDir.ts`) and drops to `node` (uid 1000) before opening anything. Do not add `USER node` to the image or `user: 0:0` to the app template.

@@ -1,14 +1,17 @@
 <script setup lang="ts">
 // PDF preview with pdf.js on a canvas, one page at a time. The browser's own viewer is no option: it refuses a
 // document with `CSP: sandbox`, and mobile browsers do not show PDFs inline at all. pdf.js loads with Range requests,
-// so a large PDF is not fetched whole before the first page shows.
+// so a large PDF is not fetched whole before the first page shows. pdf.js's transparent text layer lies over the
+// canvas, so the page's text can be selected, searched with the browser's find and read by a screen reader (#143).
 import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 const props = defineProps<{ url: string }>();
 const emit = defineEmits<{ failed: [] }>();
+const sheet = ref<HTMLDivElement>(); // one page: the canvas with the text layer on top
 const canvas = ref<HTMLCanvasElement>();
+const textLayer = ref<HTMLDivElement>();
 const doc = shallowRef<PDFDocumentProxy | null>(null);
 const page = ref(1);
 const rendered = ref(0); // the page on the canvas, 0 while none is
@@ -21,18 +24,22 @@ function fail(e: unknown) {
 }
 
 async function draw() {
-  const d = doc.value; const c = canvas.value;
-  if (!d || !c) return;
+  const d = doc.value; const s = sheet.value; const c = canvas.value; const layer = textLayer.value;
+  if (!d || !s || !c || !layer) return;
   const n = page.value;
   const p = await d.getPage(n);
   const natural = p.getViewport({ scale: 1 });
-  const fit = Math.min(2, (c.parentElement?.clientWidth || natural.width) / natural.width);
+  const fit = Math.min(2, (s.parentElement?.clientWidth || natural.width) / natural.width);
   const ratio = window.devicePixelRatio || 1;
   const vp = p.getViewport({ scale: fit * ratio });
   c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
   c.style.width = `${Math.floor(vp.width / ratio)}px`;
   rendered.value = 0;
-  await p.render({ canvas: c, viewport: vp }).promise;
+  layer.replaceChildren(); // the queue has finished the previous page's layer
+  s.style.setProperty('--total-scale-factor', String(fit)); // the text layer sizes its runs in CSS pixels from it
+  const { TextLayer } = await import('pdfjs-dist');
+  const t = new TextLayer({ textContentSource: p.streamTextContent(), container: layer, viewport: p.getViewport({ scale: fit }) });
+  await Promise.all([p.render({ canvas: c, viewport: vp }).promise, t.render()]);
   if (doc.value === d) rendered.value = n;
 }
 const redraw = () => { queue = queue.then(draw).catch(fail); };
@@ -98,11 +105,20 @@ function turn(by: number) {
     <p v-if="!rendered">
       {{ $t('preview.loading') }}
     </p>
-    <canvas
-      ref="canvas"
-      role="img"
-      :aria-label="$t('preview.pdfPage', { n: page, total: doc?.numPages ?? 1 })"
-      :data-rendered-page="rendered || undefined"
-    />
+    <div
+      ref="sheet"
+      class="pdf-sheet"
+    >
+      <canvas
+        ref="canvas"
+        role="img"
+        :aria-label="$t('preview.pdfPage', { n: page, total: doc?.numPages ?? 1 })"
+        :data-rendered-page="rendered || undefined"
+      />
+      <div
+        ref="textLayer"
+        class="pdf-text"
+      />
+    </div>
   </div>
 </template>
