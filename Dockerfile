@@ -10,6 +10,7 @@ COPY . .
 RUN pnpm build
 
 FROM node:22-slim AS runtime
+LABEL org.opencontainers.image.title="FreeShard Files" org.opencontainers.image.licenses="FSL-1.1-ALv2"
 ENV NODE_ENV=production FILES_DATA_DIR=/data FILES_WEB_DIST=/app/web FILES_PORT=3005
 WORKDIR /app
 # Thumbnail generators (#144): ffmpeg for a video frame, pdftoppm (poppler-utils) for a PDF's first page.
