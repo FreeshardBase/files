@@ -10,6 +10,9 @@
 @import './components.css';
 
 html, body, #app { height: 100%; margin: 0; }
+/* Native controls (scrollbars, radios, selects) follow the theme (#159). */
+:root { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
 body {
   background: var(--bg); color: var(--ink);
   font: 400 var(--fs-body)/1.5 var(--font-ui);
@@ -521,6 +524,11 @@ body {
 .settings-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin-bottom: var(--space-4); }
 .settings-form .settings-field { flex: 1 1 16rem; margin-bottom: 0; }
 .settings-alert { color: var(--danger); }
+/* Language and theme (#159): each a radio group under a label, saved on change. */
+.settings-choices { border: 0; margin: 0 0 var(--space-4); padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.settings-choices legend { padding: 0; margin-bottom: var(--space-2); float: left; width: 100%; }
+.settings-radio { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; }
+.settings-radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
 
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
 .icon-star, .icon-star-filled {

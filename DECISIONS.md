@@ -473,3 +473,21 @@ The server's route. `POST /api/v1/share-target` is reached only when no service 
 Target. My storage only, any folder in it. Cloud connections and shares with `edit` would need a source picker and their own upload paths (a direct PUT per file for clouds); YAGNI for "photos from the gallery into a folder". Manifest name "Files", the product name, as in the page title; the manifest has one language, and the UI's own title stays localised.
 
 Not in this issue: offline data, sharing text or links (only files are accepted), saving into cloud sources or shares, and an install prompt inside the app (the browser offers installation itself).
+
+## 2026-10-15: Language and theme settings (#159, absorbs #25, #33, #122, #126)
+
+Question: where the choice lives, what "no choice" means, how the client applies it before and after the server answers, when a change is saved and what a failed save looks like, how "system" works, and how the address-form check treats the language names.
+
+Storage. One row per member in `user_settings` (migration 017), written on the first save; without a row the defaults apply. `GET`/`PUT /api/v1/settings` read and replace the caller's own row (`{ locale, theme }`, both required, strict), session and CSRF like every route; `/api/v1/me` carries the same object, so the shell applies it with the request it makes anyway. The language is validated against the shared `LOCALES` by the API and not by a `CHECK`, so adding a language is its JSON file plus its tag in `LOCALES`, with no table rebuild; the theme has a `CHECK`.
+
+No choice. `locale: null` means the member has not chosen: the client resolves platform preference (freeshard#168, not there yet; it slots in between) > browser > Deutsch (Du), as the spec orders it. The page offers it as "Automatic (browser language)", so a member can take a choice back. The theme has no such state: its default "Same as the device" already is the absence of a choice.
+
+Applying. The server's setting wins as soon as `/api/v1/me` answers. The device keeps the last known language and theme in `localStorage` (`files.locale`, `files.theme`) only to paint the first frame in them and for a public link's page, which never asks the server; it is never sent anywhere. The theme is `data-theme` on `<html>`, set by script: "system" reads `prefers-color-scheme` and follows its changes while the app is open. The CSS keeps one dark token set (`tokens.css` mirrors the guide's bundle) instead of repeating it under a media query.
+
+Saving. A radio change saves at once (no save button for two choices); the page applies what the server answered, never before, so a refused save changes nothing. The refusal shows `errors.<code>` in the alert line and the radios return to the stored choice (#122). Saves run one after another, so quick changes are stored in the order made.
+
+Address forms. The checks for Du and Sie forms skip exactly the language names (`settings.language.names.*`): "Deutsch (Sie)" names a language, it does not address anyone. The names are the same in every file, each in its own language, which the test also checks.
+
+Screenshots. Baselines of the folder view (the `section.folder` element, not the whole page, since the transfer panel shows other tests' jobs) for both themes and all three languages, per Playwright project; the modification dates are masked.
+
+Not in this issue: more languages, a platform preference (freeshard#168), and an explicit theme for the installed app's title bar (`theme-color` follows the device).

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ERROR_CODES } from './errors.ts';
+import { SettingsSchema } from './settings.ts';
 
 export const EntrySchema = z.object({
   name: z.string().min(1),
@@ -42,6 +43,8 @@ export type DeleteRequest = z.infer<typeof DeleteRequest>;
 export const MeSchema = z.object({
   id: z.string(), displayName: z.string(), email: z.string().optional(),
   role: z.enum(['admin', 'member']), csrfToken: z.string(),
+  /** The member's language and theme (#159): the shell applies them with its first request. */
+  settings: SettingsSchema,
 });
 export type Me = z.infer<typeof MeSchema>;
 

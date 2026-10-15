@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Settings (#157): how to mount the shard home as a network drive over WebDAV, and the member's app passwords for it.
+// Settings: language and theme (#159, PreferencesSection), how to mount the shard home as a network drive over
+// WebDAV, and the member's app passwords for it (#157).
 // A new password is shown once in a dialog; the list never holds it. A create the server refuses (the limit) is shown
 // in the alert line and the form keeps what was typed (#122).
 import { computed, onMounted, ref, useId } from 'vue';
@@ -10,6 +11,7 @@ import { ApiFailure } from '../api/client.ts';
 import { formatDate, intlLocale } from '../format.ts';
 import AppDialog from '../components/AppDialog.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import PreferencesSection from '../components/PreferencesSection.vue';
 
 const { t, locale } = useI18n();
 const store = useAppPasswordsStore();
@@ -87,6 +89,8 @@ async function revoke() {
         {{ $t('settings.title') }}
       </h1>
     </div>
+
+    <PreferencesSection />
 
     <section
       class="settings-section"
