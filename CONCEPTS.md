@@ -38,7 +38,7 @@ All file access goes through `StorageBackend` (`server/src/storage/backend.ts`):
 - it `lstat`s every existing component and rejects symlinks;
 - it `realpath`s the deepest existing ancestor and checks it lies under the root with a trailing separator.
 
-Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
+Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
 
 ## Deny by default
 
@@ -84,6 +84,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
 | `storage/mime.ts` | Extension to MIME lookup. |
+| `storage/uploadSweep.ts` | Startup sweep that removes orphaned `.<16hex>.upload` temp files from every home. |
 
 ### `web/src`
 

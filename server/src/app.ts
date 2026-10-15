@@ -12,6 +12,7 @@ import { registerGuard } from './auth/guard.ts';
 import { registerAuthRoutes } from './auth/routes.ts';
 import { registerSourceRoutes } from './routes/sources.ts';
 import { purgeExpired } from './auth/sessions.ts';
+import { sweepUploadTemps } from './storage/uploadSweep.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -48,6 +49,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute }: AppDe
     crossOriginEmbedderPolicy: false,
   });
   app.decorate('deps', { config, db });
+  // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
+  app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); });
 
   registerGuard(app);
   await registerAuthRoutes(app);
