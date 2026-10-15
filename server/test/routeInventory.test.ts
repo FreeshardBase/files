@@ -51,6 +51,7 @@ describe('route inventory', () => {
     '/*': 'SPA fallback (index.html; also the public share page /s/<token>)',
     '/': 'static asset', '/index.html': 'static asset', '/assets/app.js': 'static asset',
     '/s/:token/*': 'public links (#147): visitors have no session; token, password, expiry and download limit guard it',
+    '/api/v1/share-target': 'Web Share Target (#158): a share sheet POST has no CSRF token; it never reads the body and only redirects',
   };
 
   it('only the allowlisted routes and the static assets are public', () => {
@@ -62,6 +63,11 @@ describe('route inventory', () => {
   it('/s/:token/* is the one public route family of public links, for GET and POST only', () => {
     const links = probes(t.routes).filter((p) => p.pattern.startsWith('/s/'));
     expect(links.filter((p) => p.isPublic).map((p) => `${p.method} ${p.pattern}`).sort()).toEqual(['GET /s/:token/*', 'POST /s/:token/*']);
+  });
+
+  it('the share target is public for POST only', () => {
+    const target = probes(t.routes).filter((p) => p.pattern === '/api/v1/share-target');
+    expect(target.map((p) => `${p.method} ${p.isPublic}`)).toEqual(['POST true']);
   });
 
   it('every non-public route answers 401 without a session', async () => {

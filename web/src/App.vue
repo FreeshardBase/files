@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
@@ -19,6 +19,12 @@ const router = useRouter();
 const showLoginFailed = loginFailed();
 // A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
 const publicPage = isPublicPage(location.pathname);
+// Offline the service worker still starts the shell (#158), but no data loads; the banner says why.
+const online = ref(navigator.onLine);
+const onConnectivity = () => { online.value = navigator.onLine; };
+window.addEventListener('online', onConnectivity);
+window.addEventListener('offline', onConnectivity);
+onUnmounted(() => { window.removeEventListener('online', onConnectivity); window.removeEventListener('offline', onConnectivity); });
 onMounted(async () => {
   if (publicPage) return;
   await session.load();
@@ -46,6 +52,17 @@ onMounted(async () => {
       <span class="app-title">{{ $t('app.name') }}</span>
       <SearchBox v-if="session.me" />
     </header>
+    <p
+      v-if="!online"
+      class="offline-banner"
+      role="status"
+    >
+      <span
+        class="icon icon-offline"
+        aria-hidden="true"
+      />
+      {{ $t('app.offline') }}
+    </p>
     <div
       v-if="session.me"
       class="app-body"

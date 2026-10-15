@@ -2,7 +2,17 @@
   "app": {
     "name": "Files",
     "retry": "Try again",
-    "signInAgain": "Sign in again"
+    "signInAgain": "Sign in again",
+    "offline": "You're offline. Files and folders load again once the connection is back."
+  },
+  "shareTarget": {
+    "title": "Save shared files",
+    "intro": "Choose the folder in My storage for the shared file. | Choose the folder in My storage for the {count} shared files.",
+    "picker": "Target folder",
+    "target": "Saves to: {folder}",
+    "save": "Save here",
+    "discard": "Discard",
+    "missing": "Nothing to save here. Either the files were already saved, or the share did not reach Files: open Files once, then share again."
   },
   "nav": {
     "home": "My storage",

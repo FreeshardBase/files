@@ -39,6 +39,9 @@ export default tseslint.config(
   // Browser globals (File, HTMLElement, ...) are checked by vue-tsc; eslint's no-undef only adds false positives here.
   { files: ['web/**/*.{ts,vue}'], rules: { 'no-undef': 'off' } },
   { files: ['server/src/main.ts'], rules: { 'no-restricted-properties': 'off' } },
+  // The service worker (#158) is plain JavaScript in a worker scope.
+  { files: ['web/public/sw.js'], languageOptions: { sourceType: 'script', globals: Object.fromEntries(
+    ['self', 'caches', 'fetch', 'indexedDB', 'crypto', 'Response', 'File', 'URL'].map((g) => [g, 'readonly'])) } },
   ...vue.configs['flat/recommended'],
   {
     files: ['web/src/**/*.vue'],

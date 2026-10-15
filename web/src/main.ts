@@ -8,3 +8,7 @@ import './styles/app.css';
 
 syncHtmlLang(i18n.global.locale);
 createApp(App).use(createPinia()).use(router).use(i18n).mount('#app');
+
+// The service worker (#158): the app shell without network and the Web Share Target. Only the built app registers it;
+// under the dev server a cached shell would hide every edit.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js');
