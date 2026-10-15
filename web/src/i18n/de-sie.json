@@ -8,7 +8,21 @@
     "home": "Mein Speicher",
     "breadcrumbRoot": "Mein Speicher",
     "sources": "Orte",
+    "recent": "Zuletzt",
     "trash": "Papierkorb"
+  },
+  "recent": {
+    "title": "Zuletzt geändert",
+    "empty": "Noch nichts da. Dateien, die Sie hochladen, kopieren, verschieben, umbenennen oder wiederherstellen, erscheinen hier.",
+    "columns": {
+      "name": "Name",
+      "location": "Ort",
+      "changed": "Geändert",
+      "actions": "Aktionen"
+    },
+    "openFolder": "Ordner öffnen",
+    "openFolderLabel": "Ordner von {name} öffnen",
+    "openLabel": "{name} öffnen"
   },
   "folder": {
     "empty": "Dieser Ordner ist leer.",

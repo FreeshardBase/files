@@ -24,7 +24,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/uploads` (resumable uploads over tus 1.0, see below), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/uploads` (resumable uploads over tus 1.0, see below), `/api/v1/recent` (the caller's recent items), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
@@ -46,7 +46,9 @@ Resumable uploads (tus 1.0: creation, `HEAD`, `PATCH`, termination, expiration) 
 
 A member may have a quota (`users.quota_bytes`; none by default). Usage is everything under the home, trash and staged uploads included, plus what the member's open uploads still have to send. Uploads (tus and `PUT content`) are checked against it before they start and while they stream.
 
-Moves, deletes and "replace" run in one SQLite `BEGIN IMMEDIATE` transaction around synchronous renames, which are undone in reverse if anything after them fails, so files and rows never disagree (spec §3.6). "Replace" sends the old item to the trash, never deletes it. Delete renames the item to `.files/trash/<id>` and writes a `trash` row; a batch is all or nothing. A folder never moves or copies into itself or a descendant (`TARGET_INSIDE_SOURCE`). Copies are built in `.files/tmp/` with `copyFile` (kernel copy, no buffer) and renamed into place; the startup sweep empties `.files/tmp/`. Rows that point at home paths (shares, favourites, search, versions; none exist yet) are listed in `PATH_TABLES` (`server/src/storage/pathRefs.ts`): a move rewrites the item's rows and those beneath it, a delete removes them, in the same transaction.
+Moves, deletes and "replace" run in one SQLite `BEGIN IMMEDIATE` transaction around synchronous renames, which are undone in reverse if anything after them fails, so files and rows never disagree (spec §3.6). "Replace" sends the old item to the trash, never deletes it. Delete renames the item to `.files/trash/<id>` and writes a `trash` row; a batch is all or nothing. A folder never moves or copies into itself or a descendant (`TARGET_INSIDE_SOURCE`). Copies are built in `.files/tmp/` with `copyFile` (kernel copy, no buffer) and renamed into place; the startup sweep empties `.files/tmp/`. Rows that point at home paths (today `recent`; later shares, favourites, search, versions) are listed in `PATH_TABLES` (`server/src/storage/pathRefs.ts`): a move rewrites the item's rows and those beneath it, a delete removes them, in the same transaction. Rows still pointing at a move's free target are stale (changed outside the app) and give way first.
+
+Recent: every write in the home (upload by `PUT` or tus, copy, move, rename, restore) records the item it placed in a `recent` row of its member, inside the write's transaction (`server/src/storage/recent.ts`). Writing a path again moves it to the top; each member keeps the newest 100. `GET /api/v1/recent` lists only the caller's own rows, newest first; there is no feed of other members' actions.
 
 The trash is part of the home, so trashed bytes count towards the member's usage until purged. A trash row holds the original path, type, size (a folder's whole tree) and deletion time. Restore puts one item back at its original path through `resolveInRoot`, recreating missing parents, with the move's collision rules (never a silent overwrite). `LocalBackend.purge` is the only way out of the trash, for single delete, "empty trash" and expiry alike: bytes first, then the row and the rows in `TRASH_TABLES` in one transaction; if the bytes stay, the row stays, the error is logged and the caller sees the item as failed (`PURGE_FAILED`). The expiry job (`server/src/storage/trash.ts`) runs after start-up and hourly and purges what is older than `FILES_TRASH_RETENTION_DAYS` (default 30). Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
 
@@ -99,6 +101,8 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `storage/backend.ts` | The `StorageBackend` interface, write options, `RangeNotSatisfiable`. |
 | `storage/resolveSource.ts` | `resolveSource`: source id to backend and access level; `conn:`/`share:` extension points; `homeBackend` for the trash routes. |
 | `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes; move, copy and trash in one transaction with undoable renames; trash list, restore and the one purge; resumable uploads (create, append, place, terminate, expire) and the quota. |
+| `routes/recent.ts` | `GET /api/v1/recent`: the caller's own recent items. |
+| `storage/recent.ts` | `recordRecent` (called inside every home write's transaction, capped per member) and `recentItems`. |
 | `storage/pathRefs.ts` | `PATH_TABLES` and the move/delete cascade for rows that point at home paths; `TRASH_TABLES` purged with a trash row. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
 | `storage/mime.ts` | Extension to MIME lookup. |
@@ -109,8 +113,10 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | File | Purpose |
 | :--- | :--- |
 | `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync. |
-| `App.vue` | Shell: header, source sidebar (My storage, Trash), upload panel, session load, startup error, failed-login alert. |
-| `router.ts` | `/:source(home)/:path…` to the folder view, `/trash` to the trash view; `/` and unknown paths redirect to `/home`. |
+| `App.vue` | Shell: header, source sidebar (My storage, Recent, Trash), upload panel, session load, startup error, failed-login alert. |
+| `router.ts` | `/:source(home)/:path…` to the folder view, `/recent` to the recent view, `/trash` to the trash view; `/` and unknown paths redirect to `/home`. |
+| `views/RecentView.vue` | Recent: the member's own recent items, newest first, each with "Open folder"; its own empty state. |
+| `stores/recent.ts` | Pinia store for `/api/v1/recent`. |
 | `views/TrashView.vue` | The trash: list, restore (collision dialog), delete permanently and empty trash (both confirmed). |
 | `stores/trash.ts` | Pinia store for `/api/v1/trash`. |
 | `components/ConfirmDialog.vue` | Confirmation before an irreversible action; Cancel has the focus, Esc cancels. |
@@ -149,4 +155,5 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 - The web API client is handwritten (`web/src/api/client.ts`), not generated from `shared/` (spec §3.8).
 - No fake cloud-provider server scaffold exists yet (spec §3.9, Phase B); it arrives with the first cloud backend.
 - The per-member quota (`users.quota_bytes`) has no admin page yet (storage overview), so it is unset unless written to the database. Copies within the home are not checked against it, only uploads.
+- Recent covers only the home; cloud sources add their provider's recent files with #149–#151. A row whose file was changed outside the app (not through it) stays until that path is written, moved or deleted through the app.
 - tus uploads can target only `home`; a cloud or shared target needs its own placement once those sources exist (#146, #148).

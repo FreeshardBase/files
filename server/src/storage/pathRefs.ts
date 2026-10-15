@@ -8,7 +8,9 @@ import type { Db } from '../db.ts';
 export type PathTable = { table: string; ownerColumn: string; pathColumn: string };
 
 /** Every path-dependent table that exists. Each issue that adds one appends it here and extends the cascade test. */
-export const PATH_TABLES: readonly PathTable[] = [];
+export const PATH_TABLES: readonly PathTable[] = [
+  { table: 'recent', ownerColumn: 'user_id', pathColumn: 'path' }, // #141, asserted in server/test/recent.test.ts
+];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 function checked(t: PathTable): PathTable {

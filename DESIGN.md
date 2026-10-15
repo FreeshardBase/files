@@ -20,7 +20,7 @@ The guide has no recipe for these. A selected row takes a teal tint (`--data` at
 
 ## Sidebar and trash
 
-The guide has no navigation recipe. The source sidebar is a 200 px column on the surface tone with a hairline border; entries carry a line icon, and the current place is marked by a teal hairline at its left edge and teal text, never a fill. On phone width it becomes a row of tabs under the header with the hairline underneath. The trash view reuses the file-list table; each row has "Restore" (outline) and "Delete permanently" (danger hairline). "Empty trash" is a danger outline button, dimmed when the trash is empty. Every permanent delete asks first in `ConfirmDialog`, where "Cancel" takes the initial focus, because the safe choice should be the default.
+The guide has no navigation recipe. The source sidebar is a 200 px column on the surface tone with a hairline border; entries carry a line icon, and the current place is marked by a teal hairline at its left edge and teal text, never a fill. On phone width it becomes a row of tabs under the header with the hairline underneath. The trash view reuses the file-list table; each row has "Restore" (outline) and "Delete permanently" (danger hairline). "Empty trash" is a danger outline button, dimmed when the trash is empty. Every permanent delete asks first in `ConfirmDialog`, where "Cancel" takes the initial focus, because the safe choice should be the default. The Recent view (between "My storage" and "Trash", line clock icon) reuses the same table with name, location, changed time and one outline "Open folder" link per row; its empty state is a muted sentence of its own, never the folder's.
 
 ## Upload panel and drop zone
 
