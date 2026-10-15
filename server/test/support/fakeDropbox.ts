@@ -92,10 +92,17 @@ export class FakeDropbox {
     return c?.kind === 'bytes' ? createHash('md5').update(c.data).digest('hex') : c?.kind === 'counted' ? c.md5 : undefined;
   }
 
+  /** Metadata as a union member (`Metadata`, with `.tag`): list_folder, get_metadata, search, move, copy, delete. */
   private meta(i: DropboxItem) {
+    return { '.tag': i.folder ? 'folder' : 'file', ...this.plain(i) };
+  }
+  /**
+   * Metadata typed as `FileMetadata`/`FolderMetadata` in the Dropbox API has no `.tag`: the download and thumbnail result
+   * headers, upload_session/finish, list_revisions entries, restore and create_folder_v2.
+   */
+  private plain(i: DropboxItem) {
     const base = { name: i.name, id: i.id, path_lower: lower(i.path), path_display: i.path };
-    return i.folder ? { '.tag': 'folder', ...base }
-      : { '.tag': 'file', ...base, rev: i.rev, size: sizeOf(i.content), server_modified: i.modified, client_modified: i.modified };
+    return i.folder ? base : { ...base, rev: i.rev, size: sizeOf(i.content), server_modified: i.modified, client_modified: i.modified };
   }
 
   /** Moves or copies the item at `from` (and everything beneath it) to `to`. */
@@ -182,7 +189,7 @@ export class FakeDropbox {
       case 'api files/create_folder_v2': {
         if (this.byPath(pathArg())) { fail('path/conflict/folder'); return true; }
         const dir = this.ensureParents(pathArg());
-        json(200, { metadata: this.meta(this.create(`${dir}/${nameOf(pathArg())}`, undefined)) });
+        json(200, { metadata: this.plain(this.create(`${dir}/${nameOf(pathArg())}`, undefined)) });
         return true;
       }
       case 'api files/move_v2': case 'api files/copy_v2': {
@@ -215,7 +222,7 @@ export class FakeDropbox {
         const i = this.byPath(pathArg());
         if (!i) { fail('path/not_found'); return true; }
         if (i.folder) { fail('path/not_file'); return true; }
-        json(200, { is_deleted: false, entries: [...i.revisions].reverse().map((r) => ({ ...this.meta(i), rev: r.rev, size: r.size,
+        json(200, { is_deleted: false, entries: [...i.revisions].reverse().map((r) => ({ ...this.plain(i), rev: r.rev, size: r.size,
           server_modified: r.modified, client_modified: r.modified })) });
         return true;
       }
@@ -225,7 +232,7 @@ export class FakeDropbox {
         if (!i || i.folder || !r?.content) { fail('invalid_revision'); return true; }
         i.content = r.content; i.rev = this.newRev(); i.modified = seconds(new Date(Math.max(Date.now(), Date.parse(i.modified) + 1000)));
         i.revisions.push({ rev: i.rev, modified: i.modified, size: r.size, content: r.content });
-        json(200, this.meta(i));
+        json(200, this.plain(i));
         return true;
       }
       case 'api files/search_v2': case 'api files/search/continue_v2': {
@@ -245,7 +252,7 @@ export class FakeDropbox {
         if (!i) { fail('path/not_found'); return true; }
         if (i.folder) { fail('path/not_file'); return true; }
         const size = sizeOf(i.content);
-        const result = { 'dropbox-api-result': asciiJson(this.meta(i)), 'content-type': 'application/octet-stream' };
+        const result = { 'dropbox-api-result': asciiJson(this.plain(i)), 'content-type': 'application/octet-stream' };
         const r = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ''));
         let start = 0; let end = size - 1;
         if (r) {
@@ -262,7 +269,7 @@ export class FakeDropbox {
         rec.query = String((arg.size as { '.tag'?: string } | undefined)?.['.tag'] ?? 'w64h64');
         if (!i) { fail('path/not_found'); return true; }
         if (!i.thumbnail || i.content?.kind !== 'bytes') { fail('unsupported_extension'); return true; }
-        res.writeHead(200, { 'content-type': 'application/octet-stream', 'dropbox-api-result': asciiJson(this.meta(i)) }).end(i.content.data);
+        res.writeHead(200, { 'content-type': 'application/octet-stream', 'dropbox-api-result': asciiJson({ file_metadata: this.plain(i) }) }).end(i.content.data);
         return true;
       }
       case 'content files/upload_session/start': {
@@ -298,7 +305,7 @@ export class FakeDropbox {
           existing.revisions.push({ rev: existing.rev, modified: existing.modified, size: s.received, content });
           i = existing;
         } else i = this.create(`${this.ensureParents(commit.path)}/${nameOf(commit.path)}`, content);
-        json(200, this.meta(i));
+        json(200, this.plain(i));
         return true;
       }
     }

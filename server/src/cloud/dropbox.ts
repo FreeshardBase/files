@@ -42,6 +42,10 @@ const THUMB_TAGS = [[128, 'w128h128'], [256, 'w256h256'], [640, 'w640h480'], [10
 const File = z.object({ '.tag': z.literal('file'), name: z.string(), path_lower: z.string(), path_display: z.string(), id: z.string(),
   rev: z.string(), size: z.number().int().nonnegative(), server_modified: z.string() });
 const Folder = z.object({ '.tag': z.literal('folder'), name: z.string(), path_lower: z.string(), path_display: z.string(), id: z.string() });
+// Results typed `FileMetadata`/`FolderMetadata` (not the `Metadata` union) carry no `.tag`: the download result header,
+// upload_session/finish, list_revisions entries, restore and create_folder_v2. These schemas add it back.
+const PlainFile = File.omit({ '.tag': true }).transform((m) => ({ '.tag': 'file' as const, ...m }));
+const PlainFolder = Folder.omit({ '.tag': true }).transform((m) => ({ '.tag': 'folder' as const, ...m }));
 const Deleted = z.object({ '.tag': z.literal('deleted'), name: z.string() });
 const Metadata = z.discriminatedUnion('.tag', [File, Folder, Deleted]);
 type Item = z.infer<typeof File> | z.infer<typeof Folder>;
@@ -191,7 +195,7 @@ export class DropboxBackend implements StorageBackend {
     if (res.status === 416) { await discard(res); throw new RangeNotSatisfiable((await this.fileMeta(p)).size); }
     if (!res.ok || !res.body) await failure(res, 'download');
     if (res.status !== (r ? 206 : 200)) { await discard(res); throw new Error(`Dropbox download answered ${res.status} to ${r ? 'a' : 'no'} range`); }
-    const parsed = File.safeParse(JSON.parse(res.headers.get('dropbox-api-result') ?? 'null'));
+    const parsed = PlainFile.safeParse(JSON.parse(res.headers.get('dropbox-api-result') ?? 'null'));
     if (!parsed.success) { await discard(res); throw new Error('Dropbox download answered without file metadata'); }
     const i = parsed.data;
     return { entry: this.placed(i, posix.dirname(p)), stream: fromWeb(res.body!), etag: etagOf(i), ...(r ? { range: r } : {}) };
@@ -267,14 +271,14 @@ export class DropboxBackend implements StorageBackend {
         throw e;
       });
     }
-    return this.placed(File.parse(await res.json()), dir);
+    return this.placed(PlainFile.parse(await res.json()), dir);
   }
 
   async mkdir(path: string): Promise<Entry> {
     const p = normalizeUserPath(path);
     const name = posix.basename(p);
     if (p === '/') throw new AppError('FILE_EXISTS', { name: '/' });
-    const r = z.object({ metadata: Folder }).parse(await this.rpc('files/create_folder_v2', { path: p, autorename: false }, name));
+    const r = z.object({ metadata: PlainFolder }).parse(await this.rpc('files/create_folder_v2', { path: p, autorename: false }, name));
     return this.placed(r.metadata, posix.dirname(p));
   }
 
@@ -368,7 +372,7 @@ export class DropboxBackend implements StorageBackend {
   async revisions(path: string): Promise<Revision[]> {
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('IS_A_DIRECTORY');
-    const r = z.object({ entries: z.array(File) }).parse(await this.rpc('files/list_revisions', { path: p, mode: 'path', limit: 100 }));
+    const r = z.object({ entries: z.array(PlainFile) }).parse(await this.rpc('files/list_revisions', { path: p, mode: 'path', limit: 100 }));
     // The newest is the file as it is now.
     return r.entries.map((e, i) => ({ id: e.rev, modified: new Date(e.server_modified).toISOString(), size: e.size, ...(i === 0 ? { current: true } : {}) }))
       .reverse();
@@ -378,8 +382,8 @@ export class DropboxBackend implements StorageBackend {
   async restoreRevision(path: string, id: string): Promise<Entry> {
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('IS_A_DIRECTORY');
-    const m = File.omit({ '.tag': true }).parse(await this.rpc('files/restore', { path: p, rev: id }));
-    return this.entry({ '.tag': 'file', ...m }, p);
+    const m = PlainFile.parse(await this.rpc('files/restore', { path: p, rev: id }));
+    return this.entry(m, p);
   }
 
   /** Dropbox's own thumbnail, fetched by the server and re-encoded as WebP; null where Dropbox has none for the type. */
