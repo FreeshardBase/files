@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homeRoot } from '../src/paths.ts';
 import type { ConnectedBackend } from '../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { startFakeProvider, type FakeProvider } from './support/fakeProvider.ts';
 import { MemBackend } from './support/memBackend.ts';
+import { basic, createAppPassword } from './support/dav.ts';
 
 // #156: the storage overview and per-member quotas. The admin (role from the OIDC claim) sets a member's shard quota;
 // every way bytes land in a home (tus creation, PUT, copy, trash restore, transfer and migration items) is refused with
@@ -226,5 +227,62 @@ describe('overview (#156)', () => {
     expect(home.largest).toEqual([{ path: '/Big', size: 5000 }, { path: '/Big/Sub', size: 2000 }, { path: '/Small', size: 10 }]);
     expect(home.usage).toMatchObject({ files: 55_010, trash: 9000, total: 64_010 });
     expect(home.quota).toBeNull();
+  });
+});
+
+// #197: parallel writes reserve their bytes, so together they never take more than the quota leaves.
+describe('quota under concurrent writes (#197)', () => {
+  let t: TestApp; let admin: S; let member: S; let root: string; let davPw: string;
+  const SIZE = 900_000;
+  const usedTotal = async () => (await as(t, member, 'GET', '/api/v1/storage')).json().home.usage.total as number;
+  // Five writes of 900 kB with 1 MB free: exactly one fits, the other four are refused, and usage stays within the quota.
+  async function expectOneFits(write: (i: number) => Promise<{ statusCode: number; body: string }>) {
+    const rs = await Promise.all([0, 1, 2, 3, 4].map(write));
+    expect(rs.filter((r) => r.statusCode === 201).length, rs.map((r) => r.statusCode).join()).toBe(1);
+    for (const r of rs.filter((x) => x.statusCode !== 201)) {
+      expect(r.statusCode, r.body).toBe(507);
+      if (r.body) expect(JSON.parse(r.body).code).toBe('QUOTA_EXCEEDED');
+    }
+    expect(await usedTotal()).toBeLessThanOrEqual(10 * MB + SIZE);
+  }
+
+  beforeAll(async () => {
+    t = await startTestApp();
+    admin = await signIn(t, 'testuser');
+    member = await signIn(t, 'member');
+    davPw = await createAppPassword(t, member);
+    root = homeRoot(t.config.dataDir, member.id);
+    mkdirSync(root, { recursive: true });
+    // 9.9 MB used of 10.9 MB: 1 MB free, room for one 900 kB file.
+    writeFileSync(join(root, 'fill.bin'), Buffer.alloc(9 * MB));
+    writeFileSync(join(root, 'src.bin'), Buffer.alloc(SIZE, 3));
+  });
+  afterAll(async () => { await t.close(); });
+  beforeEach(async () => {
+    expect((await as(t, admin, 'PUT', `/api/v1/admin/members/${member.id}/quota`, { quotaBytes: 10 * MB + SIZE })).statusCode).toBe(200);
+    for (const name of readdirSync(root)) if (!['fill.bin', 'src.bin', '.files'].includes(name)) rmSync(join(root, name));
+    rmSync(join(root, '.files'), { recursive: true, force: true });
+    t.db.prepare('DELETE FROM uploads WHERE user_id = ?').run(member.id);
+    expect(await usedTotal()).toBe(9 * MB + SIZE);
+  });
+
+  it('parallel PUT /content: one 201, the rest QUOTA_EXCEEDED', async () => {
+    await expectOneFits((i) => putBytes(t, member, `/p${i}.bin`, Buffer.alloc(SIZE, i)));
+  });
+
+  it('parallel WebDAV PUT with an app password: one 201, the rest 507', async () => {
+    await expectOneFits((i) => t.app.inject({ method: 'PUT', url: `/dav/d${i}.bin`, payload: Buffer.alloc(SIZE, i),
+      headers: { authorization: basic(davPw) } }));
+  });
+
+  it('parallel copies: one 201, the rest QUOTA_EXCEEDED', async () => {
+    await expectOneFits((i) => as(t, member, 'POST', '/api/v1/sources/home/copy', { from: '/src.bin', to: `/c${i}.bin`, onCollision: 'fail' }));
+  });
+
+  it('a tus upload created while PUTs run takes from the same free space', async () => {
+    await expectOneFits((i) => i === 2
+      ? as(t, member, 'POST', '/api/v1/uploads', undefined, { 'tus-resumable': '1.0.0', 'upload-length': String(SIZE),
+        'upload-metadata': `source ${b64('home')},path ${b64('/tus.bin')}` })
+      : putBytes(t, member, `/t${i}.bin`, Buffer.alloc(SIZE, i)));
   });
 });
