@@ -72,6 +72,7 @@ body {
   border: var(--border-w) solid var(--border-cool);
   color: var(--ink); background: transparent; cursor: pointer;
   position: relative; /* anchors the visually hidden file input */
+  text-decoration: none; /* a download is a link styled as a button */
 }
 .button.primary { border-color: var(--accent); color: var(--accent); }
 .button.danger { border-color: var(--danger); color: var(--danger); }

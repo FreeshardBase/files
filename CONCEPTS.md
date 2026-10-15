@@ -24,11 +24,13 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
 Content is served inline only for an allowlist (images except SVG, video, audio, PDF, `text/plain`) with `Content-Security-Policy: sandbox`; everything else is an attachment.
+
+A ZIP download is built while it is sent. It walks only the backend's own `list` and `read`, so it holds exactly what a listing shows: no symlinks, no `.files/`, no temp files. Entries are stored, every file is ZIP64 with a data descriptor, and names are relative and UTF-8. Nothing is buffered or written to disk except the central directory. An error after the first byte aborts the response instead of ending a short archive.
 
 ## Storage interface
 
@@ -83,7 +85,8 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `auth/routes.ts` | `/auth/login`, `/auth/callback` (failures redirect to `/?loginError=1`), `/auth/logout`, `/api/v1/me`, safe `returnTo`. |
 | `auth/sessions.ts` | Session and login-attempt rows (hashed ids, TTLs, single-use take, purge). |
 | `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. Invalid specs (first > last, multi-range, other units) are ignored: whole file, 200. |
-| `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir; content-type gate and inline allowlist. |
+| `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir, move, copy, delete, zip; content-type gate and inline allowlist. |
+| `storage/zip.ts` | `zipStream`: a folder walk over any `StorageBackend` as a streamed, stored ZIP64 archive. |
 | `routes/trash.ts` | The trash API: list (with total size and retention), restore one item, delete permanently, empty. |
 | `storage/trash.ts` | The expiry job: `expireTrash` (through `LocalBackend.purge`) and its hourly schedule. |
 | `storage/backend.ts` | The `StorageBackend` interface, write options, `RangeNotSatisfiable`. |
@@ -107,7 +110,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `format.ts` | `Intl`-based size and date formatting. |
 | `env.d.ts` | Type shim for `.vue` imports. |
 | `api/client.ts` | Handwritten fetch wrapper: CSRF header, error codes as `ApiFailure`, redirect to login on 401 (not while `loginError=1`). |
-| `api/paths.ts` | `sourceApi(source)` for API URLs and `folderRoute(source, path)` for SPA URLs. |
+| `api/paths.ts` | `sourceApi(source)` for API URLs, `downloadHref` (one file as itself, else a ZIP) and `folderRoute(source, path)` for SPA URLs. |
 | `stores/session.ts` | Pinia store for `/api/v1/me`. |
 | `stores/folder.ts` | Pinia store for the current folder and its source: list, upload, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
 | `views/FolderView.vue` | The folder page: breadcrumbs, upload, selection bar, list, states; one collision loop for upload, move and copy. |

@@ -46,6 +46,7 @@
     "menu": "Actions for {name}",
     "select": "Select {name}",
     "selectColumn": "Selection",
+    "download": "Download",
     "rename": "Rename",
     "cut": "Move",
     "copy": "Copy",

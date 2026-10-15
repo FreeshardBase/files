@@ -3,11 +3,11 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
-import { sourceApi } from '../api/paths.ts';
+import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
 import ItemMenu from './ItemMenu.vue';
 
-export type ItemAction = 'rename' | 'cut' | 'copy' | 'trash';
+export type ItemAction = 'download' | 'rename' | 'cut' | 'copy' | 'trash';
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[] }>(),
   { source: 'home', selected: () => [] });
 const emit = defineEmits<{
@@ -40,7 +40,7 @@ function selectRange(i: number) {
 // An action on a row applies to the whole selection if the row is part of it, else to the row alone.
 const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path) ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
 
-const menuItems = computed(() => (['rename', 'cut', 'copy', 'trash'] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
+const menuItems = computed(() => (['download', 'rename', 'cut', 'copy', 'trash'] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
 function fromMenu(i: number, id: string) { emit('action', id as ItemAction, id === 'rename' ? [props.entries[i]!] : targets(i)); }
 
 function focusRow(i: number) {
@@ -91,7 +91,7 @@ function onDrop(e: DragEvent, entry: Entry) {
 }
 
 const sizeText = (e: Entry) => (e.type === 'file' ? formatSize(e.size, intlLocale(locale.value)) : '');
-const downloadHref = (e: Entry) => `${sourceApi(props.source)}/content?path=${encodeURIComponent(e.path)}&download=1`;
+const fileHref = (e: Entry) => downloadHref(props.source, [e]);
 </script>
 
 <template>
@@ -177,7 +177,7 @@ const downloadHref = (e: Entry) => `${sourceApi(props.source)}/content?path=${en
             />
             <a
               v-if="e.type === 'file'"
-              :href="downloadHref(e)"
+              :href="fileHref(e)"
               tabindex="-1"
               draggable="false"
             >{{ e.name }}</a>
