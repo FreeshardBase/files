@@ -158,7 +158,8 @@ for (const p of PROVIDERS) {
         await step('quota', async () => {
           if (!b.quota) return;
           const q = await b.quota();
-          expect(q.used).toBeGreaterThan(0);
+          expect(q).not.toBeNull(); // the live accounts are personal drives, which always report usage
+          expect(q!.used).toBeGreaterThan(0);
         });
         await step('revisions + restore', async () => {
           if (!b.revisions) return;

@@ -100,6 +100,7 @@
     "clouds": "Cloud-Konten",
     "noClouds": "Du hast noch kein Cloud-Konto verbunden.",
     "cloudUsedNoLimit": "{used} belegt · ohne Grenze",
+    "cloudUnknown": "Belegung unbekannt: Der Anbieter nennt für diesen Speicher keine Zahlen",
     "cloudBar": "{name}: belegter Speicher",
     "largest": "Größte Ordner",
     "noFolders": "Noch keine Ordner mit Dateien.",

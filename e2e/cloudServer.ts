@@ -20,6 +20,7 @@ fake.dropbox.put('/Reports/Q3 Übersicht.txt', 'third quarter, from dropbox');
 fake.graph.put('/Documents/Plan 2027.txt', 'next year, from onedrive');
 fake.graph.addSite('contoso.sharepoint.com,11111111-aaaa,22222222-bbbb', 'Team Site', [['b!team-documents', 'Documents'], ['b!team-archive', 'Archive']]);
 fake.graph.addSite('contoso.sharepoint.com,33333333-cccc,44444444-dddd', 'Marketing', [['b!marketing-assets', 'Assets']]);
+fake.graph.quotaless.add('b!team-archive'); // e2e/storage.spec.ts (#205): a library whose drive reports no quota
 fake.graph.put('/Projects/brief.txt', 'the team brief, from sharepoint', { drive: 'b!team-documents' });
 // e2e/migration.spec.ts (#153): one folder per project to migrate and clean up, with one download that breaks halfway.
 for (const project of ['desktop-chrome', 'mobile-chrome']) {

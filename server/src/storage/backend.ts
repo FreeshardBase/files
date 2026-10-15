@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { CollisionPolicy, Entry, ThumbSize } from '@files/shared';
+import type { CollisionPolicy, Entry, ProviderQuota, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 
 export type ByteRange = { start: number; end: number };
@@ -52,8 +52,11 @@ export interface StorageBackend {
    * cloud backends ask their provider live (#149–#151). A failure is reported for this source only (routes/search.ts).
    */
   search?(query: string, limit: number): Promise<Entry[]>;
-  /** The provider's storage use and limit (cloud backends; the storage overview shows it). */
-  quota?(): Promise<{ used: number; total?: number }>;
+  /**
+   * The provider's storage use and limit (cloud backends; the storage overview shows it), or null where the provider
+   * reports no usage for this storage (a SharePoint library without Graph's optional `quota`, #205).
+   */
+  quota?(): Promise<ProviderQuota | null>;
   /**
    * Earlier states of a file, oldest first (#154): the home's kept versions (the file itself is not one), or the
    * provider's revisions (the newest is the file itself, `current`).

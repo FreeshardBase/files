@@ -25,8 +25,11 @@ export type LargeFolder = { path: string; size: number };
 /** A cloud provider's own figures for the account: `total` is missing where the account has no limit. */
 export type ProviderQuota = { used: number; total?: number };
 
-/** One of the caller's connections: its provider quota, or the error code asking for it gave. */
-export type ConnectionUsage = { source: string; quota?: ProviderQuota; error?: { code: ErrorCode } };
+/**
+ * One of the caller's connections: its provider quota (`null`: the provider reports no usage, shown as unknown, #205),
+ * or the error code asking for it gave.
+ */
+export type ConnectionUsage = { source: string; quota?: ProviderQuota | null; error?: { code: ErrorCode } };
 
 /** `GET /api/v1/storage`: the caller's own usage per source. */
 export type StorageOverview = {

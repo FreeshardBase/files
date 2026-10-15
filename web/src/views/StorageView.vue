@@ -112,6 +112,12 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
             />
           </template>
           <p
+            v-else-if="c.quota === null"
+            class="storage-figures"
+          >
+            {{ $t('storage.cloudUnknown') }}
+          </p>
+          <p
             v-else-if="c.error"
             class="storage-error"
           >

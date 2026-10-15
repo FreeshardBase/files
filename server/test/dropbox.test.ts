@@ -74,6 +74,7 @@ beforeAll(async () => {
   fake.dropbox.put('/range.txt', '0123456789abcdef');
   fake.dropbox.put('/Grüße/übersicht.txt', 'non-ascii');
   fake.dropbox.put('/big.bin', { generated: 1024 ** 3 });
+  fake.dropbox.unmounted.push({ id: 'id:unmountedthree', name: 'Three of us (shared)' }); // search hit without a path (#205)
   t = await startTestApp({}, undefined, undefined, { providers: [fake.dropboxProvider({ chunkBytes: CHUNK })], clock });
   const s = await login(t, 'testuser');
   a = { ...s, id: (await t.app.inject({ url: '/api/v1/me', headers: { cookie: s.cookie } })).json().id as string };
@@ -301,6 +302,16 @@ describe('search, quota, memory', () => {
     expect(r.statusCode, r.body).toBe(200);
     const group = (r.json().groups as { source: string; items: { path: string }[] }[]).find((g) => g.source === `conn:${id}`);
     expect(group?.items.map((x) => x.path)).toEqual(['/Docs/three.txt']);
+  });
+
+  it('skips search hits without a path, such as an unmounted shared folder, and keeps the rest of the page (#205)', async () => {
+    const id = await connect(a);
+    const r = await as(a, 'GET', '/api/v1/search?q=three');
+    expect(r.statusCode, r.body).toBe(200);
+    const group = (r.json().groups as { source: string; items?: { path: string }[]; error?: unknown }[]).find((g) => g.source === `conn:${id}`);
+    expect(group?.error).toBeUndefined();
+    // One page held both: the unmounted folder and the file with a path.
+    expect(group?.items?.map((x) => x.path)).toEqual(['/Docs/three.txt']);
   });
 
   it('reports the Dropbox quota', async () => {

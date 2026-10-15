@@ -36,6 +36,11 @@ export class FakeDropbox {
   readonly deleted: DropboxItem[] = [];
   /** `permanently_delete` calls. DropboxBackend must never send one. */
   permanentDeletes = 0;
+  /**
+   * Shared folders outside the user's namespace (not mounted). `search_v2` finds them by name but, as at Dropbox, their
+   * metadata has no `path_lower`/`path_display` (#205); they are in no listing.
+   */
+  readonly unmounted: { id: string; name: string }[] = [];
   quota = { used: 4321, allocated: 2 * 1024 ** 3 };
   private sessions = new Map<string, Session>();
 
@@ -240,10 +245,13 @@ export class FakeDropbox {
         if (endpoint === 'files/search_v2') {
           query = String(arg.query); offset = 0; max = Number((arg.options as { max_results?: number } | undefined)?.max_results ?? 100);
         } else ({ query, offset, max } = JSON.parse(Buffer.from(String(arg.cursor), 'base64url').toString()) as { query: string; offset: number; max: number });
-        const all = [...this.items.values()].filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
-          .sort((a, b) => a.path.localeCompare(b.path));
+        const hit = (n: string) => n.toLowerCase().includes(query.toLowerCase());
+        // Unmounted shared folders come first, so the first page always carries them when they match.
+        const all = [...this.unmounted.filter((u) => hit(u.name)).map((u) => ({ '.tag': 'folder', name: u.name, id: u.id,
+          sharing_info: { read_only: false, shared_folder_id: u.id.slice(3), traverse_only: false, no_access: false } })),
+        ...[...this.items.values()].filter((i) => hit(i.name)).sort((a, b) => a.path.localeCompare(b.path)).map((i) => this.meta(i))];
         const next = offset + Math.min(max, this.pageSize);
-        json(200, { matches: all.slice(offset, next).map((i) => ({ metadata: { '.tag': 'metadata', metadata: this.meta(i) } })),
+        json(200, { matches: all.slice(offset, next).map((m) => ({ metadata: { '.tag': 'metadata', metadata: m } })),
           has_more: next < all.length, cursor: Buffer.from(JSON.stringify({ query, offset: next, max })).toString('base64url') });
         return true;
       }
