@@ -17,7 +17,7 @@ const BLOCK = Buffer.from(Array.from({ length: 65536 }, (_, i) => generatedByte(
 
 type Content = { kind: 'bytes'; data: Buffer } | { kind: 'generated'; size: number } | { kind: 'counted'; size: number; md5: string };
 export type DropboxItem = { id: string; name: string; path: string; folder: boolean; content?: Content; rev: string;
-  modified: string; revisions: { rev: string; modified: string; size: number }[]; thumbnail?: boolean };
+  modified: string; revisions: { rev: string; modified: string; size: number; content?: Content }[]; thumbnail?: boolean };
 type Session = { received: number; parts: Buffer[]; md5: ReturnType<typeof createHash> };
 
 const sizeOf = (c?: Content) => (c === undefined ? 0 : c.kind === 'bytes' ? c.data.length : c.size);
@@ -76,7 +76,7 @@ export class FakeDropbox {
     const at = seconds(new Date());
     const item: DropboxItem = { id: this.newId(), name: nameOf(path), path, folder: content === undefined, rev: this.newRev(),
       modified: at, revisions: [], ...(content ? { content } : {}) };
-    if (content) item.revisions.push({ rev: item.rev, modified: at, size: sizeOf(content) });
+    if (content) item.revisions.push({ rev: item.rev, modified: at, size: sizeOf(content), content });
     this.items.set(lower(path), item);
     return item;
   }
@@ -219,6 +219,15 @@ export class FakeDropbox {
           server_modified: r.modified, client_modified: r.modified })) });
         return true;
       }
+      case 'api files/restore': {
+        const i = this.byPath(pathArg());
+        const r = i?.revisions.find((x) => x.rev === arg.rev);
+        if (!i || i.folder || !r?.content) { fail('invalid_revision'); return true; }
+        i.content = r.content; i.rev = this.newRev(); i.modified = seconds(new Date(Math.max(Date.now(), Date.parse(i.modified) + 1000)));
+        i.revisions.push({ rev: i.rev, modified: i.modified, size: r.size, content: r.content });
+        json(200, this.meta(i));
+        return true;
+      }
       case 'api files/search_v2': case 'api files/search/continue_v2': {
         let query: string; let offset: number; let max: number;
         if (endpoint === 'files/search_v2') {
@@ -286,7 +295,7 @@ export class FakeDropbox {
         let i: DropboxItem;
         if (existing) {
           existing.content = content; existing.rev = this.newRev(); existing.modified = seconds(new Date(Math.max(Date.now(), Date.parse(existing.modified) + 1000)));
-          existing.revisions.push({ rev: existing.rev, modified: existing.modified, size: s.received });
+          existing.revisions.push({ rev: existing.rev, modified: existing.modified, size: s.received, content });
           i = existing;
         } else i = this.create(`${this.ensureParents(commit.path)}/${nameOf(commit.path)}`, content);
         json(200, this.meta(i));

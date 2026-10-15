@@ -43,6 +43,10 @@ const Schema = z.object({
   // The thumbnail cache's size cap (the least recently used thumbnails go first) and each generator's time limit.
   FILES_THUMB_CACHE_BYTES: z.coerce.number().int().positive().default(512 * 1024 ** 2),
   FILES_THUMB_TIMEOUT_MS: z.coerce.number().int().min(1).max(600_000).default(30_000),
+  // Versions kept per file when it is overwritten (#154): at most this many, together at most this many bytes; the
+  // oldest go first.
+  FILES_VERSIONS_MAX_COUNT: z.coerce.number().int().min(1).max(1000).default(10),
+  FILES_VERSIONS_MAX_BYTES: z.coerce.number().int().positive().default(1024 ** 3),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
   // The shard's OAuth client at Google (#149). Optional as a pair: without it Google Drive is not offered.
@@ -96,6 +100,7 @@ export function loadConfig(env: Record<string, string | undefined>) {
     trashRetentionDays: e.FILES_TRASH_RETENTION_DAYS,
     thumbCacheBytes: e.FILES_THUMB_CACHE_BYTES,
     thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,
+    versions: { maxCount: e.FILES_VERSIONS_MAX_COUNT, maxBytes: e.FILES_VERSIONS_MAX_BYTES },
     port: e.FILES_PORT,
     logLevel: e.FILES_LOG_LEVEL,
     google: e.FILES_GOOGLE_CLIENT_ID !== undefined && e.FILES_GOOGLE_CLIENT_SECRET !== undefined

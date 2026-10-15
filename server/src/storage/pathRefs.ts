@@ -8,8 +8,12 @@ import type { Db } from '../db.ts';
  * `sourceColumn`: the table also holds rows for other sources (a share of a cloud file); only rows whose column is
  * `home` are home paths and cascade. `orphanColumn`: a delete sets this column to the time instead of removing the row,
  * so the row can answer "gone" (a share's 410); an orphaned row never moves again and is never orphaned twice.
+ * `trashColumn`: the rows go to the trash with their item: a delete to the trash sets this column to the trash id
+ * instead of removing the row (the table is then also in `TRASH_TABLES`, which brings the rows back on restore and
+ * purges them with the item). Such rows stand for bytes on disk, so a delete that names no trash item leaves them.
  */
-export type PathTable = { table: string; ownerColumn: string; pathColumn: string; sourceColumn?: string; orphanColumn?: string };
+export type PathTable = { table: string; ownerColumn: string; pathColumn: string; sourceColumn?: string; orphanColumn?: string;
+  trashColumn?: string };
 
 /** Every path-dependent table that exists. Each issue that adds one appends it here and extends the cascade test. */
 export const PATH_TABLES: readonly PathTable[] = [
@@ -19,11 +23,13 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'shares', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
   // #147, asserted in server/test/publicLinks.test.ts
   { table: 'public_links', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
+  // #154, asserted in server/test/versions.test.ts
+  { table: 'versions', ownerColumn: 'user_id', pathColumn: 'path', trashColumn: 'trash_id' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 function checked(t: PathTable): PathTable {
-  const names = [t.table, t.ownerColumn, t.pathColumn, ...(t.sourceColumn ? [t.sourceColumn] : []), ...(t.orphanColumn ? [t.orphanColumn] : [])];
+  const names = [t.table, t.ownerColumn, t.pathColumn, ...[t.sourceColumn, t.orphanColumn, t.trashColumn].filter((c) => c !== undefined)];
   if (!names.every((s) => IDENT.test(s))) throw new Error(`invalid path table ${JSON.stringify(t)}`);
   return t;
 }
@@ -32,7 +38,8 @@ function checked(t: PathTable): PathTable {
 const under = (path: string) => `(${path} = @p OR substr(${path}, 1, length(@p) + 1) = @p || '/')`;
 // The owner's live rows of the home at or beneath @p.
 const rowsUnder = (t: PathTable) => `${t.ownerColumn} = @owner AND ${under(t.pathColumn)}`
-  + (t.sourceColumn ? ` AND ${t.sourceColumn} = 'home'` : '') + (t.orphanColumn ? ` AND ${t.orphanColumn} IS NULL` : '');
+  + (t.sourceColumn ? ` AND ${t.sourceColumn} = 'home'` : '') + (t.orphanColumn ? ` AND ${t.orphanColumn} IS NULL` : '')
+  + (t.trashColumn ? ` AND ${t.trashColumn} IS NULL` : '');
 
 export function movePathRefs(db: Db, tables: readonly PathTable[], owner: string, from: string, to: string): void {
   for (const t of tables.map(checked)) {
@@ -42,19 +49,35 @@ export function movePathRefs(db: Db, tables: readonly PathTable[], owner: string
 }
 
 /**
- * A table whose rows hang off one trash row (later: versions kept with a trashed file). Purging the item deletes them in
- * the same transaction as the trash row. Restore does not touch them: an issue that adds such a table also decides what
- * restore does with its rows and extends `server/test/trash.test.ts`.
+ * A table whose rows hang off one trash row (versions kept with a trashed file). Purging the item deletes them in the
+ * same transaction as the trash row. `pathColumn`: restore brings the rows back (column cleared) at the path the item
+ * is restored to; without it restore does not touch them. An issue that adds such a table decides what restore does with
+ * its rows and extends `server/test/trash.test.ts`.
  */
-export type TrashTable = { table: string; column: string };
+export type TrashTable = { table: string; column: string; pathColumn?: string };
 
-/** Every table that hangs off a trash row. None exists yet. */
-export const TRASH_TABLES: readonly TrashTable[] = [];
+/** Every table that hangs off a trash row. */
+export const TRASH_TABLES: readonly TrashTable[] = [
+  { table: 'versions', column: 'trash_id', pathColumn: 'path' }, // #154, asserted in server/test/versions.test.ts
+];
+
+const checkedTrash = (t: TrashTable): TrashTable => {
+  if (![t.table, t.column, ...(t.pathColumn ? [t.pathColumn] : [])].every((s) => IDENT.test(s))) {
+    throw new Error(`invalid trash table ${JSON.stringify(t)}`);
+  }
+  return t;
+};
 
 export function deleteTrashRefs(db: Db, tables: readonly TrashTable[], trashId: string): void {
-  for (const t of tables) {
-    if (![t.table, t.column].every((s) => IDENT.test(s))) throw new Error(`invalid trash table ${JSON.stringify(t)}`);
-    db.prepare(`DELETE FROM ${t.table} WHERE ${t.column} = ?`).run(trashId);
+  for (const t of tables.map(checkedTrash)) db.prepare(`DELETE FROM ${t.table} WHERE ${t.column} = ?`).run(trashId);
+}
+
+/** The trash item `trashId`, trashed from `from`, is back at `to`: rows that come back with it are live again there. */
+export function restoreTrashRefs(db: Db, tables: readonly TrashTable[], trashId: string, from: string, to: string): void {
+  for (const t of tables.map(checkedTrash)) {
+    if (!t.pathColumn) continue;
+    db.prepare(`UPDATE ${t.table} SET ${t.column} = NULL, ${t.pathColumn} = @to || substr(${t.pathColumn}, length(@from) + 1)
+      WHERE ${t.column} = @trash`).run({ trash: trashId, from, to });
   }
 }
 
@@ -74,9 +97,15 @@ export function orphanSourceRefs(db: Db, tables: readonly PathTable[], owner: st
   }
 }
 
-export function deletePathRefs(db: Db, tables: readonly PathTable[], owner: string, path: string): void {
+/**
+ * The item at `path` is gone. With `trashId` it went to the trash as that item, and tables with a `trashColumn` hand
+ * their rows to it; without one (rows left by a change outside the app) those tables keep their rows.
+ */
+export function deletePathRefs(db: Db, tables: readonly PathTable[], owner: string, path: string, trashId?: string): void {
   for (const t of tables.map(checked)) {
-    if (t.orphanColumn) {
+    if (t.trashColumn) {
+      if (trashId !== undefined) db.prepare(`UPDATE ${t.table} SET ${t.trashColumn} = @trash WHERE ${rowsUnder(t)}`).run({ owner, p: path, trash: trashId });
+    } else if (t.orphanColumn) {
       db.prepare(`UPDATE ${t.table} SET ${t.orphanColumn} = @now WHERE ${rowsUnder(t)}`).run({ owner, p: path, now: new Date().toISOString() });
     } else {
       db.prepare(`DELETE FROM ${t.table} WHERE ${rowsUnder(t)}`).run({ owner, p: path });

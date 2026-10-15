@@ -78,7 +78,9 @@ describe('write + read', () => {
     await b.write('/m.txt', body('changed'), { ...opts, onCollision: 'replace' });
     expect(await err(b.write('/m.txt', body('lost update'), { ...opts, onCollision: 'replace', ifMatch: stale }))).toBe('PRECONDITION_FAILED');
     expect(readFileSync(join(root, 'm.txt'), 'utf8')).toBe('changed');
-    expect(readdirSync(root)).toEqual(['m.txt']);
+    // `.files` holds the version the first replace kept (#154); the refused write added nothing.
+    expect(readdirSync(root).sort()).toEqual(['.files', 'm.txt']);
+    expect(readdirSync(join(root, '.files', 'versions'))).toHaveLength(1);
   });
   it('ifMatch on a missing file fails with PRECONDITION_FAILED and creates nothing', async () => {
     expect(await err(b.write('/gone.txt', body('x'), { ...opts, onCollision: 'replace', ifMatch: '"1-1-1"' }))).toBe('PRECONDITION_FAILED');

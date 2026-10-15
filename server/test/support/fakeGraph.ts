@@ -21,7 +21,7 @@ export const ONEDRIVE_ID = 'b!onedrive-testuser';
 
 type Content = { kind: 'bytes'; data: Buffer } | { kind: 'generated'; size: number } | { kind: 'counted'; size: number; md5: string };
 export type GraphItem = { id: string; drive: string; name: string; parent: string | null; folder: boolean; content?: Content; rev: number;
-  modified: string; versions: { id: string; modified: string; size: number }[]; thumbnail?: boolean };
+  modified: string; versions: { id: string; modified: string; size: number; content?: Content }[]; thumbnail?: boolean };
 type Session = { drive: string; parent: string; name: string; conflict: string; received: number; parts: Buffer[];
   md5: ReturnType<typeof createHash> };
 type Site = { id: string; displayName: string; webUrl: string; drives: { id: string; name: string }[] };
@@ -113,7 +113,7 @@ export class FakeGraph {
     const at = new Date().toISOString();
     const item: GraphItem = { id: this.newId(), drive, name, parent, folder: content === undefined, rev: 1, modified: at, versions: [],
       ...(content ? { content } : {}) };
-    if (content) item.versions.push({ id: '1.0', modified: at, size: sizeOf(content) });
+    if (content) item.versions.push({ id: '1.0', modified: at, size: sizeOf(content), content });
     this.items.set(item.id, item);
     return item;
   }
@@ -328,6 +328,16 @@ export class FakeGraph {
         return true;
       }
     }
+    const restore = /^\/versions\/([^/]+)\/restoreVersion$/.exec(suffix);
+    if (method === 'POST' && restore) {
+      const v = item.versions.find((x) => x.id === decodeURIComponent(restore[1]!));
+      if (item.folder || !v?.content) { fail(404, 'itemNotFound'); return true; }
+      item.content = v.content; item.rev++;
+      item.modified = new Date(Math.max(Date.now(), Date.parse(item.modified) + 1000)).toISOString();
+      item.versions.push({ id: `${item.versions.length + 1}.0`, modified: item.modified, size: v.size, content: v.content });
+      res.writeHead(204).end();
+      return true;
+    }
     const thumb = /^\/thumbnails\/0\/(small|medium|large)\/content$/.exec(suffix);
     if (method === 'GET' && thumb) {
       rec.query = thumb[1];
@@ -361,7 +371,7 @@ export class FakeGraph {
     if (existing) {
       existing.content = content; existing.rev++;
       existing.modified = new Date(Math.max(Date.now(), Date.parse(existing.modified) + 1000)).toISOString();
-      existing.versions.push({ id: `${existing.versions.length + 1}.0`, modified: existing.modified, size: sizeOf(content) });
+      existing.versions.push({ id: `${existing.versions.length + 1}.0`, modified: existing.modified, size: sizeOf(content), content });
       return { item: existing, created: false };
     }
     return { item: this.create(drive, parent, name, content), created: true };

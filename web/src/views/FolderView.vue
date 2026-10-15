@@ -440,6 +440,7 @@ function onDrop(paths: string[], dir: string) {
       :access="folder.access"
       @close="details = null"
       @share="shareFromDetails"
+      @restored="folder.open(folder.path, { refresh: true })"
     />
     <PreviewDialog
       v-if="preview"

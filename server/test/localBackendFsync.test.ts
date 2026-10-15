@@ -4,8 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
-// Records every rename, link and fsync the backend performs, in order.
+// Records every rename, link and fsync the backend performs, in order. A replace renames inside its transaction (#154).
 const log: string[] = [];
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  return { ...fs, renameSync: vi.fn((from: string, to: string) => { fs.renameSync(from, to); log.push(`rename ${to}`); }) };
+});
 vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   return {

@@ -369,7 +369,17 @@ export class DropboxBackend implements StorageBackend {
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('IS_A_DIRECTORY');
     const r = z.object({ entries: z.array(File) }).parse(await this.rpc('files/list_revisions', { path: p, mode: 'path', limit: 100 }));
-    return r.entries.map((e) => ({ id: e.rev, modified: new Date(e.server_modified).toISOString(), size: e.size })).reverse();
+    // The newest is the file as it is now.
+    return r.entries.map((e, i) => ({ id: e.rev, modified: new Date(e.server_modified).toISOString(), size: e.size, ...(i === 0 ? { current: true } : {}) }))
+      .reverse();
+  }
+
+  /** Dropbox's own `files/restore` (#154): the revision becomes the newest one; the content it replaces stays a revision. */
+  async restoreRevision(path: string, id: string): Promise<Entry> {
+    const p = normalizeUserPath(path);
+    if (p === '/') throw new AppError('IS_A_DIRECTORY');
+    const m = File.omit({ '.tag': true }).parse(await this.rpc('files/restore', { path: p, rev: id }));
+    return this.entry({ '.tag': 'file', ...m }, p);
   }
 
   /** Dropbox's own thumbnail, fetched by the server and re-encoded as WebP; null where Dropbox has none for the type. */

@@ -352,7 +352,19 @@
     "CONFIRMATION_REQUIRED": "Das müssen Sie erst bestätigen. Fragen Sie noch einmal und bestätigen Sie.",
     "JOB_RUNNING": "Der Umzug läuft noch.",
     "SOURCE_CHANGED": "Seit dem Umzug in der Cloud geändert, deshalb behalten.",
-    "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original."
+    "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original.",
+    "NOT_SUPPORTED": "Diese Quelle bietet das nicht an."
+  },
+  "versions": {
+    "title": "Versionen",
+    "loading": "Versionen werden geladen …",
+    "none": "Noch keine früheren Versionen. Sobald Sie die Datei ersetzen, bleibt der vorherige Inhalt hier erhalten.",
+    "current": "Aktuell",
+    "download": "Herunterladen",
+    "restore": "Wiederherstellen",
+    "downloadLabel": "Version vom {date} herunterladen",
+    "restoreLabel": "Version vom {date} wiederherstellen",
+    "restored": "Die Version vom {date} ist wiederhergestellt. Der ersetzte Inhalt bleibt als Version erhalten."
   },
   "view": {
     "label": "Ansicht",

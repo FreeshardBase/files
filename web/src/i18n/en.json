@@ -352,7 +352,19 @@
     "CONFIRMATION_REQUIRED": "This needs your confirmation first. Ask again and confirm.",
     "JOB_RUNNING": "The migration is still running.",
     "SOURCE_CHANGED": "Changed in the cloud since the migration, so it was kept.",
-    "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept."
+    "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept.",
+    "NOT_SUPPORTED": "This source doesn't offer that."
+  },
+  "versions": {
+    "title": "Versions",
+    "loading": "Loading versions …",
+    "none": "No earlier versions yet. Whenever the file is replaced, the previous content is kept here.",
+    "current": "Current",
+    "download": "Download",
+    "restore": "Restore",
+    "downloadLabel": "Download the version from {date}",
+    "restoreLabel": "Restore the version from {date}",
+    "restored": "The version from {date} was restored. The content it replaced is kept as a version."
   },
   "view": {
     "label": "View",

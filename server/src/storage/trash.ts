@@ -22,7 +22,7 @@ export async function expireTrash(deps: TrashDeps, log: FastifyBaseLogger, now =
   const result: ExpiryResult = { purged: [], failed: [] };
   for (const [userId, items] of Map.groupBy(rows, (r) => r.user_id)) {
     const home = new LocalBackend(homeRoot(deps.config.dataDir, userId),
-      { db: deps.db, userId, pathTables: deps.pathTables, trashTables: deps.trashTables });
+      { db: deps.db, userId, pathTables: deps.pathTables, trashTables: deps.trashTables, versions: deps.config.versions });
     // Read before this member's lock: an item restored or purged meanwhile is skipped, not an error.
     const r = await home.purge(items.map((i) => i.id), log, 'skip');
     result.purged.push(...r.purged); result.failed.push(...r.failed);

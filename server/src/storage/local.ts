@@ -1,5 +1,5 @@
 import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync } from 'node:fs';
-import { copyFile, link, lstat, mkdir, open, readdir, rename, rm, truncate, unlink } from 'node:fs/promises';
+import { copyFile, link, lstat, mkdir, open, readdir, rm, truncate, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
@@ -8,10 +8,10 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { CollisionPolicy, Entry, ThumbSize, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
-import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from './backend.ts';
+import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from './backend.ts';
 import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
-import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type TrashTable } from './pathRefs.ts';
+import { deletePathRefs, deleteTrashRefs, movePathRefs, restoreTrashRefs, type PathTable, type TrashTable } from './pathRefs.ts';
 import { recordRecent } from './recent.ts';
 import { indexedItem, indexItems, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
 import type { ThumbnailCache } from './thumbnails.ts';
@@ -19,11 +19,13 @@ import type { ThumbnailCache } from './thumbnails.ts';
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
 const TRASH_ID = /^[0-9a-f]{32}$/;
+const VERSION_ID = /^[0-9a-f]{32}$/;
 export const UPLOAD_ID = /^[0-9a-f]{32}$/;
 const DAY_MS = 86_400_000;
 /** An upload expires this long after it was created or last received bytes. */
 export const UPLOAD_TTL_MS = DAY_MS;
 type TrashRow = { id: string; original_path: string; type: 'file' | 'directory'; size: number; deleted_at: string };
+type VersionRow = { id: string; path: string; size: number; modified: string };
 type UploadRow = { id: string; source: string; path: string; length: number; received: number; on_collision: CollisionPolicy; expires_at: string };
 /** What HEAD reports; `entry` is set once the bytes have been placed at their target. */
 export type UploadState = { id: string; offset: number; length: number; expiresAt: string; entry?: Entry };
@@ -110,9 +112,10 @@ async function syncDir(dir: string): Promise<void> {
 /**
  * The database side of a home: path-dependent rows and trash rows change in the same transaction as the files.
  * `thumbs` is the app's thumbnail cache; a backend without it (the expiry jobs, unit tests) has no `thumbnail`.
+ * `versions`: how many versions of one file are kept, and how many bytes they may hold together (#154).
  */
 export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-  thumbs?: ThumbnailCache };
+  thumbs?: ThumbnailCache; versions: { maxCount: number; maxBytes: number } };
 
 // Renames done inside a database transaction; undone in reverse order when anything after them fails.
 class FsSteps {
@@ -226,6 +229,111 @@ export class LocalBackend implements StorageBackend {
     return hash.digest('hex');
   }
 
+  /** The kept versions of a file (#154), oldest first; the file itself is not one of them. */
+  async revisions(p: string): Promise<Revision[]> {
+    const n = normalizeUserPath(p);
+    await this.statFile(n);
+    return this.liveVersions(n).map((v) => ({ id: v.id, modified: v.modified, size: v.size }));
+  }
+
+  /** The bytes of one kept version of the file at `p`; a version of any other file is NOT_FOUND. */
+  async readRevision(p: string, id: string): Promise<Awaited<ReturnType<StorageBackend['read']>>> {
+    const n = normalizeUserPath(p);
+    await this.abs(n);
+    const row = this.versionRow(n, id);
+    if (!row) throw new AppError('NOT_FOUND');
+    const fh = await open(await this.versionBytes(id), constants.O_RDONLY | constants.O_NOFOLLOW).catch((e) => {
+      if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND', undefined, { cause: e });
+      throw e;
+    });
+    try {
+      const size = (await fh.stat()).size;
+      const name = basename(n);
+      return { entry: { name, path: n, type: 'file', size, modified: row.modified, mime: lookupMime(name) },
+        stream: fh.createReadStream({ autoClose: true }), etag: `"v-${id}"` };
+    } catch (e) {
+      await fh.close();
+      throw e;
+    }
+  }
+
+  /**
+   * The version becomes the file's content again, and the content it replaces is kept as a version, in one transaction
+   * (renames only: the version's bytes move into place, nothing is copied).
+   */
+  restoreRevision(p: string, id: string): Promise<Entry> { return this.restoreRevisionImpl(p, id).catch(rethrowMapped); }
+
+  private async restoreRevisionImpl(p: string, id: string): Promise<Entry> {
+    const n = normalizeUserPath(p);
+    const target = await this.abs(n);
+    if (!this.versionRow(n, id)) throw new AppError('NOT_FOUND');
+    await this.statFile(n);
+    const src = await this.versionBytes(id);
+    const versions = await this.internalDir('versions');
+    const { db, userId } = this.index;
+    this.atomically((fs) => {
+      if (!this.versionRow(n, id)) throw new AppError('NOT_FOUND'); // pruned meanwhile
+      this.keepVersion(fs, versions, target, n);
+      fs.rename(src, target);
+      db.prepare('DELETE FROM versions WHERE id = ? AND user_id = ?').run(id, userId);
+      recordRecent(db, userId, n, 'file');
+      this.indexPlaced(n, target);
+    });
+    for (const d of [dirname(target), versions]) await syncDir(d);
+    await this.pruneVersions(n);
+    await this.forgetThumbs(n);
+    return this.statImpl(n);
+  }
+
+  // A file at `n`, else NOT_FOUND or IS_A_DIRECTORY.
+  private async statFile(n: string): Promise<void> {
+    const st = await lstat(await this.abs(n)).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
+    if (st.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    if (!st.isFile()) throw new AppError('NOT_FOUND');
+  }
+
+  private liveVersions(n: string): VersionRow[] {
+    return this.index.db.prepare(`SELECT id, path, size, modified FROM versions WHERE user_id = ? AND path = ? AND trash_id IS NULL
+      ORDER BY created_at, rowid`).all(this.index.userId, n) as VersionRow[];
+  }
+
+  private versionRow(n: string, id: string): VersionRow | undefined {
+    if (!VERSION_ID.test(id)) return undefined;
+    return this.index.db.prepare('SELECT id, path, size, modified FROM versions WHERE id = ? AND user_id = ? AND path = ? AND trash_id IS NULL')
+      .get(id, this.index.userId, n) as VersionRow | undefined;
+  }
+
+  // The bytes of a version, through the same resolver as every other path; only this class names the internal area.
+  private async versionBytes(id: string): Promise<string> {
+    if (!VERSION_ID.test(id)) throw new AppError('NOT_FOUND');
+    await this.internalDir('versions');
+    return resolveInRoot(this.root, `/${INTERNAL}/versions/${id}`);
+  }
+
+  // Inside the transaction of an overwrite: the file at `abs` (user path `rel`) moves into the versions, with its row.
+  // Nothing is kept when no file is there yet.
+  private keepVersion(fs: FsSteps, versions: string, abs: string, rel: string): void {
+    const st = lstatSync(abs, { throwIfNoEntry: false });
+    if (!st?.isFile()) return;
+    const id = randomBytes(16).toString('hex');
+    fs.rename(abs, join(versions, id));
+    this.index.db.prepare('INSERT INTO versions (id, user_id, path, size, modified, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, this.index.userId, rel, st.size, st.mtime.toISOString(), new Date().toISOString());
+  }
+
+  // After a version was added: the newest ones are kept while they fit the caps (count and bytes together); from the
+  // first one that does not fit, every older one goes. Bytes first, then the row, so a failure leaves the row to retry.
+  private async pruneVersions(n: string): Promise<void> {
+    const { db, userId, versions: cap } = this.index;
+    let count = 0; let bytes = 0; let full = false;
+    for (const v of this.liveVersions(n).reverse()) {
+      if (!full && count < cap.maxCount && bytes + v.size <= cap.maxBytes) { count++; bytes += v.size; continue; }
+      full = true;
+      await rm(await this.versionBytes(v.id), { force: true });
+      db.prepare('DELETE FROM versions WHERE id = ? AND user_id = ?').run(v.id, userId);
+    }
+  }
+
   private async thumbnailImpl(p: string, size: ThumbSize): Promise<Readable | null> {
     const { thumbs, userId } = this.index;
     if (!thumbs) throw new Error('this LocalBackend was built without a thumbnail cache');
@@ -270,7 +378,7 @@ export class LocalBackend implements StorageBackend {
   }
 
   // The internal area goes through the same resolver; only this class may name it.
-  private async internalDir(name: 'trash' | 'tmp' | 'uploads'): Promise<string> {
+  private async internalDir(name: 'trash' | 'tmp' | 'uploads' | 'versions'): Promise<string> {
     await mkdir(this.root, { recursive: true });
     const d = await resolveInRoot(this.root, `/${INTERNAL}/${name}`);
     await mkdir(d, { recursive: true });
@@ -323,9 +431,10 @@ export class LocalBackend implements StorageBackend {
     const id = randomBytes(16).toString('hex');
     fs.rename(abs, join(trash, id));
     const { db, userId, pathTables } = this.index;
-    deletePathRefs(db, pathTables, userId, userPath);
+    // The trash row first: rows that go to the trash with the item (versions) point at it.
     db.prepare('INSERT INTO trash (id, user_id, original_path, type, size, deleted_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(id, userId, userPath, st.isDirectory() ? 'directory' : 'file', st.isDirectory() ? treeBytes : st.size, new Date().toISOString());
+    deletePathRefs(db, pathTables, userId, userPath, id);
   }
 
   private async moveImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
@@ -448,8 +557,10 @@ export class LocalBackend implements StorageBackend {
     const placed = this.atomically((fs) => {
       const target = this.claim(fs, trash, dst, nt, policy, replacedSize);
       fs.rename(src, target);
-      this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
       const rel = join(dirname(nt), basename(target));
+      // Rows that went to the trash with the item (versions) are live again where it lands, before the row goes.
+      restoreTrashRefs(this.index.db, this.index.trashTables, id, nt, rel);
+      this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
       recordRecent(this.index.db, this.index.userId, rel, row.type);
       this.indexPlaced(rel, target, beneath);
       return rel;
@@ -473,6 +584,10 @@ export class LocalBackend implements StorageBackend {
     const trash = await this.internalDir('trash');
     for (const id of todo) {
       try {
+        // The versions kept with the item go first: their rows stay with the trash row until it is deleted below.
+        for (const v of db.prepare('SELECT id FROM versions WHERE trash_id = ? AND user_id = ?').pluck().all(id, userId) as string[]) {
+          await rm(await this.versionBytes(v), { force: true });
+        }
         // rm never follows a symlink inside the tree; `force` makes bytes that are already gone count as removed.
         await rm(await this.trashBytes(id), { recursive: true, force: true });
       } catch (e) { // handled: the row stays so the item is found again, the error is logged and the id reported as failed
@@ -678,18 +793,20 @@ export class LocalBackend implements StorageBackend {
     const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
     if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
     const staged = await this.uploadBytes(row.id);
+    const versions = await this.internalDir('versions');
     const { db, userId } = this.index;
     const placed = this.atomically((fs) => {
       let final: string;
-      if (policy === 'replace') { fs.rename(staged, target); final = target; }
+      if (policy === 'replace') { this.keepVersion(fs, versions, target, nt); fs.rename(staged, target); final = target; }
       else final = fs.linkInto(staged, policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i)));
       db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(row.id, userId);
       recordRecent(db, userId, join(dirname(nt), basename(final)), 'file');
       this.indexPlaced(join(dirname(nt), basename(final)), final);
       return final;
     });
-    for (const d of new Set([dirname(target), dirname(staged)])) await syncDir(d);
+    for (const d of new Set([dirname(target), dirname(staged), versions])) await syncDir(d);
     const rel = join(dirname(nt), basename(placed));
+    if (policy === 'replace') await this.pruneVersions(rel);
     await this.forgetThumbs(rel);
     return this.statImpl(rel);
   }
@@ -799,12 +916,27 @@ export class LocalBackend implements StorageBackend {
       if (opts.size !== undefined && written !== opts.size) throw new AppError('SIZE_MISMATCH');
       const fh = await open(tmp, 'r+'); await fh.sync(); await fh.close();
       checkIfMatch(await current());
-      const finalPath = await this.place(tmp, target, opts.onCollision);
-      // The rename/link lives in the directory entry; without this a crash can lose the file after we answered 201.
-      await syncDir(dir);
-      const rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
       const { db, userId } = this.index;
-      db.transaction(() => { recordRecent(db, userId, rel, 'file'); this.indexPlaced(rel, finalPath); }).immediate();
+      let rel: string;
+      if (opts.onCollision === 'replace') {
+        // The content being replaced is kept as a version, in the transaction that puts the new bytes in place.
+        rel = normalizeUserPath(p);
+        const versions = await this.internalDir('versions');
+        this.atomically((fs) => {
+          this.keepVersion(fs, versions, target, rel);
+          fs.rename(tmp, target);
+          recordRecent(db, userId, rel, 'file');
+          this.indexPlaced(rel, target);
+        });
+        // The rename lives in the directory entry; without this a crash can lose the file after we answered 201.
+        for (const d of [dir, versions]) await syncDir(d);
+        await this.pruneVersions(rel);
+      } else {
+        const finalPath = await this.place(tmp, target, opts.onCollision);
+        await syncDir(dir);
+        rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
+        db.transaction(() => { recordRecent(db, userId, rel, 'file'); this.indexPlaced(rel, finalPath); }).immediate();
+      }
       await this.forgetThumbs(rel);
       return this.statImpl(rel);
     } catch (e) {
@@ -813,8 +945,8 @@ export class LocalBackend implements StorageBackend {
     }
   }
 
-  private async place(tmp: string, target: string, policy: CollisionPolicy): Promise<string> {
-    if (policy === 'replace') { await rename(tmp, target); return target; }
+  // "fail" and "keep both": a hard link refuses a taken name atomically. "replace" goes through `keepVersion`.
+  private async place(tmp: string, target: string, policy: Exclude<CollisionPolicy, 'replace'>): Promise<string> {
     const candidates = policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i));
     for (const c of candidates) {
       try { await link(tmp, c); await unlink(tmp); return c; }
