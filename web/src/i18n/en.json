@@ -14,7 +14,57 @@
     "connections": "Cloud accounts",
     "connection": "{provider}: {account}",
     "migrate": "Move to shard",
-    "favourites": "Favourites"
+    "favourites": "Favourites",
+    "storage": "Storage usage",
+    "members": "Members"
+  },
+  "storage": {
+    "title": "Storage usage",
+    "shard": "On the shard",
+    "usedOf": "{used} of {total} used",
+    "usedNoQuota": "{used} used · no quota",
+    "shardBar": "Storage used on the shard",
+    "breakdown": "Breakdown",
+    "files": "Files",
+    "trash": "Trash",
+    "versions": "Versions",
+    "uploads": "Uploads in progress",
+    "clouds": "Cloud accounts",
+    "noClouds": "You haven't connected a cloud account yet.",
+    "cloudUsedNoLimit": "{used} used · no limit",
+    "cloudBar": "{name}: storage used",
+    "largest": "Largest folders",
+    "noFolders": "No folders with files yet.",
+    "columns": {
+      "folder": "Folder",
+      "size": "Size"
+    },
+    "openLabel": "Open {path}"
+  },
+  "members": {
+    "title": "Members",
+    "intro": "Everyone who has signed in to Files once. A quota limits what a member can store on the shard: files, trash, versions and uploads in progress. Nothing already stored is removed.",
+    "columns": {
+      "member": "Member",
+      "used": "Used",
+      "quota": "Quota",
+      "actions": "Set quota"
+    },
+    "admin": "Admin",
+    "noQuota": "No quota",
+    "amountLabel": "Quota for {name}",
+    "unitLabel": "Unit for {name}",
+    "units": {
+      "MB": "MB",
+      "GB": "GB"
+    },
+    "set": "Set",
+    "setLabel": "Set the quota for {name}",
+    "remove": "Remove quota",
+    "removeLabel": "Remove the quota for {name}",
+    "invalid": "Enter a size of 0 or more.",
+    "saved": "The quota for {name} is now {quota}.",
+    "removed": "{name} has no quota now."
   },
   "connections": {
     "title": "Cloud accounts",

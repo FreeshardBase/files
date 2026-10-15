@@ -20,6 +20,13 @@ export const requireUser = (req: FastifyRequest): { user: User; session: { idHas
   return { user: req.user, session: req.session };
 };
 
+/** The caller, who must be the shard admin (#156). The role comes only from the OIDC claim, mapped at each sign-in. */
+export const requireAdmin = (req: FastifyRequest): { user: User; session: { idHash: string; csrfToken: string } } => {
+  const s = requireUser(req);
+  if (s.user.role !== 'admin') throw new AppError('FORBIDDEN');
+  return s;
+};
+
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export function registerGuard(app: FastifyInstance): void {

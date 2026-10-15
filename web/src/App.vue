@@ -149,6 +149,27 @@ onMounted(async () => {
           />
           {{ $t('nav.trash') }}
         </RouterLink>
+        <RouterLink
+          to="/storage"
+          active-class="active"
+        >
+          <span
+            class="icon icon-storage"
+            aria-hidden="true"
+          />
+          {{ $t('nav.storage') }}
+        </RouterLink>
+        <RouterLink
+          v-if="session.me.role === 'admin'"
+          to="/members"
+          active-class="active"
+        >
+          <span
+            class="icon icon-members"
+            aria-hidden="true"
+          />
+          {{ $t('nav.members') }}
+        </RouterLink>
       </nav>
       <main class="app-main">
         <UploadPanel />

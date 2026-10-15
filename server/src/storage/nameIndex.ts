@@ -51,3 +51,18 @@ export function searchIndex(db: Db, userId: string, query: string, limit: number
       ...(r.type === 'file' ? { mime: lookupMime(name) } : {}) };
   });
 }
+
+/**
+ * The member's `limit` largest folders by the bytes of every file beneath them (#156), biggest first. Read from the
+ * index, which every write keeps current, so the overview never walks the home; one pass over the member's file rows.
+ */
+export function largestFolders(db: Db, userId: string, limit: number): { path: string; size: number }[] {
+  const totals = new Map<string, number>();
+  const rows = db.prepare(`SELECT path, size FROM name_index WHERE user_id = ? AND type = 'file' AND size > 0`)
+    .iterate(userId) as IterableIterator<{ path: string; size: number }>;
+  for (const r of rows) {
+    for (let d = posix.dirname(r.path); d !== '/'; d = posix.dirname(d)) totals.set(d, (totals.get(d) ?? 0) + r.size);
+  }
+  return [...totals].map(([path, size]) => ({ path, size }))
+    .sort((a, b) => b.size - a.size || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).slice(0, limit);
+}

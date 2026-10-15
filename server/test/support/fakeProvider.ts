@@ -58,6 +58,8 @@ export type FakeProvider = {
   graph: FakeGraph;
   /** Puts a file (or, with `null`, a folder) into the fake's store; parent folders are created. */
   put(path: string, content: string | Buffer | null): void;
+  /** What the generic file API reports as the account's storage (`GET /api/quota`, #156); tests may change it. */
+  quota: { used: number; total?: number };
   /** Every request in order. `token` is the bearer (API) or the refresh token (refresh grant). */
   requests: FakeRequest[];
   /** Called synchronously for every request before it is answered. */
@@ -205,6 +207,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     const at = (p: unknown) => (typeof p === 'string' ? files.get(p) : undefined);
     switch (`${req.method} ${u.pathname}`) {
       case 'GET /api/me': return json(res, 200, { id: t.account, email: FAKE_ACCOUNTS[t.account] });
+      case 'GET /api/quota': return json(res, 200, fake.quota);
       case 'GET /api/list': {
         const dir = q.get('path') ?? '/';
         if (at(dir)?.type !== 'directory') return json(res, 404, { error: 'not_found' });
@@ -316,7 +319,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
   const fake: FakeProvider = {
-    url, requests, put,
+    url, requests, put, quota: { used: 2_500_000, total: 15_000_000_000 },
     provider: (o = {}) => ({
       id: o.id ?? 'fake', name: o.name ?? 'Fake Cloud', authorizationEndpoint: `${url}/oauth/authorize`, tokenEndpoint: `${url}/oauth/token`,
       clientId: FAKE_CLIENT.id, clientSecret: FAKE_CLIENT.secret, scopes: ['files.readwrite', 'offline_access'], pkce: o.pkce ?? pkce,
@@ -396,6 +399,9 @@ export class FakeCloudBackend implements StorageBackend {
     return { entries };
   }
   async stat(path: string): Promise<Entry> { return (await this.call('GET', `/api/stat?${new URLSearchParams({ path })}`)).json() as Promise<Entry>; }
+  async quota(): Promise<{ used: number; total?: number }> {
+    return (await this.call('GET', '/api/quota')).json() as Promise<{ used: number; total?: number }>;
+  }
 
   async read(path: string, range?: ByteRange | ((size: number) => ByteRange | undefined)) {
     const entry = await this.stat(path);

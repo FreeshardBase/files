@@ -14,7 +14,57 @@
     "connections": "Cloud-Konten",
     "connection": "{provider}: {account}",
     "migrate": "Auf den Shard umziehen",
-    "favourites": "Favoriten"
+    "favourites": "Favoriten",
+    "storage": "Speicherbelegung",
+    "members": "Mitglieder"
+  },
+  "storage": {
+    "title": "Speicherbelegung",
+    "shard": "Auf dem Shard",
+    "usedOf": "{used} von {total} belegt",
+    "usedNoQuota": "{used} belegt · kein Kontingent",
+    "shardBar": "Belegter Speicher auf dem Shard",
+    "breakdown": "Aufteilung",
+    "files": "Dateien",
+    "trash": "Papierkorb",
+    "versions": "Versionen",
+    "uploads": "Laufende Uploads",
+    "clouds": "Cloud-Konten",
+    "noClouds": "Du hast noch kein Cloud-Konto verbunden.",
+    "cloudUsedNoLimit": "{used} belegt · ohne Grenze",
+    "cloudBar": "{name}: belegter Speicher",
+    "largest": "Größte Ordner",
+    "noFolders": "Noch keine Ordner mit Dateien.",
+    "columns": {
+      "folder": "Ordner",
+      "size": "Größe"
+    },
+    "openLabel": "{path} öffnen"
+  },
+  "members": {
+    "title": "Mitglieder",
+    "intro": "Alle, die sich einmal bei Files angemeldet haben. Ein Kontingent begrenzt, was ein Mitglied auf dem Shard speichern kann: Dateien, Papierkorb, Versionen und laufende Uploads. Bereits Gespeichertes bleibt erhalten.",
+    "columns": {
+      "member": "Mitglied",
+      "used": "Belegt",
+      "quota": "Kontingent",
+      "actions": "Kontingent festlegen"
+    },
+    "admin": "Admin",
+    "noQuota": "Kein Kontingent",
+    "amountLabel": "Kontingent für {name}",
+    "unitLabel": "Einheit für {name}",
+    "units": {
+      "MB": "MB",
+      "GB": "GB"
+    },
+    "set": "Festlegen",
+    "setLabel": "Kontingent für {name} festlegen",
+    "remove": "Kontingent entfernen",
+    "removeLabel": "Kontingent für {name} entfernen",
+    "invalid": "Gib eine Größe ab 0 ein.",
+    "saved": "Das Kontingent von {name} ist jetzt {quota}.",
+    "removed": "{name} hat jetzt kein Kontingent."
   },
   "connections": {
     "title": "Cloud-Konten",

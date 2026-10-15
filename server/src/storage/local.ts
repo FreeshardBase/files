@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
-import type { CollisionPolicy, Entry, ThumbSize, TrashItem } from '@files/shared';
+import type { CollisionPolicy, Entry, HomeUsage, LargeFolder, ThumbSize, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from './backend.ts';
@@ -13,7 +13,7 @@ import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
 import { deletePathRefs, deleteTrashRefs, movePathRefs, restoreTrashRefs, type PathTable, type TrashTable } from './pathRefs.ts';
 import { recordRecent } from './recent.ts';
-import { indexedItem, indexItems, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
+import { indexedItem, indexItems, largestFolders, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
 import type { ThumbnailCache } from './thumbnails.ts';
 
 export const INTERNAL = '.files';
@@ -462,6 +462,8 @@ export class LocalBackend implements StorageBackend {
 
   private async copyImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
     const e = await this.endpoints(from, to, policy);
+    // The copy adds the source's bytes (#156); "replace" sends the item in the way to the trash, which still counts.
+    if (await treeSize(e.src) > await this.remainingQuota()) throw new AppError('QUOTA_EXCEEDED');
     const trash = await this.internalDir('trash');
     // Built in the internal area first, so a half-done copy is never visible; the startup sweep clears what a crash leaves.
     const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
@@ -544,6 +546,8 @@ export class LocalBackend implements StorageBackend {
   private async restoreImpl(id: string, policy: CollisionPolicy): Promise<Entry> {
     const row = this.trashRow(id);
     if (!row) throw new AppError('NOT_FOUND');
+    // Trashed bytes count already, but the trash empties itself; a restore keeps them for good, so it needs room (#156).
+    if (row.size > await this.remainingQuota()) throw new AppError('QUOTA_EXCEEDED');
     const src = await this.trashBytes(id);
     const trash = await this.internalDir('trash');
     const nt = normalizeUserPath(row.original_path);
@@ -617,10 +621,37 @@ export class LocalBackend implements StorageBackend {
   // Quota minus the bytes under the home; Infinity without a quota. The walk is async, so callers that must not race
   // subtract `reserved()` inside their transaction.
   private async freeBeforeReservations(): Promise<number> {
-    const quota = this.index.db.prepare('SELECT quota_bytes FROM users WHERE id = ?').pluck().get(this.index.userId) as number | null | undefined;
-    if (quota === null || quota === undefined) return Infinity;
+    const quota = this.quotaBytes();
+    if (quota === null) return Infinity;
     return quota - await treeSize(this.root);
   }
+
+  /** The member's quota in bytes as the admin set it (#156), or null for none. */
+  quotaBytes(): number | null {
+    const quota = this.index.db.prepare('SELECT quota_bytes FROM users WHERE id = ?').pluck().get(this.index.userId) as number | null | undefined;
+    return quota ?? null;
+  }
+
+  /**
+   * Bytes under the home by kind (#156); every one of them counts towards the quota. Measured on disk like the quota
+   * check, so the overview shows exactly what the check sees. Anything in the internal area besides the trash and the
+   * versions is staging: tus uploads in progress and interrupted copies.
+   */
+  async usage(): Promise<HomeUsage> {
+    const usage = { files: 0, trash: 0, versions: 0, uploads: 0 };
+    const root = await this.abs('/');
+    const names = (dir: string) => readdir(dir).catch((e: unknown) => { if (isErr(e, 'ENOENT')) return []; throw e; });
+    for (const name of await names(root)) if (name !== INTERNAL) usage.files += await treeSize(join(root, name));
+    const area = await resolveInRoot(this.root, `/${INTERNAL}`);
+    for (const name of await names(area)) {
+      const bytes = await treeSize(join(area, name));
+      if (name === 'trash') usage.trash += bytes; else if (name === 'versions') usage.versions += bytes; else usage.uploads += bytes;
+    }
+    return { ...usage, total: usage.files + usage.trash + usage.versions + usage.uploads };
+  }
+
+  /** The home's largest folders (#156), from the name index. */
+  largestFolders(limit: number): LargeFolder[] { return largestFolders(this.index.db, this.index.userId, limit); }
 
   private reserved(exceptUpload?: string): number {
     return this.index.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE user_id = ? AND id IS NOT ?')
