@@ -1,4 +1,12 @@
+import { hkdfSync } from 'node:crypto';
 import { z } from 'zod';
+
+// The shard's app template only provides `{{ secret('…') }}` (32 alphanumeric characters), so the
+// AES-256 key is derived from the secret. Salt and info are fixed: changing them orphans encrypted data.
+const ENCRYPTION_KEY_SALT = 'freeshard-files';
+const ENCRYPTION_KEY_INFO = 'files/encryption-key/v1';
+const deriveEncryptionKey = (secret: string) =>
+  Buffer.from(hkdfSync('sha256', secret, ENCRYPTION_KEY_SALT, ENCRYPTION_KEY_INFO, 32));
 
 export class ConfigError extends Error {
   constructor(public problems: string[]) {
@@ -21,8 +29,8 @@ const Schema = z.object({
   FILES_DATA_DIR: z.string().min(1),
   FILES_SESSION_SECRET: z.string().min(32, 'must be at least 32 characters'),
   FILES_ENCRYPTION_KEY: z.string()
-    .regex(/^[A-Za-z0-9+/]{43}=$/, 'must be 32 bytes, base64-encoded')
-    .transform((s) => Buffer.from(s, 'base64')),
+    .min(32, 'must be at least 32 characters')
+    .transform(deriveEncryptionKey),
   FILES_OIDC_ISSUER: issuerUrl,
   FILES_OIDC_CLIENT_ID: z.string().min(1),
   FILES_OIDC_CLIENT_SECRET: z.string().min(1),

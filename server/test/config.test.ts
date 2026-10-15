@@ -1,3 +1,4 @@
+import { hkdfSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { loadConfig, ConfigError } from '../src/config.ts';
 
@@ -37,14 +38,33 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...valid, FILES_SESSION_SECRET: 'short' })).toThrow(/FILES_SESSION_SECRET/);
   });
 
-  it('refuses an encryption key that is not 32 bytes', () => {
-    expect(() => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') })).toThrow(/FILES_ENCRYPTION_KEY/);
+  // The shard's app template can only produce `{{ secret('…') }}`: 32 characters of [A-Za-z0-9].
+  const shardSecret = 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1BcD4F';
+
+  it('accepts a 32-character shard secret and derives a 32-byte key from it', () => {
+    expect(shardSecret).toHaveLength(32);
+    const key = loadConfig({ ...valid, FILES_ENCRYPTION_KEY: shardSecret }).encryptionKey;
+    expect(key).toBeInstanceOf(Buffer);
+    expect(key.length).toBe(32);
+    expect(key.equals(Buffer.from(shardSecret))).toBe(false);
   });
 
-  it('refuses an encryption key with an invalid base64 character', () => {
-    // Node's lenient decoder would accept url-safe '-' and still yield 32 bytes.
-    const bad = Buffer.alloc(32, 0xfb).toString('base64').replace('+', '-');
-    expect(() => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: bad })).toThrow(/FILES_ENCRYPTION_KEY/);
+  it('refuses an encryption key shorter than 32 characters', () => {
+    const err = thrownBy(() => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: shardSecret.slice(0, 31) }));
+    expect(err).toBeInstanceOf(ConfigError);
+    expect((err as ConfigError).problems).toEqual([expect.stringMatching(/^FILES_ENCRYPTION_KEY: .*32/)]);
+  });
+
+  it('derives the same key for the same secret and different keys for different secrets', () => {
+    const derive = (secret: string) => loadConfig({ ...valid, FILES_ENCRYPTION_KEY: secret }).encryptionKey;
+    expect(derive(shardSecret).equals(derive(shardSecret))).toBe(true);
+    expect(derive(shardSecret).equals(derive(shardSecret.replace('A', 'B')))).toBe(false);
+    expect(derive(shardSecret).equals(derive(shardSecret + 'x'))).toBe(false);
+  });
+
+  it('derives the key with HKDF-SHA256 using the documented salt and info', () => {
+    const expected = Buffer.from(hkdfSync('sha256', shardSecret, 'freeshard-files', 'files/encryption-key/v1', 32));
+    expect(loadConfig({ ...valid, FILES_ENCRYPTION_KEY: shardSecret }).encryptionKey.equals(expected)).toBe(true);
   });
 
   it('refuses a plain-http issuer on a non-loopback host', () => {

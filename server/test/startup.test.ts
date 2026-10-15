@@ -30,7 +30,23 @@ describe('process startup', () => {
     expect(r.stderr).toContain('FILES_OIDC_ISSUER');
   });
 
-  it('shuts down cleanly with exit 0 on SIGTERM', async () => {
+  it('exits 1 and names FILES_ENCRYPTION_KEY when the secret is shorter than 32 characters', () => {
+    const r = spawnSync(process.execPath, ['--import', 'tsx', mainTs], {
+      env: {
+        PATH: process.env.PATH, NODE_ENV: 'production',
+        FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: join(tmpdir(), 'files-startup-unused'),
+        FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'k'.repeat(31),
+        FILES_OIDC_ISSUER: 'https://idp.example.com', FILES_OIDC_CLIENT_ID: 'files',
+        FILES_OIDC_CLIENT_SECRET: 'files-secret', FILES_OIDC_ROLE_CLAIM: 'groups', FILES_OIDC_ADMIN_VALUE: 'admin',
+      },
+      encoding: 'utf8', timeout: 20000,
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('FILES_ENCRYPTION_KEY');
+    expect(r.stderr).not.toContain('FILES_SESSION_SECRET');
+  });
+
+  it('boots with a 32-character shard secret and shuts down cleanly with exit 0 on SIGTERM', async () => {
     const idp = await startFakeIdp();
     const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-'));
     const port = await freePort();
@@ -38,7 +54,7 @@ describe('process startup', () => {
       env: {
         PATH: process.env.PATH, NODE_ENV: 'production',
         FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: dataDir,
-        FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+        FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1BcD4F',
         FILES_OIDC_ISSUER: idp.issuer, FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
         FILES_OIDC_ROLE_CLAIM: 'groups', FILES_OIDC_ADMIN_VALUE: 'admin',
         FILES_LOG_LEVEL: 'fatal', FILES_PORT: String(port),
