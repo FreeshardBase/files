@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #155: favourites across sources. A folder of the home is starred from its row, a file of the generic fake cloud
 // (e2e/cloudServer.ts, /report.txt) from its action menu; the details drawer shows the state; both open from the
@@ -30,6 +31,7 @@ test.describe('with a cloud connection', () => {
     expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
 
     // The home folder, from the star in its row.
+    await openPlaces(page);
     await nav(page).getByRole('link', { name: /Mein Speicher|My storage/ }).click();
     const star = row(page, dir).getByRole('button', { name: new RegExp(`(Favorit|Favourite): ${dir}`) });
     await expect(star).toHaveAttribute('aria-pressed', 'false');
@@ -38,6 +40,7 @@ test.describe('with a cloud connection', () => {
     await expect(page.getByRole('status')).toContainText(/zu den Favoriten hinzugefügt|added to favourites/);
 
     // The cloud file, from its action menu; the details drawer shows it is a favourite now.
+    await openPlaces(page);
     await page.getByRole('link', { name: /Cloud-Konten|Cloud accounts/ }).first().click();
     await page.getByRole('button', { name: /Fake Cloud verbinden|Connect Fake Cloud/ }).click();
     await page.getByRole('button', { name: 'Allow' }).click();
@@ -63,6 +66,7 @@ test.describe('with a cloud connection', () => {
     await expect(drawer).toHaveCount(0);
 
     // Favourites lists both, in the order they were starred; each opens.
+    await openPlaces(page);
     await favLink(page).click();
     await expect(page).toHaveURL(/\/favourites$/);
     await expect(page.getByRole('heading', { name: /^(Favoriten|Favourites)$/ })).toBeVisible();
@@ -75,6 +79,7 @@ test.describe('with a cloud connection', () => {
     await expect(page).toHaveURL(new RegExp(`/home/${dir}$`));
     await expect(crumbs(page)).toContainText(dir);
 
+    await openPlaces(page);
     await favLink(page).click();
     await row(page, 'report.txt').getByRole('link', { name: /^(report\.txt öffnen|Open report\.txt)$/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${conn}\\?select=`));
@@ -89,6 +94,7 @@ test.describe('with a cloud connection', () => {
     await row(page, 'report.txt').getByRole('button', { name: /^(report\.txt aus den Favoriten entfernen|Remove report\.txt from favourites)$/ }).click();
     await expect(row(page, 'report.txt')).toHaveCount(0);
     await expect(page.locator('tbody tr')).toHaveCount(1);
+    await openPlaces(page);
     await expect(favLink(page)).toHaveClass(/active/);
     expect(dialogs).toEqual([]);
   });
@@ -101,5 +107,6 @@ test('an empty Favourites view shows its own empty-state text, not the folder on
   await expect(page.getByText(/Noch keine Favoriten\.|No favourites yet\./)).toBeVisible();
   await expect(page.getByText(/Dieser Ordner ist leer\.|This folder is empty\./)).toHaveCount(0);
   await expect(page.locator('table')).toHaveCount(0);
+  await openPlaces(page);
   await expect(favLink(page)).toHaveClass(/active/);
 });

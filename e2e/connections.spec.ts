@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #148: connecting a cloud account through the provider's consent page, the connection in the sidebar, and unlinking
 // it after an <AppDialog> confirmation. Runs against the cloud server (e2e/cloudServer.ts), whose one provider is the
@@ -26,6 +27,7 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   const dialogs: string[] = [];
   page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
   await signedIn(page);
+  await openPlaces(page);
   await expect(sidebarConnection(page)).toHaveCount(0);
 
   await page.getByRole('button', { name: /Fake Cloud verbinden|Connect Fake Cloud/ }).click();
@@ -38,6 +40,7 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
   await expect(row(page, 'Notes')).toBeVisible();
   await expect(row(page, 'report.txt')).toBeVisible();
+  await openPlaces(page);
   await expect(sidebarConnection(page)).toBeVisible();
   await expect(sidebarConnection(page)).toContainText('Fake Cloud');
   await expect(sidebarConnection(page)).toHaveClass(/active/);
@@ -45,6 +48,7 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}\/Notes$/);
   await expect(row(page, 'hello.txt')).toBeVisible();
 
+  await openPlaces(page);
   await nav(page).getByRole('link', { name: /Cloud-Konten|Cloud accounts/ }).click();
   const conn = page.locator('tbody tr', { hasText: 'testuser@example.com' });
   await expect(conn).toContainText(/Verbunden|Connected/);
@@ -61,6 +65,7 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
   await expect(unlink).toBeFocused();
+  await openPlaces(page);
   await expect(sidebarConnection(page)).toBeVisible();
 
   await unlink.click();
@@ -68,6 +73,7 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await expect(confirm).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText(/testuser@example\.com getrennt|testuser@example\.com unlinked/);
   await expect(conn).toHaveCount(0);
+  await openPlaces(page);
   await expect(sidebarConnection(page)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Cloud-Konten|Cloud accounts/ })).toBeFocused();
   expect((await (await page.request.get('/api/v1/connections')).json()).items).toEqual([]);
@@ -81,6 +87,7 @@ test('a denied consent comes back to "Cloud accounts" with a message and connect
   await page.getByRole('button', { name: 'Deny' }).click();
   await expect(page).toHaveURL(/\/connections$/); // the error code is shown, then dropped from the URL
   await expect(page.getByRole('alert')).toContainText(/konnte nicht verbunden werden|could not be connected/);
+  await openPlaces(page);
   await expect(sidebarConnection(page)).toHaveCount(0);
   expect((await (await page.request.get('/api/v1/connections')).json()).items).toEqual([]);
 });

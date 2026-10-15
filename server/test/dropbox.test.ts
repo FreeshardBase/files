@@ -334,7 +334,8 @@ describe('search, quota, memory', () => {
       expect(up.size).toBe(GB);
       expect(fake.dropbox.md5('/up/big.bin')).toBe(md5.digest('hex'));
     } finally { clearInterval(sampler); }
-    expect(peak - base).toBeLessThan(96 * 1024 ** 2);
+    // heapUsed counts uncollected garbage, so leave GC slack; buffering the 1 GB file would still exceed this by far.
+    expect(peak - base).toBeLessThan(256 * 1024 ** 2);
   });
 });
 

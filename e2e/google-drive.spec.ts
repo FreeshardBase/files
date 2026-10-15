@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #149: a Google Drive connection, browsed live through the same folder view as the home. Runs against the cloud server
 // (e2e/cloudServer.ts), whose Google Drive provider talks to the fake Drive (server/test/support/fakeDrive.ts):
@@ -29,6 +30,7 @@ test('browse a Google Drive connection, preview an image, upload a file and see 
   await page.getByRole('button', { name: 'Allow' }).click();
 
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  await openPlaces(page);
   await expect(nav(page).getByRole('link', { name: /testuser@example\.com/ })).toContainText('Google Drive');
   await expect(row(page, 'Photos')).toBeVisible();
   // A Google Sheet is listed as the office file it downloads as.

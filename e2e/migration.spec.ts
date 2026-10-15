@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #153: the migration wizard against the cloud server (e2e/cloudServer.ts), whose generic fake cloud holds
 // /Move-<project>/ with letter.txt, Photos/beach.txt and broken.txt, whose download stops halfway. The member picks the
@@ -29,6 +30,7 @@ test('migrate a cloud folder with the wizard, read the summary, and delete only 
   const source = await connected(page);
   const folder = `Move-${info.project.name}`;
 
+  await openPlaces(page);
   await nav(page).getByRole('link', { name: /Auf den Shard umziehen|Move to shard/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Auf den Shard umziehen|Move to the shard/ })).toBeVisible();
   // 1. The only connection is chosen; open its folder in the picker.

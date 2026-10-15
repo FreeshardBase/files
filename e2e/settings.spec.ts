@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #159: language (Deutsch Du / Deutsch Sie / English) and theme (light / dark / system) on the settings page. The choice
 // is stored on the server, so it follows the member to another device. Both projects share one server and one
@@ -62,6 +63,7 @@ test('switching to English and to Deutsch (Sie) changes texts and dates at once 
   await radio(page, 'English').check();
   // At once, without a reload: the page, the sidebar and <html lang>.
   await expect(settingsHeading(page)).toHaveText('Settings');
+  await openPlaces(page);
   await expect(page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: 'My storage' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('status').filter({ hasText: 'Settings saved' })).toBeVisible();
@@ -70,6 +72,7 @@ test('switching to English and to Deutsch (Sie) changes texts and dates at once 
 
   // The other device (a German browser) follows the stored choice after a reload.
   await other.reload();
+  await openPlaces(other);
   await expect(other.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: 'My storage' })).toBeVisible();
   await expect(other.locator('tr', { hasText: 'note.txt' }).locator('td.date')).toHaveText(enDate);
 

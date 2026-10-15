@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // Both projects share one server, one user and so one trash; every test uses names unique to the project and test.
 const tag = (info: TestInfo) => `${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
@@ -25,6 +26,7 @@ async function trashByApi(page: Page, ...paths: string[]) {
 }
 const nav = (page: Page) => page.getByRole('navigation', { name: /Orte|Places/ });
 async function openTrash(page: Page) {
+  await openPlaces(page);
   await nav(page).getByRole('link', { name: /Papierkorb|Trash/ }).click();
   await expect(page.getByRole('heading', { name: /Papierkorb|Trash/ })).toBeVisible();
 }

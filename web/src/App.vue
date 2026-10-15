@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
@@ -11,11 +11,13 @@ import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
 import { folderRoute } from './api/paths.ts';
 import { useFavouritesStore } from './stores/favourites.ts';
+import ShortcutsDialog from './components/ShortcutsDialog.vue';
 const session = useSessionStore();
 const connections = useConnectionsStore();
 const favourites = useFavouritesStore();
 const transfers = useTransfersStore();
 const router = useRouter();
+const route = useRoute();
 const showLoginFailed = loginFailed();
 // A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
 const publicPage = isPublicPage(location.pathname);
@@ -24,7 +26,25 @@ const online = ref(navigator.onLine);
 const onConnectivity = () => { online.value = navigator.onLine; };
 window.addEventListener('online', onConnectivity);
 window.addEventListener('offline', onConnectivity);
-onUnmounted(() => { window.removeEventListener('online', onConnectivity); window.removeEventListener('offline', onConnectivity); });
+// On a phone the places collapse behind one toggle (#160); choosing a place closes them again. On a wide screen the
+// toggle is hidden and the places always show (CSS).
+const placesOpen = ref(false);
+watch(() => route.fullPath, () => { placesOpen.value = false; });
+// "?" opens the keyboard shortcuts, except while typing or while another dialog is open.
+const shortcutsOpen = ref(false);
+function onKey(e: KeyboardEvent) {
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey || shortcutsOpen.value || !session.me) return;
+  const at = e.target instanceof HTMLElement ? e.target : null;
+  if (at?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (document.querySelector('[aria-modal="true"]')) return;
+  e.preventDefault();
+  shortcutsOpen.value = true;
+}
+window.addEventListener('keydown', onKey);
+onUnmounted(() => {
+  window.removeEventListener('online', onConnectivity); window.removeEventListener('offline', onConnectivity);
+  window.removeEventListener('keydown', onKey);
+});
 onMounted(async () => {
   if (publicPage) return;
   await session.load();
@@ -51,7 +71,29 @@ onMounted(async () => {
     <header class="app-header">
       <span class="app-title">{{ $t('app.name') }}</span>
       <SearchBox v-if="session.me" />
+      <template v-if="session.me">
+        <span
+          class="app-user"
+          :title="session.me.email"
+        >{{ session.me.displayName }}</span>
+        <button
+          type="button"
+          class="icon-button"
+          :aria-label="$t('shortcuts.title')"
+          :title="$t('shortcuts.title')"
+          @click="shortcutsOpen = true"
+        >
+          <span
+            class="icon icon-keyboard"
+            aria-hidden="true"
+          />
+        </button>
+      </template>
     </header>
+    <ShortcutsDialog
+      v-if="shortcutsOpen"
+      @close="shortcutsOpen = false"
+    />
     <p
       v-if="!online"
       class="offline-banner"
@@ -69,134 +111,153 @@ onMounted(async () => {
     >
       <nav
         class="app-nav"
+        :class="{ open: placesOpen }"
         :aria-label="$t('nav.sources')"
       >
-        <RouterLink
-          to="/home"
-          active-class="active"
+        <button
+          type="button"
+          class="nav-toggle"
+          aria-controls="places"
+          :aria-expanded="placesOpen"
+          @click="placesOpen = !placesOpen"
         >
           <span
-            class="icon icon-home"
+            class="icon icon-menu"
             aria-hidden="true"
           />
-          {{ $t('nav.home') }}
-        </RouterLink>
-        <RouterLink
-          v-for="c in connections.items"
-          :key="c.id"
-          :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
-          active-class="active"
-          class="nav-connection"
-          :data-status="c.status"
+          {{ $t('nav.sources') }}
+        </button>
+        <div
+          id="places"
+          class="nav-places"
         >
-          <span
-            class="icon icon-cloud"
-            aria-hidden="true"
-          />
-          <span class="nav-connection-text">
-            <span class="nav-connection-provider">{{ c.providerName }}</span>
-            {{ c.account }}
+          <RouterLink
+            to="/home"
+            active-class="active"
+          >
             <span
-              v-if="c.library"
-              class="nav-connection-library"
-            >{{ c.library }}</span>
+              class="icon icon-home"
+              aria-hidden="true"
+            />
+            {{ $t('nav.home') }}
+          </RouterLink>
+          <RouterLink
+            v-for="c in connections.items"
+            :key="c.id"
+            :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
+            active-class="active"
+            class="nav-connection"
+            :data-status="c.status"
+          >
             <span
-              v-if="c.status !== 'ok'"
-              class="nav-connection-status"
-            >{{ $t(`connections.status.${c.status}`) }}</span>
-          </span>
-        </RouterLink>
-        <RouterLink
-          to="/connections"
-          active-class="active"
-        >
-          <span
-            class="icon icon-cloud-add"
-            aria-hidden="true"
-          />
-          {{ $t('nav.connections') }}
-        </RouterLink>
-        <RouterLink
-          to="/migrate"
-          active-class="active"
-        >
-          <span
-            class="icon icon-migrate"
-            aria-hidden="true"
-          />
-          {{ $t('nav.migrate') }}
-        </RouterLink>
-        <RouterLink
-          to="/favourites"
-          active-class="active"
-        >
-          <span
-            class="icon icon-star"
-            aria-hidden="true"
-          />
-          {{ $t('nav.favourites') }}
-        </RouterLink>
-        <RouterLink
-          to="/recent"
-          active-class="active"
-        >
-          <span
-            class="icon icon-recent"
-            aria-hidden="true"
-          />
-          {{ $t('nav.recent') }}
-        </RouterLink>
-        <RouterLink
-          to="/shared"
-          active-class="active"
-        >
-          <span
-            class="icon icon-shared"
-            aria-hidden="true"
-          />
-          {{ $t('nav.shared') }}
-        </RouterLink>
-        <RouterLink
-          to="/trash"
-          active-class="active"
-        >
-          <span
-            class="icon icon-trash"
-            aria-hidden="true"
-          />
-          {{ $t('nav.trash') }}
-        </RouterLink>
-        <RouterLink
-          to="/storage"
-          active-class="active"
-        >
-          <span
-            class="icon icon-storage"
-            aria-hidden="true"
-          />
-          {{ $t('nav.storage') }}
-        </RouterLink>
-        <RouterLink
-          v-if="session.me.role === 'admin'"
-          to="/members"
-          active-class="active"
-        >
-          <span
-            class="icon icon-members"
-            aria-hidden="true"
-          />
-          {{ $t('nav.members') }}
-        </RouterLink>
-        <RouterLink
-          to="/settings"
-          active-class="active"
-        >
-          <span
-            class="icon icon-settings"
-            aria-hidden="true"
-          />
-          {{ $t('nav.settings') }}
-        </RouterLink>
+              class="icon icon-cloud"
+              aria-hidden="true"
+            />
+            <span class="nav-connection-text">
+              <span class="nav-connection-provider">{{ c.providerName }}</span>
+              {{ c.account }}
+              <span
+                v-if="c.library"
+                class="nav-connection-library"
+              >{{ c.library }}</span>
+              <span
+                v-if="c.status !== 'ok'"
+                class="nav-connection-status"
+              >{{ $t(`connections.status.${c.status}`) }}</span>
+            </span>
+          </RouterLink>
+          <RouterLink
+            to="/connections"
+            active-class="active"
+          >
+            <span
+              class="icon icon-cloud-add"
+              aria-hidden="true"
+            />
+            {{ $t('nav.connections') }}
+          </RouterLink>
+          <RouterLink
+            to="/migrate"
+            active-class="active"
+          >
+            <span
+              class="icon icon-migrate"
+              aria-hidden="true"
+            />
+            {{ $t('nav.migrate') }}
+          </RouterLink>
+          <RouterLink
+            to="/favourites"
+            active-class="active"
+          >
+            <span
+              class="icon icon-star"
+              aria-hidden="true"
+            />
+            {{ $t('nav.favourites') }}
+          </RouterLink>
+          <RouterLink
+            to="/recent"
+            active-class="active"
+          >
+            <span
+              class="icon icon-recent"
+              aria-hidden="true"
+            />
+            {{ $t('nav.recent') }}
+          </RouterLink>
+          <RouterLink
+            to="/shared"
+            active-class="active"
+          >
+            <span
+              class="icon icon-shared"
+              aria-hidden="true"
+            />
+            {{ $t('nav.shared') }}
+          </RouterLink>
+          <RouterLink
+            to="/trash"
+            active-class="active"
+          >
+            <span
+              class="icon icon-trash"
+              aria-hidden="true"
+            />
+            {{ $t('nav.trash') }}
+          </RouterLink>
+          <RouterLink
+            to="/storage"
+            active-class="active"
+          >
+            <span
+              class="icon icon-storage"
+              aria-hidden="true"
+            />
+            {{ $t('nav.storage') }}
+          </RouterLink>
+          <RouterLink
+            v-if="session.me.role === 'admin'"
+            to="/members"
+            active-class="active"
+          >
+            <span
+              class="icon icon-members"
+              aria-hidden="true"
+            />
+            {{ $t('nav.members') }}
+          </RouterLink>
+          <RouterLink
+            to="/settings"
+            active-class="active"
+          >
+            <span
+              class="icon icon-settings"
+              aria-hidden="true"
+            />
+            {{ $t('nav.settings') }}
+          </RouterLink>
+        </div>
       </nav>
       <main class="app-main">
         <UploadPanel />

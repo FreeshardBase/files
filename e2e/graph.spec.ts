@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { openPlaces } from './places.ts';
 
 // #151: OneDrive and SharePoint over Microsoft Graph, browsed live through the same folder view as the home. Runs
 // against the cloud server (e2e/cloudServer.ts), whose OneDrive and SharePoint providers talk to the fake Graph
@@ -41,6 +42,7 @@ test('connect OneDrive with one click and open a file with the same bytes', asyn
   await page.getByRole('button', { name: 'Allow' }).click();
 
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  await openPlaces(page);
   await expect(nav(page).getByRole('link', { name: /testuser@example\.com/ })).toContainText('OneDrive');
   await row(page, 'Documents').getByRole('button', { name: 'Documents', exact: true }).click();
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}\/Documents$/);
@@ -92,6 +94,7 @@ test('connect SharePoint, pick a site\'s library in the picker, and browse it', 
   await connect.click();
 
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  await openPlaces(page);
   const link = nav(page).getByRole('link', { name: /testuser@example\.com/ });
   await expect(link).toContainText('SharePoint');
   await expect(link).toContainText('Team Site / Documents');

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPlaces } from './places.ts';
 
 // #152 (regression for #115: paste was hardcoded to the local source): a file copied in a cloud connection is pasted into
 // the home. The paste becomes a transfer job, the transfer panel shows it until it is done, and the copy opens. Runs
@@ -36,6 +37,7 @@ test('copy a file from a cloud connection, paste it into the home, watch the tra
   await expect(page.getByRole('status')).toContainText(/1 zum Kopieren vorgemerkt|1 ready to copy/);
 
   // Into another source: the home, in this project's own folder.
+  await openPlaces(page);
   await nav(page).getByRole('link', { name: /Mein Speicher|My storage/ }).click();
   await page.getByRole('button', { name: dir, exact: true }).click();
   await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText(dir);

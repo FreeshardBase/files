@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
@@ -75,6 +75,8 @@ function onKey(e: KeyboardEvent, i: number) {
   const handled = () => { e.preventDefault(); return true; };
   if (key === 'ArrowDown' && handled()) focusRow(i + 1);
   else if (key === 'ArrowUp' && handled()) focusRow(i - 1);
+  else if (key === 'Home' && handled()) focusRow(0);
+  else if (key === 'End' && handled()) focusRow(props.entries.length - 1);
   else if (key === ' ' && handled()) toggle(i);
   else if (props.editable && key === 'F2' && handled()) emit('action', 'rename', [entry]);
   else if (props.editable && key === 'Delete' && handled()) emit('action', 'trash', targets(i));
@@ -101,6 +103,30 @@ function onContextMenu(e: MouseEvent, i: number) {
   active.value = i;
   void menus.value[i]?.show();
 }
+// Long-press (#160): a touch held still for half a second opens the row's menu, as the context menu does with a mouse.
+// The click the lifted finger may still produce is swallowed, so the press does not also open or select the item.
+const LONG_PRESS_MS = 500;
+let press: { x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
+let pressed = false;
+function cancelPress() { if (press) clearTimeout(press.timer); press = null; }
+function onPointerDown(e: PointerEvent, i: number) {
+  cancelPress();
+  pressed = false;
+  if (e.pointerType !== 'touch' || (e.target instanceof Element && e.target.closest('.item-menu'))) return;
+  press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+    press = null; pressed = true; active.value = i;
+    void menus.value[i]?.show();
+  }, LONG_PRESS_MS) };
+}
+function onPointerMove(e: PointerEvent) {
+  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress(); // a scroll, not a press
+}
+function onClickCapture(e: MouseEvent) {
+  if (!pressed) return;
+  pressed = false;
+  e.preventDefault(); e.stopPropagation();
+}
+onBeforeUnmount(cancelPress);
 function onDragOver(e: DragEvent, entry: Entry) {
   if (props.editable && entry.type === 'directory' && acceptDrag(e)) dropTarget.value = entry.path;
 }
@@ -172,7 +198,12 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
         :aria-selected="chosen.has(e.path)"
         :class="{ selected: chosen.has(e.path), 'drop-target': dropTarget === e.path }"
         :draggable="editable"
+        @click.capture="onClickCapture"
         @click="onClick($event, i)"
+        @pointerdown="onPointerDown($event, i)"
+        @pointermove="onPointerMove"
+        @pointerup="cancelPress"
+        @pointercancel="cancelPress"
         @focusin="active = i"
         @keydown="onKey($event, i)"
         @dblclick="emit('open', e)"
@@ -186,13 +217,19 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
           class="select"
           role="cell"
         >
-          <input
-            type="checkbox"
-            tabindex="-1"
-            :checked="chosen.has(e.path)"
-            :aria-label="$t('actions.select', { name: e.name })"
-            @click.stop="active = i; toggle(i)"
+          <!-- The label is the checkbox's touch target (44 px on a phone); a click on it reaches the box. -->
+          <label
+            class="check-target"
+            @click.stop
           >
+            <input
+              type="checkbox"
+              tabindex="-1"
+              :checked="chosen.has(e.path)"
+              :aria-label="$t('actions.select', { name: e.name })"
+              @click.stop="active = i; toggle(i)"
+            >
+          </label>
         </td>
         <td
           class="name"
