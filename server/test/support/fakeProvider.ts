@@ -10,8 +10,8 @@ import { googleDriveProvider } from '../../src/cloud/googleDrive.ts';
 import { dropboxProvider } from '../../src/cloud/dropbox.ts';
 import { FakeDrive } from './fakeDrive.ts';
 import { FakeDropbox } from './fakeDropbox.ts';
-import { graphProviders } from '../../src/cloud/graph.ts';
-import { FakeGraph } from './fakeGraph.ts';
+import { graphEndpoints, graphProviders } from '../../src/cloud/graph.ts';
+import { FakeGraph, msHostOf } from './fakeGraph.ts';
 
 // A fake cloud provider (spec §3.9): an OAuth 2 authorization server with a consent page, plus a small file API with the
 // behaviour every real provider has and the backends must handle: pagination, 401 on an expired access token, rotated
@@ -21,7 +21,7 @@ import { FakeGraph } from './fakeGraph.ts';
 // through `dropboxProvider()`; Microsoft Graph's is `graph` (support/fakeGraph.ts), reached through `graphProviders()`.
 
 /** `query` is the query string (or a session chunk's Content-Range), `body` a parsed JSON body or Dropbox-API-Arg. */
-export type FakeRequest = { method: string; path: string; at: number; token?: string; grant?: string; query?: string; body?: unknown };
+export type FakeRequest = { method: string; path: string; at: number; host?: string; token?: string; grant?: string; query?: string; body?: unknown };
 type FakeFile = { type: 'file' | 'directory'; data: Buffer; modified: string };
 
 export type FakeProviderOptions = {
@@ -348,8 +348,13 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     }),
     dropbox,
     graphProviders: (o = {}) => graphProviders({ clientId: FAKE_CLIENT.id, clientSecret: FAKE_CLIENT.secret, tenant: 'common' }, {
+      // A pre-signed URL is on the fake's origin, tagged with the Microsoft host it stands for (support/fakeGraph.ts);
+      // that host must pass the production allowlist.
       endpoints: { authorization: `${url}/oauth/authorize`, token: `${url}/oauth/token`, api: `${url}/graph/v1.0`,
-        contentHost: (h) => h.origin === url },
+        contentHost: (h) => {
+          const ms = msHostOf(h.pathname);
+          return h.origin === url && ms !== null && graphEndpoints('common').contentHost(new URL(`https://${ms.host}/`));
+        } },
       ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
     }),
     graph,
