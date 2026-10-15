@@ -38,6 +38,39 @@
     "skip": "Skip",
     "applyAll": "Do this for all remaining items ({count})"
   },
+  "actions": {
+    "toolbar": "Actions for the selection",
+    "column": "Actions",
+    "menu": "Actions for {name}",
+    "select": "Select {name}",
+    "selectColumn": "Selection",
+    "rename": "Rename",
+    "cut": "Move",
+    "copy": "Copy",
+    "pasteMove": "Move here ({count})",
+    "pasteCopy": "Copy here ({count})",
+    "clearClipboard": "Cancel moving or copying",
+    "trash": "Move to trash"
+  },
+  "rename": {
+    "title": "Rename",
+    "label": "New name",
+    "submit": "Rename",
+    "cancel": "Cancel",
+    "invalid": "A name can't be empty, contain “/” or be “.” or “..”."
+  },
+  "transfer": {
+    "markedMove": "{count} ready to move. Open the target folder and choose “Move here”.",
+    "markedCopy": "{count} ready to copy. Open the target folder and choose “Copy here”.",
+    "moveSummary": "{done} of {total} moved",
+    "moveSummarySkipped": "{done} of {total} moved, {skipped} skipped",
+    "copySummary": "{done} of {total} copied",
+    "copySummarySkipped": "{done} of {total} copied, {skipped} skipped",
+    "renamed": "Renamed to {name}",
+    "trashed": "{count} moved to trash",
+    "failedHeading": "Not done:",
+    "failedItem": "{name}: {reason}"
+  },
   "errors": {
     "UNAUTHENTICATED": "You are no longer signed in.",
     "FORBIDDEN": "You don't have permission to do that.",
@@ -58,7 +91,8 @@
     "SIZE_MISMATCH": "The upload was incomplete. Please try again.",
     "LOGIN_FAILED": "Signing in didn't work. Please try again.",
     "INTERNAL": "Something went wrong. Please try again later.",
-    "NETWORK": "No connection to the shard."
+    "NETWORK": "No connection to the shard.",
+    "TARGET_INSIDE_SOURCE": "A folder can't be moved or copied into itself."
   },
   "a11y": {
     "fileList": "Files in {folder}",

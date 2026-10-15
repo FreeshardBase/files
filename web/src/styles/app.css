@@ -95,13 +95,49 @@ body {
 .file-list tbody tr:last-child td { border-bottom: 0; }
 .file-list tbody tr:focus-visible { outline-offset: -2px; }
 .file-list .num { font: 400 var(--fs-mono)/1.3 var(--font-mono); letter-spacing: var(--ls-mono); color: var(--ink-muted); white-space: nowrap; }
-.file-list .name { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
+/* The flex box sits inside the cell: a flex <td> stops being a table cell and its border falls out of line. */
+.file-list .name-inner { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
 .file-list a, .file-list .link {
   color: var(--ink); text-decoration: none; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
 }
 .file-list a:hover, .file-list .link:hover { color: var(--line); text-decoration: underline; }
 
+/* Selection and drop target: a teal tint by tone, never a fill in the accent colour; drop target adds a dashed hairline. */
+.file-list tbody tr.selected { background: color-mix(in srgb, var(--data) 9%, transparent); }
+.file-list tbody tr.drop-target, .breadcrumbs a.drop-target { outline: 1.5px dashed var(--line); outline-offset: -3px; }
+.breadcrumbs a.drop-target { outline-offset: 2px; border-radius: 4px; }
+.file-list .select, .file-list .menu-cell { width: 1%; padding-left: var(--space-3); padding-right: var(--space-3); }
+.file-list .select input { width: 18px; height: 18px; margin: 0; vertical-align: middle; accent-color: var(--data); cursor: pointer; }
+
+/* Selection actions sit above the list; "Move here"/"Copy here" is the one forward action while items are marked. */
+.selection-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+
+/* Item action menu (menu button pattern): a sheet-like popup, hairline border, no shadow. */
+.item-menu { position: relative; display: flex; justify-content: flex-end; }
+.icon-button {
+  display: inline-flex; align-items: center; justify-content: center; padding: 6px;
+  border: var(--border-w) solid transparent; border-radius: var(--radius-control); background: transparent; cursor: pointer;
+}
+.icon-button:hover, .icon-button[aria-expanded='true'] { border-color: var(--border-cool); }
+.menu {
+  position: absolute; right: 0; top: 100%; z-index: 5; min-width: 200px; margin: var(--space-1) 0 0; padding: var(--space-1) 0;
+  list-style: none; background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-tile);
+}
+.menu button {
+  display: block; width: 100%; padding: 10px var(--space-4); text-align: left; white-space: nowrap;
+  font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink); background: none; border: 0; cursor: pointer;
+}
+.menu button:hover, .menu button:focus-visible { background: color-mix(in srgb, var(--line) 10%, transparent); outline: none; }
+
+.app-dialog-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--space-4); }
+.app-dialog-field .fs-input { box-sizing: border-box; }
+.app-dialog-form .fs-field__error { margin: calc(-1 * var(--space-3)) 0 var(--space-4); }
+
 /* 24px line icons (stroke 1.5, round) used as masks so they take currentColor. */
+.icon-more {
+  background: var(--ink-muted);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='5.5' cy='12' r='1.25'/%3E%3Ccircle cx='12' cy='12' r='1.25'/%3E%3Ccircle cx='18.5' cy='12' r='1.25'/%3E%3C/svg%3E");
+}
 .icon { flex: none; width: 20px; height: 20px; background: var(--line); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .icon-folder {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
@@ -120,7 +156,13 @@ body {
   }
   .file-list tbody tr:last-child { border-bottom: 0; }
   .file-list td { padding: 0; border: 0; }
-  .file-list td.name { flex: 1 0 100%; padding-bottom: var(--space-1); }
-  .file-list td.num { font-size: var(--fs-small); }
+  /* One line: checkbox, name, action menu (a 44px touch target); size and date wrap below, under the name. */
+  .file-list td.select { order: 0; display: flex; align-items: center; width: auto; padding: 0; }
+  .file-list td.name { order: 1; flex: 1 1 calc(100% - 96px); min-width: 0; }
+  .file-list td.menu-cell { order: 2; width: auto; padding: 0; }
+  .file-list td.num { order: 3; font-size: var(--fs-small); padding-bottom: var(--space-1); }
+  .file-list td.size { margin-left: calc(18px + var(--space-3)); }
+  .file-list td.size:empty + td.date { margin-left: calc(18px + var(--space-3)); }
+  .file-list .icon-button { padding: 11px; margin: -6px -11px -6px 0; }
   .file-list td.num:empty { display: none; }
 }

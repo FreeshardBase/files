@@ -22,12 +22,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 
 const { LocalBackend } = await import('../src/storage/local.ts');
+const { testIndex } = await import('./support/homeIndex.ts');
 const body = (s: string) => Readable.from([Buffer.from(s)]);
 
 describe('LocalBackend.write durability', () => {
   it.each(['replace', 'fail', 'keep-both'] as const)('fsyncs the target folder after placing the file (%s)', async (onCollision) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'files-fsync-')));
-    const b = new LocalBackend(root);
+    const b = new LocalBackend(root, testIndex());
     if (onCollision === 'keep-both') await b.write('/sub/a.txt', body('one'), { onCollision: 'fail', maxBytes: 1024 });
     log.length = 0;
     const e = await b.write('/sub/a.txt', body('two'), { onCollision, maxBytes: 1024 });

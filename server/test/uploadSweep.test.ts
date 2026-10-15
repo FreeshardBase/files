@@ -59,6 +59,25 @@ describe('startup sweep of orphaned upload temp files', () => {
     for (const o of orphans) expect(existsSync(o), o).toBe(false);
   });
 
+  it('removes copies a crash left in .files/tmp, but never follows a symlinked .files or tmp', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'files-sweep-outside-'));
+    cleanups.push(() => rmSync(outside, { recursive: true, force: true }));
+    mkdirSync(join(outside, 'tmp', 'victim'), { recursive: true });
+    writeFileSync(join(outside, 'tmp', 'victim', 'f.txt'), 'not yours');
+    let staged = ''; let trashed = '';
+    t = await startTestApp({}, (app) => plant(app, (home) => {
+      staged = join(home(HOME_A), '.files', 'tmp', '0123456789abcdef0123456789abcdef');
+      mkdirSync(join(staged, 'half copied'), { recursive: true });
+      writeFileSync(join(staged, 'half copied', 'a.txt'), 'x');
+      trashed = join(home(HOME_A), '.files', 'trash', 'fedcba9876543210fedcba9876543210');
+      mkdirSync(trashed, { recursive: true });
+      symlinkSync(outside, join(home(HOME_B), '.files'));
+    }));
+    expect(existsSync(staged)).toBe(false);
+    expect(existsSync(trashed)).toBe(true);
+    expect(readFileSync(join(outside, 'tmp', 'victim', 'f.txt'), 'utf8')).toBe('not yours');
+  });
+
   it('leaves look-alikes, directories, symlinks and symlink targets untouched', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'files-sweep-outside-'));
     cleanups.push(() => rmSync(outside, { recursive: true, force: true }));

@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
-import type { CollisionPolicy, Entry, ListResponse } from '@files/shared';
+import type { CollisionPolicy, DeleteRequest, Entry, ListResponse, TransferRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { sourceApi } from '../api/paths.ts';
 
-const join = (dir: string, name: string) => (dir === '/' ? '' : dir) + '/' + name;
+export const join = (dir: string, name: string) => (dir === '/' ? '' : dir) + '/' + name;
 
 export const useFolderStore = defineStore('folder', {
   state: () => ({
@@ -12,6 +12,8 @@ export const useFolderStore = defineStore('folder', {
     loading: false, // initial load of a folder: the list is replaced by a placeholder
     refreshing: false, // relist of the folder already shown: the list stays mounted
     seq: 0, // request token: only the newest open() may touch state
+    // Items marked with "Move"/"Copy" (Ctrl+X/C), pasted into whichever folder is open later. Survives navigation.
+    clipboard: null as { mode: 'move' | 'copy'; source: string; entries: Entry[] } | null,
   }),
   actions: {
     async open(path: string, opts: { refresh?: boolean; source?: string } = {}) {
@@ -39,6 +41,14 @@ export const useFolderStore = defineStore('folder', {
     /** PUTs into `at` (captured by the caller, so navigating away mid-batch does not redirect the file). The caller relists. */
     async upload(file: File, at: { source: string; dir: string }, onCollision: CollisionPolicy = 'fail', onProgress?: (f: number) => void): Promise<Entry> {
       return api.put<Entry>(`${sourceApi(at.source)}/content`, { path: join(at.dir, file.name), onCollision }, file, onProgress);
+    },
+    /** Move (also rename) or copy within one source. The caller relists. */
+    async transfer(op: 'move' | 'copy', source: string, from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
+      return api.post<Entry>(`${sourceApi(source)}/${op}`, { from, to, onCollision } satisfies TransferRequest);
+    },
+    /** Moves every path to the trash, all or nothing. The caller relists. */
+    async trash(source: string, paths: string[]): Promise<void> {
+      await api.post(`${sourceApi(source)}/delete`, { paths } satisfies DeleteRequest);
     },
     async mkdir(name: string) {
       const dir = this.path; const source = this.source;

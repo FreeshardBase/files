@@ -29,4 +29,10 @@ export interface StorageBackend {
     Promise<{ entry: Entry; stream: Readable; etag: string; range?: ByteRange }>;
   write(path: string, body: Readable, opts: WriteOptions): Promise<Entry>;
   mkdir(path: string): Promise<Entry>;
+  /** Rename or move within this source. A folder never moves into itself; "replace" sends the old target to the trash. */
+  move(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry>;
+  /** Copy a file or a whole folder (streamed, never buffered) within this source. */
+  copy(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry>;
+  /** Move every path to the trash, all or nothing. */
+  delete(paths: readonly string[]): Promise<void>;
 }

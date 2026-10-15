@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Readable } from 'node:stream';
-import { CollisionPolicy } from '@files/shared';
+import { CollisionPolicy, DeleteRequest, TransferRequest } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
 import { resolveSource, type Access } from '../storage/resolveSource.ts';
@@ -108,5 +108,26 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     const b = await backendFor(req, 'edit');
     const body = PathQ.parse(req.body);
     return reply.status(201).send(await b.mkdir(body.path));
+  });
+
+  // Rename is a move within the same folder.
+  app.post('/api/v1/sources/:source/move', async (req) => {
+    const b = await backendFor(req, 'edit');
+    const body = TransferRequest.parse(req.body);
+    return b.move(body.from, body.to, body.onCollision);
+  });
+
+  app.post('/api/v1/sources/:source/copy', async (req, reply) => {
+    const b = await backendFor(req, 'edit');
+    const body = TransferRequest.parse(req.body);
+    return reply.status(201).send(await b.copy(body.from, body.to, body.onCollision));
+  });
+
+  // Moves every path to the trash in one transaction: all or nothing.
+  app.post('/api/v1/sources/:source/delete', async (req, reply) => {
+    const b = await backendFor(req, 'edit');
+    const body = DeleteRequest.parse(req.body);
+    await b.delete(body.paths);
+    return reply.status(204).send();
   });
 }

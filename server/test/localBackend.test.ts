@@ -7,9 +7,10 @@ import { Readable, PassThrough } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { LocalBackend, mapFsError } from '../src/storage/local.ts';
 import { resolveInRoot } from '../src/storage/resolveInRoot.ts';
+import { testIndex } from './support/homeIndex.ts';
 
 let root: string; let b: LocalBackend;
-beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'files-lb-')); b = new LocalBackend(root); });
+beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'files-lb-')); b = new LocalBackend(root, testIndex()); });
 const body = (s: string) => Readable.from([Buffer.from(s)]);
 const err = async (p: Promise<unknown>) => { try { await p; return 'ok'; } catch (e) { return (e as { code: string }).code; } };
 const opts = { onCollision: 'fail' as const, maxBytes: 1024 * 1024 };
