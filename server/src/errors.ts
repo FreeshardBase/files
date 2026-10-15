@@ -8,6 +8,8 @@ const codeForStatus = new Map<number, ErrorCode>();
 for (const [status, codes] of Object.entries(Object.groupBy(Object.keys(errorStatus) as ErrorCode[], (c) => errorStatus[c]))) {
   if (codes?.length === 1) codeForStatus.set(Number(status), codes[0]!);
 }
+// SOURCE_NOT_FOUND shares 404 but only resolveSource throws it; a framework 404 is the generic one.
+codeForStatus.set(404, 'NOT_FOUND');
 
 export class AppError extends Error {
   constructor(public code: ErrorCode, public params?: Record<string, string | number>, options?: ErrorOptions) {

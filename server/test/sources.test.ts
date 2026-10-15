@@ -1,12 +1,10 @@
 import { once } from 'node:events';
-import { truncateSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
-import { AppError } from '../src/errors.ts';
 import { LocalBackend } from '../src/storage/local.ts';
 import { homeRoot } from '../src/paths.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
@@ -215,7 +213,9 @@ describe('sources/home', () => {
     expect((await t.app.inject('/api/v1/sources/home/list?path=%2F')).statusCode).toBe(401);
   });
   it('rejects unknown sources', async () => {
-    expect((await get(a, '/api/v1/sources/conn:1/list?path=%2F')).statusCode).toBe(404);
+    const r = await get(a, '/api/v1/sources/conn:1/list?path=%2F');
+    expect(r.statusCode).toBe(404);
+    expect(r.json()).toEqual({ code: 'SOURCE_NOT_FOUND' });
   });
   it('does not leak a file descriptor when the client aborts a download', async () => {
     const f = uniq('big', '.bin');
@@ -288,17 +288,44 @@ describe('sources/home', () => {
     req.destroy();
     await small.close();
   });
-  it('keeps Content-Range bytes */<size> when the file shrank between stat and read', async () => {
-    const f = uniq('shrink', '.bin');
+  // One read means the Range is resolved against the size of the opened file, so there is no stat/read race left.
+  it('GET content does one backend read and no stat, with and without a Range', async () => {
+    const f = uniq('one-trip');
     expect((await put(a, f, '0123456789')).statusCode).toBe(201);
-    const root = await rootOf(t, a);
-    const spy = vi.spyOn(LocalBackend.prototype, 'read').mockImplementationOnce(async () => {
-      truncateSync(join(root, f.slice(1)), 4);
-      throw new AppError('RANGE_NOT_SATISFIABLE');
+    const read = vi.spyOn(LocalBackend.prototype, 'read');
+    const stat = vi.spyOn(LocalBackend.prototype, 'stat');
+    try {
+      const whole = await get(a, `/api/v1/sources/home/content?path=${q(f)}`);
+      expect(whole.statusCode).toBe(200);
+      expect(whole.body).toBe('0123456789');
+      expect(whole.headers['content-disposition']).toMatch(/filename="one-trip-\d+\.txt"/);
+      const part = await get(a, `/api/v1/sources/home/content?path=${q(f)}`, { range: 'bytes=7-' });
+      expect(part.statusCode).toBe(206);
+      expect(part.body).toBe('789');
+      expect(part.headers['content-range']).toBe('bytes 7-9/10');
+      const bad = await get(a, `/api/v1/sources/home/content?path=${q(f)}`, { range: 'bytes=50-' });
+      expect(bad.statusCode).toBe(416);
+      expect(bad.headers['content-range']).toBe('bytes */10');
+      expect(read).toHaveBeenCalledTimes(3);
+      expect(stat).not.toHaveBeenCalled();
+    } finally { read.mockRestore(); stat.mockRestore(); }
+  });
+  it('PUT with a stale If-Match answers 412 PRECONDITION_FAILED and keeps the file', async () => {
+    const f = uniq('if-match');
+    const putIfMatch = (etag: string, payload: string) => t.app.inject({
+      method: 'PUT', url: `/api/v1/sources/home/content?path=${q(f)}&onCollision=replace`,
+      headers: { cookie: a.cookie, 'x-csrf-token': a.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream', 'if-match': etag },
+      payload,
     });
-    const r = await get(a, `/api/v1/sources/home/content?path=${q(f)}`, { range: 'bytes=5-8' });
-    spy.mockRestore();
-    expect(r.statusCode).toBe(416);
-    expect(r.headers['content-range']).toBe('bytes */4');
+    const etagOf = async () => String((await get(a, `/api/v1/sources/home/content?path=${q(f)}`)).headers.etag);
+    expect((await put(a, f, 'one')).statusCode).toBe(201);
+    const stale = await etagOf();
+    expect((await put(a, f, 'two', 'replace')).statusCode).toBe(201);
+    const r = await putIfMatch(stale, 'lost update');
+    expect(r.statusCode).toBe(412);
+    expect(r.json()).toEqual({ code: 'PRECONDITION_FAILED' });
+    expect((await get(a, `/api/v1/sources/home/content?path=${q(f)}`)).body).toBe('two');
+    expect((await putIfMatch(await etagOf(), 'three')).statusCode).toBe(201);
+    expect((await get(a, `/api/v1/sources/home/content?path=${q(f)}`)).body).toBe('three');
   });
 });

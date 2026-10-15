@@ -21,7 +21,7 @@ describe('write + read', () => {
     expect(e.name).toBe('Prüfung #1 50% 🎉.txt');
     const r = await b.read(e.path);
     expect(await text(r.stream)).toBe('hello');
-    expect(r.size).toBe(5);
+    expect(r.entry).toMatchObject({ name: 'Prüfung #1 50% 🎉.txt', path: name, type: 'file', size: 5, mime: 'text/plain' });
   });
   it('reads a byte range', async () => {
     await b.write('/r.txt', body('0123456789'), opts);
@@ -63,6 +63,47 @@ describe('write + read', () => {
   });
   it('rejects a body larger than maxBytes and cleans up', async () => {
     expect(await err(b.write('/big.bin', body('x'.repeat(2000)), { ...opts, maxBytes: 1000 }))).toBe('PAYLOAD_TOO_LARGE');
+    expect(readdirSync(root)).toEqual([]);
+  });
+  it('ifMatch with the current ETag replaces the file', async () => {
+    await b.write('/m.txt', body('one'), opts);
+    const { etag, stream } = await b.read('/m.txt'); stream.destroy();
+    await b.write('/m.txt', body('two'), { ...opts, onCollision: 'replace', ifMatch: etag });
+    expect(readFileSync(join(root, 'm.txt'), 'utf8')).toBe('two');
+  });
+  it('ifMatch with a stale ETag fails with PRECONDITION_FAILED and leaves the file and no temp file', async () => {
+    await b.write('/m.txt', body('one'), opts);
+    const { etag: stale, stream } = await b.read('/m.txt'); stream.destroy();
+    await b.write('/m.txt', body('changed'), { ...opts, onCollision: 'replace' });
+    expect(await err(b.write('/m.txt', body('lost update'), { ...opts, onCollision: 'replace', ifMatch: stale }))).toBe('PRECONDITION_FAILED');
+    expect(readFileSync(join(root, 'm.txt'), 'utf8')).toBe('changed');
+    expect(readdirSync(root)).toEqual(['m.txt']);
+  });
+  it('ifMatch on a missing file fails with PRECONDITION_FAILED and creates nothing', async () => {
+    expect(await err(b.write('/gone.txt', body('x'), { ...opts, onCollision: 'replace', ifMatch: '"1-1-1"' }))).toBe('PRECONDITION_FAILED');
+    expect(readdirSync(root)).toEqual([]);
+  });
+  it('ifMatch is only valid with onCollision replace', async () => {
+    await b.write('/m.txt', body('one'), opts);
+    const { etag, stream } = await b.read('/m.txt'); stream.destroy();
+    expect(await err(b.write('/m.txt', body('two'), { ...opts, ifMatch: etag }))).toBe('VALIDATION');
+    expect(readFileSync(join(root, 'm.txt'), 'utf8')).toBe('one');
+  });
+  it.each([['fewer', 'abc', 5], ['more', 'abcdefgh', 5]])('a size that disagrees with %s streamed bytes fails with SIZE_MISMATCH and leaves no file', async (_l, data, size) => {
+    expect(await err(b.write('/s.txt', body(data), { ...opts, size }))).toBe('SIZE_MISMATCH');
+    expect(readdirSync(root)).toEqual([]);
+  });
+  it('a size mismatch on replace leaves the existing file unchanged', async () => {
+    await b.write('/s.txt', body('keep'), opts);
+    expect(await err(b.write('/s.txt', body('abc'), { ...opts, onCollision: 'replace', size: 4 }))).toBe('SIZE_MISMATCH');
+    expect(readFileSync(join(root, 's.txt'), 'utf8')).toBe('keep');
+    expect(readdirSync(root)).toEqual(['s.txt']);
+  });
+  it('a matching size is accepted', async () => {
+    expect((await b.write('/s.txt', body('abcde'), { ...opts, size: 5 })).size).toBe(5);
+  });
+  it('a declared size above maxBytes is rejected before the body is read', async () => {
+    expect(await err(b.write('/s.txt', new PassThrough(), { ...opts, maxBytes: 10, size: 11 }))).toBe('PAYLOAD_TOO_LARGE');
     expect(readdirSync(root)).toEqual([]);
   });
   it('refuses to write through a directory path', async () => {

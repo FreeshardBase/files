@@ -24,7 +24,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`; plus `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`; plus `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
@@ -32,7 +32,7 @@ Content is served inline only for an allowlist (images except SVG, video, audio,
 
 ## Storage interface
 
-All file access goes through `StorageBackend` (`server/src/storage/backend.ts`): `list`, `stat`, `read` (with range), `write` (streaming, with a collision policy and a byte limit), `mkdir`. `LocalBackend` implements it on `<DATA_DIR>/homes/<userId>`. Every path passes `resolveInRoot(root, userPath)`:
+All file access goes through `StorageBackend` (`server/src/storage/backend.ts`): `list`, `stat`, `read` (with range; returns the `Entry`, the stream and the ETag in one call, resolving the range against the opened file's size), `write` (streaming, with a collision policy, a byte limit, an optional declared `size` and an optional `ifMatch` ETag), `mkdir`. `LocalBackend` implements it on `<DATA_DIR>/homes/<userId>`. Every path passes `resolveInRoot(root, userPath)`:
 
 - it rejects NUL and control characters, bidi controls, ill-formed UTF-16, `..` segments, absolute paths and over-long paths;
 - it `lstat`s every existing component and rejects symlinks;
@@ -80,7 +80,8 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `auth/sessions.ts` | Session and login-attempt rows (hashed ids, TTLs, single-use take, purge). |
 | `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. Invalid specs (first > last, multi-range, other units) are ignored: whole file, 200. |
 | `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir; content-type gate and inline allowlist. |
-| `storage/backend.ts` | The `StorageBackend` interface. |
+| `storage/backend.ts` | The `StorageBackend` interface, write options, `RangeNotSatisfiable`. |
+| `storage/resolveSource.ts` | `resolveSource`: source id to backend and access level; `conn:`/`share:` extension points. |
 | `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
 | `storage/mime.ts` | Extension to MIME lookup. |
@@ -112,7 +113,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 
 ## Known drift
 
-- Only the `home` source exists; `conn:` and `share:` are not routed yet.
+- Only the `home` source exists; `conn:` and `share:` are parsed by `resolveSource` but answer `SOURCE_NOT_FOUND` until #148 and #146.
 - No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
 - No rename, delete, move, copy, trash, versions, thumbnails, search, sharing or WebDAV. See spec §2.1 and the Phase D queue.
 - The details drawer, transfer panel and shared `<AppDialog>` from spec §3.8 are not built.

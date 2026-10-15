@@ -47,6 +47,9 @@
     "UNSUPPORTED_MEDIA_TYPE": "This file type is not accepted here.",
     "RANGE_NOT_SATISFIABLE": "This part of the file does not exist.",
     "STORAGE_FULL": "Storage is full.",
+    "SOURCE_NOT_FOUND": "This storage location doesn't exist or isn't available to you.",
+    "PRECONDITION_FAILED": "The file was changed in the meantime. Reload and try again.",
+    "SIZE_MISMATCH": "The upload was incomplete. Please try again.",
     "LOGIN_FAILED": "Signing in didn't work. Please try again.",
     "INTERNAL": "Something went wrong. Please try again later.",
     "NETWORK": "No connection to the shard."
