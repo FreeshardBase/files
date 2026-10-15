@@ -27,8 +27,11 @@
     "status": {
       "ok": "Verbunden",
       "reauth": "Erneute Anmeldung nötig",
-      "unavailable": "Auf diesem Shard nicht mehr angeboten"
+      "unavailable": "Auf diesem Shard nicht mehr angeboten",
+      "library": "Noch keine Bibliothek gewählt"
     },
+    "chooseLibrary": "Bibliothek wählen",
+    "chooseLibraryLabel": "Bibliothek für {account} wählen",
     "open": "Öffnen",
     "openLabel": "{account} öffnen",
     "reauth": "Erneut anmelden",
@@ -41,6 +44,17 @@
     "add": "Konto verbinden",
     "connect": "{provider} verbinden",
     "noProviders": "Auf diesem Shard ist noch kein Cloud-Anbieter eingerichtet."
+  },
+  "library": {
+    "title": "SharePoint-Bibliothek wählen",
+    "intro": "Wählen Sie die Dokumentbibliothek, die diese Verbindung von {account} zeigt. Weitere Bibliotheken können Sie später verbinden.",
+    "search": "Website suchen",
+    "searchButton": "Suchen",
+    "sites": "Websites",
+    "libraries": "Bibliotheken",
+    "noSites": "Keine Website gefunden.",
+    "noLibraries": "Diese Website hat keine Dokumentbibliothek.",
+    "connect": "Bibliothek verbinden"
   },
   "recent": {
     "title": "Zuletzt geändert",
@@ -331,7 +345,8 @@
     "CONNECTION_REAUTH": "Der Cloud-Anbieter akzeptiert die Anmeldung nicht mehr. Melden Sie sich unter „Cloud-Konten“ erneut an.",
     "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuchen Sie es später erneut.",
     "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Einträge „{name}“. Öffnen Sie den Ordner neu und wählen Sie einen davon.",
-    "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffnen Sie ihn beim Cloud-Anbieter."
+    "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffnen Sie ihn beim Cloud-Anbieter.",
+    "LIBRARY_ALREADY_CONNECTED": "Diese Bibliothek ist schon verbunden. Wählen Sie eine andere."
   },
   "view": {
     "label": "Ansicht",

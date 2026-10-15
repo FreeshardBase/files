@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AppError } from '../errors.ts';
+import type { Library, Site } from '@files/shared';
 import type { StorageBackend } from '../storage/backend.ts';
 
 /** Time and chance, injected so tests can run the backoff on a fake clock. */
@@ -30,8 +31,24 @@ export type Provider = {
   authorizationParams?: Readonly<Record<string, string>>;
   /** The account the tokens belong to: a stable id and a label for the member (usually the e-mail address). */
   account(client: OAuthClient): Promise<{ id: string; label: string }>;
-  /** The files of the account; every request goes through `client`. */
-  backend(client: OAuthClient): StorageBackend;
+  /**
+   * The files of the account; every request goes through `client`. `drive` is the library picked through `libraries`
+   * (#151), or `''` for the account's own files.
+   */
+  backend(client: OAuthClient, drive: string): StorageBackend;
+  /**
+   * Set when a connection shows one of several document libraries the account can reach (SharePoint, #151): the member
+   * picks one after the consent, and until then the connection has no files.
+   */
+  libraries?: LibraryPicker;
+};
+
+/** The site and library lookups of the picker; every request goes through the connection's client. */
+export type LibraryPicker = {
+  sites(client: OAuthClient, query: string): Promise<Site[]>;
+  libraries(client: OAuthClient, site: string): Promise<Library[]>;
+  /** The label of `library` of `site` ("Site / Library"); NOT_FOUND unless it is one of that site's libraries. */
+  label(client: OAuthClient, site: string, library: string): Promise<string>;
 };
 
 /** Where an OAuthClient keeps its refresh token: the connection row (encrypted), or memory while connecting. */
@@ -150,7 +167,8 @@ export class OAuthClient {
   private access: { token: string; expiresAt: number } | undefined;
   private refreshing: Promise<string> | undefined;
 
-  constructor(readonly provider: Provider, private store: TokenStore, private clock: Clock = systemClock,
+  /** `clock` is the connection's time, also for backends that wait on the provider (Graph's copy monitor). */
+  constructor(readonly provider: Provider, private store: TokenStore, readonly clock: Clock = systemClock,
     initial?: { accessToken: string; expiresAt: number }) {
     if (initial) this.access = { token: initial.accessToken, expiresAt: initial.expiresAt };
   }

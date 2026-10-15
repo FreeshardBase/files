@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { AuthorizeRequest, ConnectionId, type AuthorizeResponse, type Connection, type ConnectionList, type ErrorCode } from '@files/shared';
+import { AuthorizeRequest, ConnectionId, GraphId, PickLibraryRequest, type AuthorizeResponse, type Connection, type ConnectionList,
+  type ErrorCode, type LibraryList, type SiteList } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 
@@ -8,6 +9,7 @@ import { requireUser } from '../auth/guard.ts';
 export const CONNECT_CALLBACK_PATH = '/api/v1/connections/callback';
 
 const Params = z.object({ id: ConnectionId });
+const SitesQuery = z.object({ q: z.string().max(200).optional() });
 // Only the fields the flow reads; anything else the provider adds (`scope`, `iss`, …) is ignored. Bounded, so a forged
 // callback cannot make the server store or log much.
 const CallbackQuery = z.object({
@@ -45,15 +47,38 @@ export async function registerConnectionRoutes(app: FastifyInstance): Promise<vo
       req.log.warn({ reason: 'malformed callback query' }, 'connect failed');
       return reply.redirect(failedUrl('CONNECT_FAILED'));
     }
-    let id: string;
-    try { id = await cloud.complete(session.idHash, user.id, q.data, req.log); }
+    let done: { id: string; pick: boolean };
+    try { done = await cloud.complete(session.idHash, user.id, q.data, req.log); }
     catch (err) { // handled: an expected refusal goes back to the connections page with its code; anything else is rethrown
       if (err instanceof AppError && (err.code === 'CONNECT_FAILED' || err.code === 'CONNECT_ACCOUNT_MISMATCH' || err.code === 'NOT_FOUND')) {
         return reply.redirect(failedUrl(err.code === 'NOT_FOUND' ? 'CONNECT_FAILED' : err.code));
       }
       throw err;
     }
-    return reply.redirect(`/conn:${id}`);
+    // A SharePoint connection goes on to the library picker first (#151).
+    return reply.redirect(done.pick ? `/connections?pick=${done.id}` : `/conn:${done.id}`);
+  });
+
+  // The library picker of a pending SharePoint connection (#151): the account's sites, a site's document libraries, and
+  // picking one. Site and library ids go into Graph paths on the fixed Graph host only, after GraphId's character check.
+  app.get('/api/v1/connections/:id/sites', async (req): Promise<SiteList> => {
+    const { user } = requireUser(req);
+    const { id } = Params.parse(req.params);
+    const { q } = SitesQuery.parse(req.query);
+    return { items: await cloud.sites(user.id, id, q ?? '') };
+  });
+
+  app.get('/api/v1/connections/:id/sites/:site/libraries', async (req): Promise<LibraryList> => {
+    const { user } = requireUser(req);
+    const { id, site } = Params.extend({ site: GraphId }).parse(req.params);
+    return { items: await cloud.libraries(user.id, id, site) };
+  });
+
+  app.put('/api/v1/connections/:id/library', async (req): Promise<Connection> => {
+    const { user } = requireUser(req);
+    const { id } = Params.parse(req.params);
+    const body = PickLibraryRequest.parse(req.body);
+    return cloud.pickLibrary(user.id, id, body.site, body.library);
   });
 
   app.post('/api/v1/connections/:id/check', async (req): Promise<Connection> => {

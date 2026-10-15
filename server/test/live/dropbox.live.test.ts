@@ -17,7 +17,7 @@ describe.skipIf(vars.some((v) => !v))('live: Dropbox backend (LIVE_DROPBOX_*)', 
     const client = new OAuthClient(provider, { refreshToken: () => stored, saveRefreshToken: (t) => { stored = t; }, setStatus: () => undefined },
       systemClock);
     expect((await provider.account(client)).id.length).toBeGreaterThan(0);
-    const dropbox = provider.backend(client);
+    const dropbox = provider.backend(client, '');
     const root = await dropbox.list('/');
     expect(Array.isArray(root.entries)).toBe(true);
 

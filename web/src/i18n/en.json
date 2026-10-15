@@ -27,8 +27,11 @@
     "status": {
       "ok": "Connected",
       "reauth": "Needs signing in again",
-      "unavailable": "No longer offered on this shard"
+      "unavailable": "No longer offered on this shard",
+      "library": "No library chosen yet"
     },
+    "chooseLibrary": "Choose library",
+    "chooseLibraryLabel": "Choose a library for {account}",
     "open": "Open",
     "openLabel": "Open {account}",
     "reauth": "Sign in again",
@@ -41,6 +44,17 @@
     "add": "Connect an account",
     "connect": "Connect {provider}",
     "noProviders": "No cloud provider is set up on this shard yet."
+  },
+  "library": {
+    "title": "Choose a SharePoint library",
+    "intro": "Choose the document library this connection of {account} shows. You can connect more libraries later.",
+    "search": "Find a site",
+    "searchButton": "Search",
+    "sites": "Sites",
+    "libraries": "Libraries",
+    "noSites": "No site found.",
+    "noLibraries": "This site has no document library.",
+    "connect": "Connect library"
   },
   "recent": {
     "title": "Recent",
@@ -331,7 +345,8 @@
     "CONNECTION_REAUTH": "The cloud provider no longer accepts the sign-in. Sign in again under “Cloud accounts”.",
     "PROVIDER_UNAVAILABLE": "The cloud provider cannot be reached right now. Please try again later.",
     "AMBIGUOUS_NAME": "Several items in this folder are called “{name}”. Open the folder again and pick one.",
-    "NOT_EXPORTABLE": "This document type can't be downloaded. Open it at the cloud provider."
+    "NOT_EXPORTABLE": "This document type can't be downloaded. Open it at the cloud provider.",
+    "LIBRARY_ALREADY_CONNECTED": "This library is already connected. Choose another one."
   },
   "view": {
     "label": "View",

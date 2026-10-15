@@ -8,9 +8,10 @@ export const ProviderId = z.string().regex(/^[a-z0-9-]{1,32}$/);
 
 /**
  * `ok`: the tokens work. `reauth`: the provider refused the refresh token (revoked or expired consent); the member signs
- * in again. `unavailable`: the shard no longer offers this provider (its client credentials were removed).
+ * in again. `unavailable`: the shard no longer offers this provider (its client credentials were removed). `library`: a
+ * SharePoint connection whose document library the member has not picked yet (#151); it shows no files until then.
  */
-export const ConnectionStatus = z.enum(['ok', 'reauth', 'unavailable']);
+export const ConnectionStatus = z.enum(['ok', 'reauth', 'unavailable', 'library']);
 export type ConnectionStatus = z.infer<typeof ConnectionStatus>;
 
 export const ConnectionSchema = z.object({
@@ -22,6 +23,8 @@ export const ConnectionSchema = z.object({
   providerName: z.string(),
   /** The provider account, as the provider names it (usually its e-mail address). */
   account: z.string(),
+  /** The picked document library of a SharePoint connection, as "Site / Library" (#151). */
+  library: z.string().optional(),
   status: ConnectionStatus,
   createdAt: z.iso.datetime(),
 });
@@ -43,3 +46,17 @@ export type AuthorizeRequest = z.infer<typeof AuthorizeRequest>;
 
 /** Where the browser goes next: the provider's consent page. */
 export type AuthorizeResponse = { url: string };
+
+/** A SharePoint site or library id as Graph issues it (`host,guid,guid`; `b!…`): bounded, URL-safe characters only. */
+export const GraphId = z.string().regex(/^[A-Za-z0-9!.,_-]{1,512}$/);
+
+/** A SharePoint site the member can reach, for the library picker (#151). `url` is shown as text only. */
+export type Site = { id: string; name: string; url: string };
+/** A document library of a site. */
+export type Library = { id: string; name: string };
+export type SiteList = { items: Site[] };
+export type LibraryList = { items: Library[] };
+
+/** Body of `connections/:id/library`: the library a pending SharePoint connection shows from then on. */
+export const PickLibraryRequest = z.strictObject({ site: GraphId, library: GraphId });
+export type PickLibraryRequest = z.infer<typeof PickLibraryRequest>;

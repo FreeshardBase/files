@@ -17,7 +17,7 @@ describe.skipIf(vars.some((v) => !v))('live: Google Drive backend (LIVE_GDRIVE_*
     const client = new OAuthClient(provider, { refreshToken: () => stored, saveRefreshToken: (t) => { stored = t; }, setStatus: () => undefined },
       systemClock);
     expect((await provider.account(client)).id.length).toBeGreaterThan(0);
-    const drive = provider.backend(client);
+    const drive = provider.backend(client, '');
     const root = await drive.list('/');
     expect(Array.isArray(root.entries)).toBe(true);
 
