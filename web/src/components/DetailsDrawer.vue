@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
-// member's own home it lists the members the item is shared with and offers "Share …"; in a share it shows the caller's
-// own access. A file's versions follow (#154); the item can be starred (#155). Esc or "Close" closes it; focus returns
+// member's own home and own cloud connections it lists the members the item is shared with and offers "Share …" (#208);
+// in a share it shows the caller's own access. A file's versions follow (#154); the item can be starred (#155). Esc or "Close" closes it; focus returns
 // to the row.
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -15,7 +15,7 @@ import { useFavouritesStore } from '../stores/favourites.ts';
 const props = defineProps<{ source: string; entry: Entry; access: Access; returnFocus?: HTMLElement | null }>();
 const emit = defineEmits<{ close: []; share: []; restored: [entry: Entry] }>();
 const { t, locale } = useI18n();
-const own = props.source === 'home';
+const own = !props.source.startsWith('share:');
 const shares = ref<Share[] | null>(null);
 const error = ref('');
 const whoId = useId();

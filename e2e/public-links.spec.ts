@@ -99,6 +99,45 @@ test('a link with password and limit 1: the visitor unlocks, downloads once, and
   await v.context().close();
 });
 
+test('a link to a home folder: the visitor browses into a subfolder, previews and downloads a file, never above the folder (#208)', async ({ page, browser, baseURL }, info) => {
+  const dir = `link-folder-${tag(info)}`;
+  const headers = await setup(page, dir, { 'readme.txt': 'start here' });
+  const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/Plans/floor.txt`)}&onCollision=fail`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from('ground floor') });
+  expect(r.status()).toBe(201);
+  await page.goto('/home');
+  const d = await openShareDialog(page, dir);
+  await d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ }).click();
+  const form = d.getByRole('form', { name: /Neuer öffentlicher Link|New public link/ });
+  await form.getByLabel(/Bezeichnung|Label/).fill('Architect');
+  await form.getByRole('button', { name: /Link erstellen|Create link/ }).click();
+  const address = await d.getByRole('list', { name: /Öffentliche Links|Public links/ })
+    .getByRole('textbox', { name: /(Adresse von|Address of) Architect/ }).inputValue();
+
+  const v = await visitor(browser, info, baseURL!);
+  await v.goto(address);
+  await expect(v.getByTestId('link-name')).toHaveText(dir);
+  await expect(v.getByText('Shared folder')).toBeVisible();
+  const contents = v.getByRole('list', { name: `Contents of ${dir}` });
+  await expect(contents.getByRole('listitem')).toHaveCount(2);
+  await contents.getByRole('link', { name: 'Open Plans' }).click();
+  await expect(v).toHaveURL(/\?path=\/Plans$/);
+  await expect(contents.getByRole('listitem')).toHaveCount(1);
+  // Plain text opens inline in a new tab, like the preview of a file link.
+  const [popup] = await Promise.all([v.waitForEvent('popup'), contents.getByRole('link', { name: 'Open preview of floor.txt' }).click()]);
+  await expect(popup.locator('body')).toHaveText('ground floor');
+  await popup.close();
+  const [download] = await Promise.all([v.waitForEvent('download'), contents.getByRole('link', { name: 'Download floor.txt' }).click()]);
+  expect(download.suggestedFilename()).toBe('floor.txt');
+  expect(readFileSync(await download.path()).toString()).toBe('ground floor');
+  await v.getByRole('link', { name: 'Up one folder' }).click();
+  await expect(contents).toContainText('readme.txt');
+  await expect(v.getByRole('link', { name: 'Up one folder' })).toHaveCount(0);
+  // A path above the linked folder is refused, not resolved in the owner's home.
+  expect((await v.request.get(`/s/${address.split('/s/')[1]}/list?path=${encodeURIComponent('/..')}`)).status()).toBe(400);
+  await v.context().close();
+});
+
 test('a file named like markup is shown as text on the share page and the password prompt; no script runs', async ({ page, browser, baseURL }, info) => {
   const evil = '<img src=x onerror=alert(1)>.txt';
   const dir = `link-xss-${tag(info)}`;

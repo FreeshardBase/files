@@ -10,7 +10,8 @@ const errors = async (code: string, file: string) =>
   (await eslint.lintText(code, { filePath: `${root}web/src/${file}` }))[0]!.messages.filter((m) => m.severity === 2);
 const sfc = (template: string) => `<script setup lang="ts">\n</script>\n\n<template>\n  ${template}\n</template>\n`;
 
-describe('dialog lint', () => {
+// The first lintText loads the whole ESLint config cold (~5 s on a busy host), past Vitest's 5 s default.
+describe('dialog lint', { timeout: 30_000 }, () => {
   it.each([
     ['a static role', '<div role="dialog" />'],
     ['an alertdialog role', '<div role="alertdialog" />'],

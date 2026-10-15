@@ -50,7 +50,8 @@ export const useUploadsStore = defineStore('uploads', {
           const item = this.item(id);
           if (item) item.sent = sent;
         };
-        // tus places only into the home; a cloud connection gets one streaming PUT, passed on to the provider's session.
+        // tus places only into the home; a cloud connection or an edit share (#208) gets one streaming PUT, which the server
+        // writes into the target itself (the provider's session, or the share owner's source).
         const upload = at.source === 'home' ? new ResumableUpload(f.file, target, progress) : new DirectUpload(f.file, target, progress);
         jobs.set(id, { upload, policy: null });
       }

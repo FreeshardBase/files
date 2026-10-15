@@ -66,12 +66,13 @@ const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot
     account: connection.value.account }) : t('nav.connections'))
   : (shareName.value ?? t('nav.shared')));
 const folderName = computed(() => path.value === '/' ? (source.value === 'home' ? t('nav.home') : rootLabel.value) : path.value.split('/').pop()!);
-// What the caller may do here: change only with `edit` (re-checked by the server on every request); share only in their
-// own home, since a share is never shared on (DECISIONS, #146); upload in the home and into their own cloud connections
-// (#149), not into a share, whose placement and quota are #152.
+// What the caller may do here: change only with `edit` (re-checked by the server on every request); share in their own
+// home and their own cloud connections, never in a share, since a share is never shared on (DECISIONS, #146, #208);
+// upload wherever they may change things: the home, their own connections (#149) and shares with `edit` (#208).
 const editable = computed(() => folder.access === 'edit' && folder.source === source.value);
 const own = computed(() => source.value === 'home');
-const canUpload = computed(() => own.value || (source.value.startsWith('conn:') && editable.value));
+const shareable = computed(() => !source.value.startsWith('share:'));
+const canUpload = computed(() => own.value || editable.value);
 const sharing = ref<Entry | null>(null);
 const details = ref<Entry | null>(null);
 async function shareFromDetails() {
@@ -516,7 +517,7 @@ function onDrop(paths: string[], dir: string) {
       :folder-name="folderName"
       :source="source"
       :editable="editable"
-      :shareable="own"
+      :shareable="shareable"
       :starred="starred"
       @open="open"
       @action="onAction"

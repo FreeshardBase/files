@@ -1,18 +1,30 @@
 <script setup lang="ts">
 // "Shared with me" (#146): what other members shared with the member, newest first. A folder opens as the source
-// `share:<id>`, a file downloads. A share whose item the owner deleted says so and can be removed from the list.
+// `share:<id>`, a file downloads or opens in the preview overlay (#208). A share whose item the owner deleted says so
+// and can be removed from the list.
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { IncomingShare } from '@files/shared';
+import type { Entry, IncomingShare } from '@files/shared';
 import { useSharedStore } from '../stores/shared.ts';
-import { ApiFailure } from '../api/client.ts';
-import { downloadHref, folderRoute } from '../api/paths.ts';
+import { api, ApiFailure } from '../api/client.ts';
+import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
+import PreviewDialog from '../components/PreviewDialog.vue';
 import { formatDate, intlLocale } from '../format.ts';
 
 const { t, locale } = useI18n();
 const shared = useSharedStore();
 const status = ref('');
 onMounted(() => { void shared.load(); });
+
+// A shared file is `/` of its share; its type and size come from the share's own `stat`.
+const preview = ref<{ source: string; entry: Entry } | null>(null);
+async function openPreview(item: IncomingShare) {
+  try { preview.value = { source: item.source, entry: await api.get<Entry>(`${sourceApi(item.source)}/stat`, { path: '/' }) }; }
+  catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    status.value = t(`errors.${e.code}`); // handled: shown in the status line
+  }
+}
 
 async function remove(item: IncomingShare) {
   try {
@@ -124,18 +136,34 @@ async function remove(item: IncomingShare) {
             >
               {{ $t('shared.open') }}
             </RouterLink>
-            <a
-              v-else
-              class="button"
-              :href="downloadHref(item.source, [{ path: '/', type: 'file' }])"
-              :aria-label="$t('shared.downloadLabel', { name: item.name })"
-              download
-            >
-              {{ $t('shared.download') }}
-            </a>
+            <template v-else>
+              <button
+                type="button"
+                class="button"
+                :aria-label="$t('shared.previewLabel', { name: item.name })"
+                @click="openPreview(item)"
+              >
+                {{ $t('shared.preview') }}
+              </button>
+              <a
+                class="button"
+                :href="downloadHref(item.source, [{ path: '/', type: 'file' }])"
+                :aria-label="$t('shared.downloadLabel', { name: item.name })"
+                download
+              >
+                {{ $t('shared.download') }}
+              </a>
+            </template>
           </td>
         </tr>
       </tbody>
     </table>
+    <PreviewDialog
+      v-if="preview"
+      :files="[preview.entry]"
+      :start="0"
+      :source="preview.source"
+      @close="preview = null"
+    />
   </section>
 </template>
