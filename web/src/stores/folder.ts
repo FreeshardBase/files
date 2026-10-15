@@ -38,10 +38,6 @@ export const useFolderStore = defineStore('folder', {
         if (id === this.seq) { this.loading = false; this.refreshing = false; }
       }
     },
-    /** PUTs into `at` (captured by the caller, so navigating away mid-batch does not redirect the file). The caller relists. */
-    async upload(file: File, at: { source: string; dir: string }, onCollision: CollisionPolicy = 'fail', onProgress?: (f: number) => void): Promise<Entry> {
-      return api.put<Entry>(`${sourceApi(at.source)}/content`, { path: join(at.dir, file.name), onCollision }, file, onProgress);
-    },
     /** Move (also rename) or copy within one source. The caller relists. */
     async transfer(op: 'move' | 'copy', source: string, from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
       return api.post<Entry>(`${sourceApi(source)}/${op}`, { from, to, onCollision } satisfies TransferRequest);

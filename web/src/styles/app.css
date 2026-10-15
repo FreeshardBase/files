@@ -145,6 +145,40 @@ body {
 /* Selection actions sit above the list; "Move here"/"Copy here" is the one forward action while items are marked. */
 .selection-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
 
+.upload-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* Desktop drop: the folder area takes the dashed teal hairline of a drop target. */
+.folder.drop-active { outline: 1.5px dashed var(--line); outline-offset: var(--space-2); border-radius: var(--radius-tile); }
+.drop-hint { margin: 0 0 var(--space-3); color: var(--line); font-size: var(--fs-small); }
+
+/* Upload panel: a sheet above the page content, one row per file with a thin teal progress line on a hairline track. */
+.upload-panel {
+  max-width: 960px; margin: 0 auto var(--space-4); padding: var(--space-3) var(--space-4);
+  background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-sheet);
+}
+.upload-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.upload-panel-head h2 { margin: 0; }
+.upload-summary { margin: var(--space-3) 0 0; padding: var(--space-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius-tile); }
+.upload-summary p { margin: 0 0 var(--space-2); color: var(--danger); }
+.upload-summary ul { margin: 0 0 var(--space-3); padding-left: var(--space-5); font-size: var(--fs-small); overflow-wrap: anywhere; }
+.upload-items { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.upload-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: var(--space-3); row-gap: var(--space-1);
+  padding: var(--space-2) 0; border-bottom: var(--border-w) solid var(--border);
+}
+.upload-item:last-child { border-bottom: 0; }
+.upload-name { overflow-wrap: anywhere; }
+.upload-state { font: 400 var(--fs-mono)/1.3 var(--font-mono); letter-spacing: var(--ls-mono); color: var(--ink-muted); white-space: nowrap; }
+.upload-item[data-state='failed'] .upload-state { color: var(--danger); white-space: normal; }
+.upload-actions { display: flex; gap: var(--space-2); }
+.upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
+.upload-bar > span { display: block; height: 100%; background: var(--data); }
+.upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
+@media (max-width: 600px) {
+  .upload-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .upload-actions { grid-column: 1 / -1; order: 3; }
+  .upload-actions .button { flex: 1 1 auto; justify-content: center; }
+}
+
 /* Item action menu (menu button pattern): a sheet-like popup, hairline border, no shadow. */
 .item-menu { position: relative; display: flex; justify-content: flex-end; }
 .icon-button {

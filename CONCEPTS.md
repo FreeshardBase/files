@@ -24,7 +24,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/uploads` (resumable uploads over tus 1.0, see below), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
@@ -40,7 +40,11 @@ All file access goes through `StorageBackend` (`server/src/storage/backend.ts`):
 - it `lstat`s every existing component and rejects symlinks;
 - it `realpath`s the deepest existing ancestor and checks it lies under the root with a trailing separator.
 
-Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Fail if exists" answers `FILE_EXISTS` with the taken `name` in `params` before the body is read, so the SPA can ask the collision question without uploading twice. "Keep both" names are `name (n).ext`, starting at `(1)`, within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash, copy staging (`tmp/`) and versions and cannot be addressed by users; the backend reaches it only through `resolveInRoot`.
+Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Fail if exists" answers `FILE_EXISTS` with the taken `name` in `params` before the body is read, so the SPA can ask the collision question without uploading twice. "Keep both" names are `name (n).ext`, starting at `(1)`, within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash, copy staging (`tmp/`), resumable uploads (`uploads/`) and versions and cannot be addressed by users; the backend reaches it only through `resolveInRoot`.
+
+Resumable uploads (tus 1.0: creation, `HEAD`, `PATCH`, termination, expiration) collect their bytes in `<home>/.files/uploads/<id>`; an `uploads` row holds the target, the declared length, the collision policy, the expiry and `received`, the bytes fsynced so far. Everything that can be refused is refused at creation, before a byte exists: the size limit, the quota, the path, a folder in the way and, under `fail`, a taken name. A `PATCH` continues exactly at `received`, never stores more than declared (a client that sends more loses the whole upload), and records what arrived even when the connection drops. Once all bytes are in, they are renamed into place with the policy in the transaction that deletes the row, creating missing parent folders (folder upload); a name taken meanwhile answers `FILE_EXISTS` and keeps the bytes for `finish`. Ids are looked up with the member, so another member's upload is 404. Uploads idle for 24 hours are removed by an hourly job.
+
+A member may have a quota (`users.quota_bytes`; none by default). Usage is everything under the home, trash and staged uploads included, plus what the member's open uploads still have to send. Uploads (tus and `PUT content`) are checked against it before they start and while they stream.
 
 Moves, deletes and "replace" run in one SQLite `BEGIN IMMEDIATE` transaction around synchronous renames, which are undone in reverse if anything after them fails, so files and rows never disagree (spec §3.6). "Replace" sends the old item to the trash, never deletes it. Delete renames the item to `.files/trash/<id>` and writes a `trash` row; a batch is all or nothing. A folder never moves or copies into itself or a descendant (`TARGET_INSIDE_SOURCE`). Copies are built in `.files/tmp/` with `copyFile` (kernel copy, no buffer) and renamed into place; the startup sweep empties `.files/tmp/`. Rows that point at home paths (shares, favourites, search, versions; none exist yet) are listed in `PATH_TABLES` (`server/src/storage/pathRefs.ts`): a move rewrites the item's rows and those beneath it, a delete removes them, in the same transaction.
 
@@ -89,9 +93,12 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `storage/zip.ts` | `zipStream`: a folder walk over any `StorageBackend` as a streamed, stored ZIP64 archive. |
 | `routes/trash.ts` | The trash API: list (with total size and retention), restore one item, delete permanently, empty. |
 | `storage/trash.ts` | The expiry job: `expireTrash` (through `LocalBackend.purge`) and its hourly schedule. |
+| `routes/uploads.ts` | tus 1.0 under `/api/v1/uploads`: `OPTIONS`, creation, `HEAD`, `PATCH` (stream gate before any parser), termination, and `finish` for a name taken at the end. |
+| `storage/uploads.ts` | The upload expiry job: `expireUploads` (through `LocalBackend.expireUploads`) and its hourly schedule. |
+| `schedule.ts` | `every`: run now and then periodically, skip a tick while a run is in flight, wait for it on stop. |
 | `storage/backend.ts` | The `StorageBackend` interface, write options, `RangeNotSatisfiable`. |
 | `storage/resolveSource.ts` | `resolveSource`: source id to backend and access level; `conn:`/`share:` extension points; `homeBackend` for the trash routes. |
-| `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes; move, copy and trash in one transaction with undoable renames; trash list, restore and the one purge. |
+| `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes; move, copy and trash in one transaction with undoable renames; trash list, restore and the one purge; resumable uploads (create, append, place, terminate, expire) and the quota. |
 | `storage/pathRefs.ts` | `PATH_TABLES` and the move/delete cascade for rows that point at home paths; `TRASH_TABLES` purged with a trash row. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
 | `storage/mime.ts` | Extension to MIME lookup. |
@@ -102,24 +109,27 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | File | Purpose |
 | :--- | :--- |
 | `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync. |
-| `App.vue` | Shell: header, source sidebar (My storage, Trash), session load, startup error, failed-login alert. |
+| `App.vue` | Shell: header, source sidebar (My storage, Trash), upload panel, session load, startup error, failed-login alert. |
 | `router.ts` | `/:source(home)/:path…` to the folder view, `/trash` to the trash view; `/` and unknown paths redirect to `/home`. |
 | `views/TrashView.vue` | The trash: list, restore (collision dialog), delete permanently and empty trash (both confirmed). |
 | `stores/trash.ts` | Pinia store for `/api/v1/trash`. |
 | `components/ConfirmDialog.vue` | Confirmation before an irreversible action; Cancel has the focus, Esc cancels. |
 | `format.ts` | `Intl`-based size and date formatting. |
 | `env.d.ts` | Type shim for `.vue` imports. |
-| `api/client.ts` | Handwritten fetch wrapper: CSRF header, error codes as `ApiFailure`, redirect to login on 401 (not while `loginError=1`). |
+| `api/client.ts` | Handwritten fetch wrapper: CSRF header, error codes as `ApiFailure`, redirect to login on 401 (not while `loginError=1`); `rawRequest` for answers in headers, `sendXhr` for upload progress. |
+| `api/tus.ts` | `ResumableUpload`: tus client with 8 MiB chunks, `HEAD` before every retry, pause, discard, and resume after a reload through localStorage. |
+| `stores/uploads.ts` | Pinia store for the upload queue: one item at a time, collision question, pause/resume/cancel/retry, per-pick summary for the status line. |
+| `components/UploadPanel.vue` | The upload panel: progress per file, item actions, one failure summary with "Retry all", the collision dialog for uploads. |
 | `api/paths.ts` | `sourceApi(source)` for API URLs, `downloadHref` (one file as itself, else a ZIP) and `folderRoute(source, path)` for SPA URLs. |
 | `stores/session.ts` | Pinia store for `/api/v1/me`. |
-| `stores/folder.ts` | Pinia store for the current folder and its source: list, upload, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
-| `views/FolderView.vue` | The folder page: breadcrumbs, upload, selection bar, list, states; one collision loop for upload, move and copy. |
+| `stores/folder.ts` | Pinia store for the current folder and its source: list, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
+| `views/FolderView.vue` | The folder page: breadcrumbs, upload (pick or desktop drop, into the uploads store), selection bar, list, states; one collision loop for move and copy. |
 | `components/FileList.vue` | File table with roving tabindex, arrow keys, selection (Space, Ctrl/Shift+click), F2, Delete, Ctrl+C/X/V, row action menus and drag & drop onto folders. |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
-| `dnd.ts` | Drag & drop payload of list items (own MIME type). |
+| `dnd.ts` | Drag & drop payload of list items (own MIME type); desktop drops of files and folders (entries walked recursively). |
 | `components/Breadcrumbs.vue` | Path navigation; every crumb is a drop target. |
-| `components/UploadButton.vue` | File picker emitting chosen files; exposes its input as the focus target for dialogs it causes. |
+| `components/UploadButton.vue` | File picker and folder picker emitting chosen files with their relative path; exposes the file input as the focus target for dialogs it causes. |
 | `components/AppDialog.vue` | The only dialog primitive (lint-enforced): `role="dialog"`, `aria-modal`, labelled title, focus trap, inert background, root scroll lock, Esc emits `close`, focus restored on unmount. |
 | `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Used by upload, rename, move, copy and restore. |
 | `i18n/index.ts` | vue-i18n setup and `resolveLocale` (stored, browser, default Deutsch Du). |
@@ -134,8 +144,9 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 - Only the `home` source exists; `conn:` and `share:` are parsed by `resolveSource` but answer `SOURCE_NOT_FOUND` until #148 and #146.
 - No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
 - No moves between sources (#152), no versions, thumbnails, search, sharing or WebDAV. Move and copy within a source are direct requests, not the persistent jobs of spec §3.4. See spec §2.1 and the Phase D queue.
-- The details drawer and transfer panel from spec §3.8 are not built.
+- The details drawer and the transfer part of the spec §3.8 panel are not built; the upload panel is.
 - Routes Zod-parse params, query and body, but there are no Zod response schemas and no generated OpenAPI document (spec §3.3).
 - The web API client is handwritten (`web/src/api/client.ts`), not generated from `shared/` (spec §3.8).
 - No fake cloud-provider server scaffold exists yet (spec §3.9, Phase B); it arrives with the first cloud backend.
-- Uploads are checked against `FILES_MAX_UPLOAD_BYTES` only; there is no per-member quota check before an upload is accepted (spec §3.7).
+- The per-member quota (`users.quota_bytes`) has no admin page yet (storage overview), so it is unset unless written to the database. Copies within the home are not checked against it, only uploads.
+- tus uploads can target only `home`; a cloud or shared target needs its own placement once those sources exist (#146, #148).

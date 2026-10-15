@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiFailure, setCsrf } from '../src/api/client.ts';
+import { api, ApiFailure, rawRequest, sendXhr, setCsrf } from '../src/api/client.ts';
 import { installFakeXhr } from './fakeXhr.ts';
 
 afterEach(() => vi.restoreAllMocks());
@@ -41,17 +41,30 @@ describe('api client robustness', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"x"}', { status: 500 })));
     await expect(api.get('/api/v1/me')).rejects.toMatchObject({ code: 'INTERNAL' });
   });
-  it('put: 2xx non-JSON is INTERNAL, abort and timeout are NETWORK, 409 carries code and params', async () => {
+  it('sendXhr: abort and timeout are NETWORK, an error body carries code and params, a bare 423 is UPLOAD_LOCKED', async () => {
     const blob = new Blob(['x']);
-    installFakeXhr(() => ({ status: 201, text: 'ok' }));
-    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'INTERNAL' });
+    const send = () => sendXhr('PATCH', '/p', { 'upload-offset': '0' }, blob).done;
+    const x = installFakeXhr(() => ({ status: 204, text: '', headers: { 'Upload-Offset': '1' } }));
+    expect((await send()).header('upload-offset')).toBe('1');
+    expect(x.puts[0]!.headers).toMatchObject({ 'upload-offset': '0', 'x-csrf-token': expect.any(String) });
     installFakeXhr(() => 'abort');
-    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'NETWORK' });
+    await expect(send()).rejects.toMatchObject({ code: 'NETWORK' });
     installFakeXhr(() => 'timeout');
-    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'NETWORK' });
+    await expect(send()).rejects.toMatchObject({ code: 'NETWORK' });
     installFakeXhr(() => ({ status: 409, text: '{"code":"FILE_EXISTS","params":{"name":"a"}}' }));
-    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'FILE_EXISTS', params: { name: 'a' } });
+    await expect(send()).rejects.toMatchObject({ code: 'FILE_EXISTS', params: { name: 'a' } });
+    installFakeXhr(() => ({ status: 423, text: '' }));
+    await expect(send()).rejects.toMatchObject({ code: 'UPLOAD_LOCKED' });
     installFakeXhr(() => ({ status: 500, text: '{}' }));
-    await expect(api.put('/p', {}, blob)).rejects.toMatchObject({ code: 'INTERNAL' });
+    await expect(send()).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+  it('rawRequest: a HEAD 404 without body is NOT_FOUND, the CSRF token goes only on mutating methods', async () => {
+    const f = vi.fn(async (_u: string, init?: RequestInit) => new Response(null, { status: init?.method === 'HEAD' ? 404 : 204 }));
+    vi.stubGlobal('fetch', f);
+    setCsrf('tok');
+    await expect(rawRequest('HEAD', '/u', {})).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await rawRequest('DELETE', '/u', {});
+    expect((f.mock.calls[0]![1] as RequestInit).headers).not.toHaveProperty('x-csrf-token');
+    expect((f.mock.calls[1]![1] as RequestInit).headers).toMatchObject({ 'x-csrf-token': 'tok' });
   });
 });

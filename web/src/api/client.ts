@@ -15,8 +15,7 @@ function redirectToLogin() {
   location.href = '/auth/login?returnTo=' + encodeURIComponent(location.pathname + location.search);
 }
 
-async function request<T>(method: string, path: string, init: { query?: Record<string, string>; body?: BodyInit; json?: unknown } = {}): Promise<T> {
-  const url = init.query ? `${path}?${new URLSearchParams(init.query)}` : path;
+async function request<T>(method: string, path: string, init: { query?: Record<string, string>; body?: BodyInit; json?: unknown } = {}): Promise<T> {  const url = init.query ? `${path}?${new URLSearchParams(init.query)}` : path;
   const headers: Record<string, string> = {};
   if (method !== 'GET') headers['x-csrf-token'] = csrf;
   if (init.json !== undefined) headers['content-type'] = 'application/json';
@@ -43,28 +42,57 @@ function parseBody(text: string): ErrorBody | null {
   catch { return null; } // handled: callers report a non-JSON body as INTERNAL
 }
 
+// A body-less answer (HEAD) still has a status; these are the ones a caller tells apart.
+const codeOfStatus = (status: number): ErrorCode => (status === 404 ? 'NOT_FOUND' : status === 423 ? 'UPLOAD_LOCKED' : 'INTERNAL');
+
+/**
+ * A request whose answer lives in headers (tus). The CSRF token goes on every mutating method; a network failure is
+ * NETWORK, 401 goes to login, and any other non-2xx status is an ApiFailure from the error body (or the status).
+ */
+export async function rawRequest(method: string, url: string, headers: Record<string, string>): Promise<Response> {
+  const h = { ...headers };
+  if (method !== 'GET' && method !== 'HEAD') h['x-csrf-token'] = csrf;
+  let res: Response;
+  try { res = await fetch(url, { method, headers: h, credentials: 'same-origin' }); }
+  catch { throw new ApiFailure('NETWORK'); } // handled: any fetch rejection is a network failure
+  if (res.status === 401) { redirectToLogin(); throw new ApiFailure('UNAUTHENTICATED'); }
+  if (!res.ok) {
+    const body = method === 'HEAD' ? null : parseBody(await res.text());
+    throw new ApiFailure(body?.code ?? codeOfStatus(res.status), body?.params);
+  }
+  return res;
+}
+
+export type XhrResult = { status: number; header(name: string): string | null; text: string };
+/**
+ * An XMLHttpRequest, for upload progress. Resolves with any 2xx; a non-2xx is an ApiFailure from the error body, a
+ * network failure, abort or timeout is NETWORK. `abort` stops it (the promise then rejects with NETWORK).
+ */
+export function sendXhr(method: string, url: string, headers: Record<string, string>, body: Blob,
+  onProgress?: (loaded: number) => void): { abort(): void; done: Promise<XhrResult> } {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<XhrResult>((resolve, reject) => {
+    xhr.open(method, url);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    xhr.setRequestHeader('x-csrf-token', csrf);
+    xhr.upload.onprogress = (e) => { onProgress?.(e.loaded); };
+    xhr.onerror = () => reject(new ApiFailure('NETWORK'));
+    xhr.onabort = () => reject(new ApiFailure('NETWORK'));
+    xhr.ontimeout = () => reject(new ApiFailure('NETWORK'));
+    xhr.onload = () => {
+      if (xhr.status === 401) { redirectToLogin(); return reject(new ApiFailure('UNAUTHENTICATED')); }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        return resolve({ status: xhr.status, header: (n) => xhr.getResponseHeader(n), text: xhr.responseText });
+      }
+      const parsed = parseBody(xhr.responseText);
+      reject(new ApiFailure(parsed?.code ?? codeOfStatus(xhr.status), parsed?.params));
+    };
+    xhr.send(body);
+  });
+  return { abort: () => xhr.abort(), done };
+}
+
 export const api = {
   get: <T>(path: string, query?: Record<string, string>) => request<T>('GET', path, query ? { query } : {}),
   post: <T>(path: string, json: unknown) => request<T>('POST', path, { json }),
-  put<T>(path: string, query: Record<string, string>, body: Blob, onProgress?: (fraction: number) => void): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `${path}?${new URLSearchParams(query)}`);
-      xhr.setRequestHeader('content-type', 'application/octet-stream');
-      xhr.setRequestHeader('x-csrf-token', csrf);
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
-      xhr.onerror = () => reject(new ApiFailure('NETWORK'));
-      xhr.onabort = () => reject(new ApiFailure('NETWORK'));
-      xhr.ontimeout = () => reject(new ApiFailure('NETWORK'));
-      xhr.onload = () => {
-        if (xhr.status === 401) { redirectToLogin(); return reject(new ApiFailure('UNAUTHENTICATED')); }
-        const parsed = parseBody(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          if (parsed === null) reject(new ApiFailure('INTERNAL'));
-          else resolve(parsed as T);
-        } else reject(new ApiFailure(parsed?.code ?? 'INTERNAL', parsed?.params));
-      };
-      xhr.send(body);
-    });
-  },
 };

@@ -22,6 +22,10 @@ The guide has no recipe for these. A selected row takes a teal tint (`--data` at
 
 The guide has no navigation recipe. The source sidebar is a 200 px column on the surface tone with a hairline border; entries carry a line icon, and the current place is marked by a teal hairline at its left edge and teal text, never a fill. On phone width it becomes a row of tabs under the header with the hairline underneath. The trash view reuses the file-list table; each row has "Restore" (outline) and "Delete permanently" (danger hairline). "Empty trash" is a danger outline button, dimmed when the trash is empty. Every permanent delete asks first in `ConfirmDialog`, where "Cancel" takes the initial focus, because the safe choice should be the default.
 
+## Upload panel and drop zone
+
+The guide has no recipe for progress or transfer lists. The upload panel is a sheet (surface tone, hairline border, sheet radius, no shadow) at the top of the main area, so it stays while the member navigates and never covers the list. Each file is a row: the name, its state in the mono face (for example "42 %"), and a 3 px progress line under it, teal (`--data`) on a hairline track (`--border`), with no fill animation and no glow. A failed row turns its state text and line to `--danger`. The failure summary is one box with a danger hairline: a count, the list "name: reason" and "Retry all" as the panel's one forward action (`.button.primary`). Cancel is a danger outline, pause, resume and retry are plain outlines. On phone width the actions wrap under the name and share the row. "Upload" stays the toolbar's forward action, and "Upload folder" next to it is a plain outline. Files dragged in from the desktop mark the folder area with the dashed teal hairline of a drop target and show a one-line hint in `--line`.
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

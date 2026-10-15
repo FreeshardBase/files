@@ -4,6 +4,7 @@ import type { Db } from '../db.ts';
 import { homeRoot } from '../paths.ts';
 import { LocalBackend } from './local.ts';
 import type { PathTable, TrashTable } from './pathRefs.ts';
+import { every } from '../schedule.ts';
 
 export type TrashDeps = { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[] };
 export type ExpiryResult = { purged: string[]; failed: string[] };
@@ -32,15 +33,5 @@ export async function expireTrash(deps: TrashDeps, log: FastifyBaseLogger, now =
 
 /** Runs `expireTrash` right away and then every `intervalMs`; `stop` waits for a run in flight. */
 export function scheduleTrashExpiry(deps: TrashDeps, log: FastifyBaseLogger, intervalMs = 3600_000): { stop(): Promise<void> } {
-  let running: Promise<void> | null = null;
-  const tick = () => {
-    if (running) return; // the previous run is still going; the next tick tries again
-    running = expireTrash(deps, log)
-      .then(() => undefined, (e: unknown) => { log.error({ err: e }, 'trash expiry failed'); }) // handled: logged; the next tick retries
-      .finally(() => { running = null; });
-  };
-  const timer = setInterval(tick, intervalMs);
-  timer.unref();
-  tick();
-  return { async stop() { clearInterval(timer); await running; } };
+  return every(intervalMs, () => expireTrash(deps, log), (e) => { log.error({ err: e }, 'trash expiry failed'); });
 }

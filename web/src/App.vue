@@ -3,6 +3,7 @@ import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
 import { loginFailed } from './api/client.ts';
+import UploadPanel from './components/UploadPanel.vue';
 const session = useSessionStore();
 const router = useRouter();
 const showLoginFailed = loginFailed();
@@ -52,6 +53,7 @@ onMounted(async () => {
         </RouterLink>
       </nav>
       <main class="app-main">
+        <UploadPanel />
         <RouterView />
       </main>
     </div>
