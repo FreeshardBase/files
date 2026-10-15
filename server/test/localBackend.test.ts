@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, PassThrough } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { LocalBackend, mapFsError } from '../src/storage/local.ts';
+import { resolveInRoot } from '../src/storage/resolveInRoot.ts';
 
 let root: string; let b: LocalBackend;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'files-lb-')); b = new LocalBackend(root); });
@@ -169,6 +170,48 @@ describe('keep-both on a long name', () => {
     expect(Buffer.byteLength(e.name)).toBeLessThanOrEqual(255);
     expect(e.name.endsWith(' (2).txt')).toBe(true);
     expect(e.name.isWellFormed()).toBe(true);
+  });
+
+  const keepBoth = async (name: string) => {
+    await b.write('/' + name, body('one'), opts);
+    const e = await b.write('/' + name, body('two'), { ...opts, onCollision: 'keep-both' });
+    expect(e.name).not.toBe(name);
+    expect(Buffer.byteLength(e.name)).toBeLessThanOrEqual(255);
+    expect(e.name.isWellFormed()).toBe(true);
+    expect(Buffer.from(e.name, 'utf8').toString('utf8')).toBe(e.name);
+    expect(await resolveInRoot(root, '/' + e.name)).toBe(join(realpathSync(root), e.name));
+    expect(await text(Readable.from((await b.read('/' + e.name)).stream))).toBe('two');
+    return e.name;
+  };
+
+  it('keeps a 20-byte extension on a 250-byte name', async () => {
+    const ext = '.' + 'x'.repeat(19);
+    const name = 'a'.repeat(250 - ext.length) + ext;
+    expect(Buffer.byteLength(name)).toBe(250);
+    expect(await keepBoth(name)).toMatch(new RegExp(`^a+ \\(2\\)\\${ext}$`));
+  });
+
+  it('never splits a multi-byte character', async () => {
+    const name = '😀'.repeat(63); // 252 bytes, no extension
+    const got = await keepBoth(name);
+    expect(got).toMatch(/^(😀)+ \(2\)$/u);
+  });
+
+  it('drops an extension that leaves no room for the name', async () => {
+    const name = 'a.' + 'x'.repeat(252); // the "extension" alone is 253 bytes
+    expect(Buffer.byteLength(name)).toBe(254);
+    const got = await keepBoth(name);
+    expect(got.endsWith(' (2)')).toBe(true);
+    expect(got.startsWith('a.x')).toBe(true);
+  });
+
+  it('drops an extension that would leave an empty stem', async () => {
+    const name = '😀.' + 'x'.repeat(246); // stem 4 bytes, extension 247 bytes: " (2)" + extension leaves 4 bytes, one emoji fits
+    expect(await keepBoth(name)).toBe('😀 (2).' + 'x'.repeat(246));
+    const tight = '😀.' + 'x'.repeat(248); // extension 249 bytes leaves 2 bytes: no whole character fits before it
+    const got = await keepBoth(tight);
+    expect(got.endsWith(' (2)')).toBe(true);
+    expect(got.startsWith('😀.x')).toBe(true);
   });
 });
 

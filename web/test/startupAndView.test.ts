@@ -41,10 +41,11 @@ describe('failed login', () => {
     const loc = { href: 'http://x/home?loginError=1', pathname: '/home', search: '?loginError=1' };
     vi.stubGlobal('location', loc);
     vi.stubGlobal('fetch', vi.fn(async () => json({ code: 'UNAUTHENTICATED' }, 401)));
-    const router = mk(); await router.push('/');
+    const router = mk(); await router.push('/?loginError=1');
     const w = mount(App, { global: { plugins: [i18n(), router] } });
     await flushPromises();
     expect(w.find('[role=alert]').text()).toBe(en.errors.LOGIN_FAILED);
+    expect(router.currentRoute.value.fullPath).toBe('/home');
     const again = w.find('a[href="/auth/login"]');
     expect(again.text()).toBe(en.app.signInAgain);
     expect(loc.href).toBe('http://x/home?loginError=1');

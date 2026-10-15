@@ -38,13 +38,13 @@ All file access goes through `StorageBackend` (`server/src/storage/backend.ts`):
 - it `lstat`s every existing component and rejects symlinks;
 - it `realpath`s the deepest existing ancestor and checks it lies under the root with a trailing separator.
 
-Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
+Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Keep both" names are `name (n).ext` within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash and versions and cannot be addressed by users. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
 
 ## Deny by default
 
 A global `onRequest` hook (`server/src/auth/guard.ts`) loads the session and then decides on the matched route. Every matched route needs a session, and a mutating one also the CSRF check, unless the route carries `config: { public: true }`. The allowlist is `/auth/login`, `/auth/callback`, `/healthz`, the SPA fallback and the static assets; the static plugin is registered in its own encapsulated scope whose `onRoute` hook marks exactly its routes public. Unmatched requests go to the not-found handler, which answers 401 without a session and 404 with one. Raw `req.url` is never used for a security decision, because the router decodes escapes (`/%61pi/`). `server/test/routeInventory.test.ts` walks the whole route table to enforce this.
 
-A failed login (missing or expired attempt, state mismatch, IdP `error=`, failed code exchange) redirects to `/?loginError=1`; the reason is logged, never put in the URL. The SPA then shows `LOGIN_FAILED` with a link to sign in again instead of redirecting to login.
+A failed login (missing or expired attempt, state mismatch, IdP `error=`, failed code exchange) redirects to `/?loginError=1`; the reason is logged, never put in the URL. The SPA then shows `LOGIN_FAILED` with a link to sign in again instead of redirecting to login. Once `/api/v1/me` has answered, it replaces the URL without `loginError` (no reload), so a reload signs in normally instead of repeating the alert.
 
 ## Web addressing
 
@@ -69,7 +69,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `dev.ts` | Dev entry: starts the fake IdP on :4000, sets dev env, imports `main.ts`. |
 | `app.ts` | `buildApp`: Fastify with logging, helmet, cookies, guard, routes, public static assets and SPA fallback. |
 | `config.ts` | Zod-validated config from `FILES_*` env; throws `ConfigError`, no defaults for secrets. |
-| `db.ts` | Opens SQLite (WAL) and applies `server/migrations/NNN_name.sql` in order. |
+| `db.ts` | Opens SQLite (WAL) and applies `server/migrations/NNN_name.sql` in order. Each one is checked and applied in one `BEGIN IMMEDIATE` transaction, so processes starting at the same time apply it once. |
 | `errors.ts` | `AppError` and the one error handler that maps errors to status and code (framework 4xx by the code that owns the status). |
 | `paths.ts` | The single data-root module: `dbPath`, `homesDir`, `homeRoot`. |
 | `users.ts` | Upserts users from OIDC claims (`iss`, `sub`) and looks them up by internal id. |

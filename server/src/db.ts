@@ -18,16 +18,17 @@ export function openDb(file: string, migrationsDir = DEFAULT_MIGRATIONS): Db {
 
 export function migrate(db: Db, dir: string): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  const done = new Set(db.prepare('SELECT name FROM schema_migrations').pluck().all() as string[]);
   const files = readdirSync(dir).filter((f) => /^\d{3}_.+\.sql$/.test(f)).sort();
+  const isDone = db.prepare('SELECT 1 FROM schema_migrations WHERE name = ?').pluck();
   for (const f of files) {
-    if (done.has(f)) continue;
     const sql = readFileSync(join(dir, f), 'utf8');
+    // Check and apply under one write lock: a second process starting at the same time waits, then sees it done.
     const apply = db.transaction(() => {
+      if (isDone.get(f) !== undefined) return;
       db.exec(sql);
       db.prepare('INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)').run(f, new Date().toISOString());
     });
-    try { apply(); }
+    try { apply.immediate(); }
     catch (err) { throw new Error(`Migration ${f} failed: ${(err as Error).message}`, { cause: err }); }
   }
 }

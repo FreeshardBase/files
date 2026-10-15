@@ -69,3 +69,13 @@ Question: where does the sweep run, which homes does it visit, and how does it h
 ## 2026-10-15: start as root, chown only `/data`, drop to uid 1000 in Node
 
 On a shard the Docker daemon creates the `/data` bind mount as root, and the image used to run as `node`, so Files could not write there. `user: 0:0` in the app template would run the whole server as root, so the image now has no `USER`. `main.ts` checks whether it is uid 0. If it is, it chowns `/data` to 1000:1000, plus any parents it had to create, and never recurses into existing contents. Then it calls `setgroups`/`setgid`/`setuid` and verifies the drop, all before the database or any route exists. Doing this in Node rather than in a shell entrypoint with `gosu`/`setpriv` adds no package. It keeps one process as PID 1, so SIGTERM handling is unchanged, and the steps can be unit-tested (`server/test/dataDir.test.ts`). A container started as a non-root user skips the root step. Either way, startup then checks that `/data`, `files.db` and `homes/` are writable, and exits 1 naming the path if they are not. Leftovers owned by root from an earlier root run need a one-time `chown -R` on the host. Chowning them on every start would be slow on large trees and would silently rewrite ownership of user data.
+
+## 2026-10-15: login-error cleanup, concurrent migrations, keep-both names (#134)
+
+Question: when does the SPA drop `?loginError=1`, what does a second process do with a migration that another one is applying, and what does "keep both" do with an extension that does not fit?
+
+The SPA drops the flag only after `/api/v1/me` has answered. The 401 handler skips the login redirect while the flag is in the URL, so dropping it earlier would bring the redirect loop back. It uses `router.replace` (history replace, no reload).
+
+Each migration is checked and applied inside one `BEGIN IMMEDIATE` transaction. A second process waits on the lock (`busy_timeout`), then finds the migration recorded, so both start. Failing loudly would also be safe, but it would turn a routine overlapping start, such as a restart, into a crash.
+
+"Keep both" keeps `name (n).ext` within 255 bytes and cuts the stem at whole code points. If not even one character of the stem fits before the extension, the extension is treated as part of the name and the whole name is cut. Cutting the extension instead would make up a file type the original never had.
