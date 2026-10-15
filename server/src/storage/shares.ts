@@ -77,7 +77,18 @@ export function otherMembers(db: Db, userId: string): Member[] {
  * is not decided here but by the routes against the share row, on every request.
  */
 export class ShareBackend implements StorageBackend {
-  constructor(private inner: StorageBackend, private root: string) {}
+  // Versions (#154) as far as the owner's source has them: the shared item, like any file beneath it, may be overwritten
+  // under `edit`, so restoring one of its versions is too.
+  readonly revisions?: StorageBackend['revisions'];
+  readonly readRevision?: StorageBackend['readRevision'];
+  readonly restoreRevision?: StorageBackend['restoreRevision'];
+
+  constructor(private inner: StorageBackend, private root: string) {
+    const { revisions, readRevision, restoreRevision } = inner;
+    if (revisions) this.revisions = (p) => revisions.call(inner, this.at(p));
+    if (readRevision) this.readRevision = async (p, id) => { const r = await readRevision.call(inner, this.at(p), id); return { ...r, entry: this.back(r.entry) }; };
+    if (restoreRevision) this.restoreRevision = async (p, id) => this.back(await restoreRevision.call(inner, this.at(p), id));
+  }
 
   private at(p: string): string {
     const n = normalizeUserPath(p);

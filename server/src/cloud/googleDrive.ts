@@ -532,6 +532,9 @@ export class GoogleDriveBackend implements StorageBackend {
       for (const r of page.revisions ?? []) out.push({ id: r.id, modified: new Date(r.modifiedTime).toISOString(), ...(r.size !== undefined ? { size: Number(r.size) } : {}) });
       pageToken = page.nextPageToken;
     } while (pageToken !== undefined);
+    // Drive lists oldest first; the last is the file as it is now. Drive's API has no restore (DECISIONS, #154).
+    const last = out.at(-1);
+    if (last) last.current = true;
     return out;
   }
 

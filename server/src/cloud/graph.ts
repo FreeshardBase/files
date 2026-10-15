@@ -418,8 +418,18 @@ export class GraphBackend implements StorageBackend {
     if (isFolder(i)) throw new AppError('IS_A_DIRECTORY');
     const r = z.object({ value: z.array(z.object({ id: z.string(), lastModifiedDateTime: z.string(), size: z.number().optional() })) })
       .parse(await (await this.call('GET', this.byId(i.id, '/versions'), 'versions')).json());
-    return r.value.map((v) => ({ id: v.id, modified: new Date(v.lastModifiedDateTime).toISOString(), ...(v.size !== undefined ? { size: v.size } : {}) }))
-      .reverse();
+    // The newest is the file as it is now.
+    return r.value.map((v, n) => ({ id: v.id, modified: new Date(v.lastModifiedDateTime).toISOString(), ...(v.size !== undefined ? { size: v.size } : {}),
+      ...(n === 0 ? { current: true } : {}) })).reverse();
+  }
+
+  /** Graph's `restoreVersion` (#154): the version becomes the newest one; the content it replaces stays a version. */
+  async restoreRevision(path: string, id: string): Promise<Entry> {
+    const p = normalizeUserPath(path);
+    const i = await this.meta(p);
+    if (isFolder(i)) throw new AppError('IS_A_DIRECTORY');
+    await discard(await this.call('POST', this.byId(i.id, `/versions/${encodeURIComponent(id)}/restoreVersion`), 'restore version'));
+    return this.stat(p);
   }
 
   /** Graph's own thumbnail, fetched by the server from the content hosts and re-encoded as WebP; null where it has none. */

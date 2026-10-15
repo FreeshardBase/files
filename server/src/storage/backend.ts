@@ -54,8 +54,15 @@ export interface StorageBackend {
   search?(query: string, limit: number): Promise<Entry[]>;
   /** The provider's storage use and limit (cloud backends; the storage overview shows it). */
   quota?(): Promise<{ used: number; total?: number }>;
-  /** The provider's stored revisions of a file, oldest first (cloud backends; restoring comes with versions). */
+  /**
+   * Earlier states of a file, oldest first (#154): the home's kept versions (the file itself is not one), or the
+   * provider's revisions (the newest is the file itself, `current`).
+   */
   revisions?(path: string): Promise<Revision[]>;
+  /** The bytes of one revision as a whole (the home; providers' revisions are restored, not downloaded). */
+  readRevision?(path: string, id: string): ReturnType<StorageBackend['read']>;
+  /** Makes a revision the file's content again; what it replaces stays a revision. Where the provider offers it. */
+  restoreRevision?(path: string, id: string): Promise<Entry>;
   /**
    * SHA-256 (hex) of a file's bytes as stored. A transfer (#152) compares it with the hash of the bytes it sent. Only the
    * home offers it today: the providers' own hashes use other algorithms (DECISIONS, #152).
@@ -63,7 +70,7 @@ export interface StorageBackend {
   digest?(path: string): Promise<string>;
 }
 
-export type Revision = { id: string; modified: string; size?: number };
+export type Revision = { id: string; modified: string; size?: number; current?: boolean };
 
 /** One of the member's own cloud connections, searched and addressed as the source `conn:<id>`. */
 export type ConnectedBackend = { id: string; backend: StorageBackend };

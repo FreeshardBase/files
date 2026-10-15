@@ -218,3 +218,29 @@ export type PublicLinkInfo = z.infer<typeof PublicLinkInfoSchema>;
 /** `POST /s/<token>/unlock`. */
 export const UnlockRequest = z.object({ password: z.string().min(1).max(256) }).strict();
 export type UnlockRequest = z.infer<typeof UnlockRequest>;
+
+/**
+ * One earlier state of a file (#154): a local version kept when the file was overwritten, or a cloud provider's
+ * revision. `modified` is when that content was written; `current` marks the provider's revision that is the file now.
+ */
+export const VersionSchema = z.object({
+  id: z.string().min(1), modified: z.iso.datetime(), size: z.number().int().nonnegative().optional(), current: z.boolean().optional(),
+});
+export type Version = z.infer<typeof VersionSchema>;
+
+/** `GET /api/v1/versions?source=&path=`: oldest first, and what the caller may do with them. */
+export const VersionListSchema = z.object({
+  versions: z.array(VersionSchema),
+  /** The source can restore a version and the caller has `edit`. */
+  restore: z.boolean(),
+  /** The source serves a version's bytes (the home; cloud revisions are restored, not downloaded). */
+  download: z.boolean(),
+});
+export type VersionList = z.infer<typeof VersionListSchema>;
+
+/** A version id: a local one is 16 random bytes as hex, a provider's is its own revision id. */
+export const VersionId = z.string().min(1).max(256).regex(/^[A-Za-z0-9._:-]+$/);
+
+/** `POST /api/v1/versions/restore`: the version becomes the file's content; the content it replaces is kept as a version. */
+export const RestoreVersionRequest = z.object({ source: z.string().min(1), path: z.string().min(1), id: VersionId }).strict();
+export type RestoreVersionRequest = z.infer<typeof RestoreVersionRequest>;

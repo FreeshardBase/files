@@ -26,6 +26,8 @@ Members connect their own cloud accounts under "Cloud accounts". Google Drive is
 
 Thumbnails need `ffmpeg` (video frames) and `pdftoppm` from poppler-utils (PDF pages) on the `PATH`; images use `sharp`, which brings its own libvips. The container image installs both tools. `FILES_THUMB_CACHE_BYTES` caps the thumbnail cache (default 512 MiB) and `FILES_THUMB_TIMEOUT_MS` limits each generator run (default 30 000).
 
+When a file in shard storage is replaced, its previous content is kept as a version (details drawer). `FILES_VERSIONS_MAX_COUNT` (default 10) and `FILES_VERSIONS_MAX_BYTES` (default 1 GiB) cap the versions of each file; the oldest go first. Versions count towards the member's quota.
+
 Name search answers from an index that the app keeps up to date on every change it makes. After files were changed on disk outside the app, or to recover a lost index, rebuild it with the same `FILES_*` environment as the server: `docker exec <container> node server/dist/reindex.js [userId…]` (all members without ids; it drops to uid 1000 itself), or `pnpm --filter @files/server reindex` in development. A change made while a home is being walked can be missed, so run it with the app idle or stopped.
 
 ## Container and the `/data` volume

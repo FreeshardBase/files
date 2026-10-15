@@ -33,7 +33,7 @@ async function resolveConnection(deps: FastifyInstance['deps'], user: User, id: 
 /** The home of `userId`, with that member's rows. Only the caller's home, or a share's owner's home, is ever built. */
 function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
   const { config, db, pathTables, trashTables, thumbs } = deps;
-  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs });
+  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, versions: config.versions });
 }
 
 // The owner's own source behind a share or a public link (#147), reached on the server: their home, or their cloud

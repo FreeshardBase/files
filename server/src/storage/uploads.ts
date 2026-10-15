@@ -15,7 +15,7 @@ export async function expireUploads(deps: TrashDeps, log: FastifyBaseLogger, now
   const result: UploadExpiryResult = { removed: [], failed: [] };
   for (const userId of users) {
     const home = new LocalBackend(homeRoot(deps.config.dataDir, userId),
-      { db: deps.db, userId, pathTables: deps.pathTables, trashTables: deps.trashTables });
+      { db: deps.db, userId, pathTables: deps.pathTables, trashTables: deps.trashTables, versions: deps.config.versions });
     const r = await home.expireUploads(now, log);
     result.removed.push(...r.removed); result.failed.push(...r.failed);
   }

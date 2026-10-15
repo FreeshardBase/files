@@ -1,16 +1,17 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
 // member's own home it lists the members the item is shared with and offers "Share …"; in a share it shows the caller's
-// own access. Esc or "Close" closes it; focus returns to the row.
+// own access. A file's versions follow (#154). Esc or "Close" closes it; focus returns to the row.
 import { onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, Entry, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import AppDialog from './AppDialog.vue';
+import VersionHistory from './VersionHistory.vue';
 
 const props = defineProps<{ source: string; entry: Entry; access: Access; returnFocus?: HTMLElement | null }>();
-const emit = defineEmits<{ close: []; share: [] }>();
+const emit = defineEmits<{ close: []; share: []; restored: [entry: Entry] }>();
 const { t, locale } = useI18n();
 const own = props.source === 'home';
 const shares = ref<Share[] | null>(null);
@@ -84,6 +85,12 @@ onMounted(async () => {
     >
       {{ t('share.onlyYou') }}
     </p>
+    <VersionHistory
+      v-if="entry.type === 'file'"
+      :source="source"
+      :entry="entry"
+      @restored="emit('restored', $event)"
+    />
     <template #actions>
       <button
         v-if="own"
