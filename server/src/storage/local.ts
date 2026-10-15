@@ -1,4 +1,4 @@
-import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync } from 'node:fs';
+import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync, type Stats } from 'node:fs';
 import { copyFile, link, lstat, mkdir, open, readdir, rm, truncate, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
@@ -38,7 +38,8 @@ async function withUpload<T>(id: string, fn: () => Promise<T>): Promise<T> {
   try { return await fn(); } finally { busyUploads.delete(id); }
 }
 
-// Restore and purge of one member's trash run one at a time, so a purge never removes bytes a restore is moving.
+// Restore and purge of one member's trash run one at a time, so a purge never removes bytes a restore is moving; quota
+// reservations are taken and released under the same lock (#197). Not reentrant: nothing under it may take it again.
 const userLocks = new Map<string, Promise<unknown>>();
 function underUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const prev = userLocks.get(userId) ?? Promise.resolve();
@@ -49,14 +50,22 @@ function underUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-// Bytes of the regular files in a tree (0 for anything that is gone); symlinks are neither followed nor counted.
-export async function treeSize(abs: string): Promise<number> {
+// Quota taken by direct writes and copies in flight (#197), per member: the bytes each may still add and the path its
+// bytes are staged at. A staged path is left out of the disk walk while its reservation counts instead, so a write is
+// counted exactly once however far it has got. Taken and released under the member's lock; the app runs as one process.
+type Reservation = { bytes: number; staging: string };
+const inFlight = new Map<string, Set<Reservation>>();
+const inFlightOf = (userId: string) => inFlight.get(userId) ?? new Set<Reservation>();
+
+// Bytes of the regular files in a tree (0 for anything that is gone or in `skip`); symlinks are neither followed nor counted.
+export async function treeSize(abs: string, skip?: ReadonlySet<string>): Promise<number> {
+  if (skip?.has(abs)) return 0;
   const st = await lstat(abs).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
   if (!st) return 0;
   if (st.isFile()) return st.size;
   if (!st.isDirectory()) return 0;
   let sum = 0;
-  for (const name of await readdir(abs)) sum += await treeSize(join(abs, name));
+  for (const name of await readdir(abs)) sum += await treeSize(join(abs, name), skip);
   return sum;
 }
 const MAX_NAME_BYTES = 255;
@@ -462,13 +471,16 @@ export class LocalBackend implements StorageBackend {
 
   private async copyImpl(from: string, to: string, policy: CollisionPolicy): Promise<Entry> {
     const e = await this.endpoints(from, to, policy);
-    // The copy adds the source's bytes (#156); "replace" sends the item in the way to the trash, which still counts.
-    if (await treeSize(e.src) > await this.remainingQuota()) throw new AppError('QUOTA_EXCEEDED');
     const trash = await this.internalDir('trash');
     // Built in the internal area first, so a half-done copy is never visible; the startup sweep clears what a crash leaves.
     const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
+    // The copy adds the source's bytes (#156), reserved until they are placed (#197); "replace" sends the item in the
+    // way to the trash, which still counts.
+    const { granted, release } = await this.reserve(await treeSize(e.src), stage);
     try {
       await copyTree(e.src, stage);
+      // The source may have grown while it was copied.
+      if (await treeSize(stage) > granted) throw new AppError('QUOTA_EXCEEDED');
       const beneath = e.type === 'directory' ? await walkTree(stage, false) : [];
       const replacedSize = policy === 'replace' ? await treeSize(e.dst) : 0;
       const placed = this.atomically((fs) => {
@@ -485,6 +497,8 @@ export class LocalBackend implements StorageBackend {
     } catch (err) {
       await rm(stage, { recursive: true, force: true });
       throw err;
+    } finally {
+      await release();
     }
   }
 
@@ -618,12 +632,38 @@ export class LocalBackend implements StorageBackend {
     return free === Infinity ? free : Math.max(0, free - this.reserved(exceptUpload));
   }
 
-  // Quota minus the bytes under the home; Infinity without a quota. The walk is async, so callers that must not race
-  // subtract `reserved()` inside their transaction.
+  // Quota minus the bytes under the home, staged bytes of writes in flight left out; Infinity without a quota. The walk
+  // is async, so callers that must not race run it under the member's lock and subtract `reserved()` right after it.
   private async freeBeforeReservations(): Promise<number> {
     const quota = this.quotaBytes();
     if (quota === null) return Infinity;
-    return quota - await treeSize(this.root);
+    await mkdir(this.root, { recursive: true });
+    const skip = new Set([...inFlightOf(this.index.userId)].map((r) => r.staging));
+    return quota - await treeSize(await resolveInRoot(this.root, '/'), skip);
+  }
+
+  /**
+   * Takes `bytes` of the member's free space for a write or copy staged at `staging` (#197), or, without a declared
+   * size, all that is left. Checked and taken under the member's lock, so writes running together never share the same
+   * free bytes. Returns the bytes granted and a release to call once the bytes are placed or dropped.
+   */
+  private reserve(bytes: number | undefined, staging: string): Promise<{ granted: number; release: () => Promise<void> }> {
+    const userId = this.index.userId;
+    return underUserLock(userId, async () => {
+      const free = await this.freeBeforeReservations();
+      if (free === Infinity) return { granted: Infinity, release: async () => {} };
+      const left = Math.max(0, free - this.reserved());
+      if (bytes !== undefined && bytes > left) throw new AppError('QUOTA_EXCEEDED');
+      const r: Reservation = { bytes: bytes ?? left, staging };
+      inFlight.set(userId, inFlightOf(userId).add(r));
+      // Released under the lock too: a walk in progress has either seen the placed bytes or still counts the reservation.
+      const release = () => underUserLock(userId, async () => {
+        const set = inFlightOf(userId);
+        set.delete(r);
+        if (set.size === 0) inFlight.delete(userId);
+      });
+      return { granted: r.bytes, release };
+    });
   }
 
   /** The member's quota in bytes as the admin set it (#156), or null for none. */
@@ -653,9 +693,12 @@ export class LocalBackend implements StorageBackend {
   /** The home's largest folders (#156), from the name index. */
   largestFolders(limit: number): LargeFolder[] { return largestFolders(this.index.db, this.index.userId, limit); }
 
+  // What open tus uploads other than `exceptUpload` have yet to send, plus what direct writes and copies in flight hold.
   private reserved(exceptUpload?: string): number {
-    return this.index.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE user_id = ? AND id IS NOT ?')
-      .pluck().get(this.index.userId, exceptUpload ?? null) as number;
+    let held = 0;
+    for (const r of inFlightOf(this.index.userId)) held += r.bytes;
+    return held + (this.index.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE user_id = ? AND id IS NOT ?')
+      .pluck().get(this.index.userId, exceptUpload ?? null) as number);
   }
 
   private uploadRow(id: string): UploadRow | undefined {
@@ -695,17 +738,20 @@ export class LocalBackend implements StorageBackend {
     const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
     if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
     if (st && u.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
-    const free = await this.freeBeforeReservations();
     const { db, userId } = this.index;
     const id = randomBytes(16).toString('hex');
     const now = new Date();
     const expiresAt = new Date(now.getTime() + UPLOAD_TTL_MS).toISOString();
-    // Reservation check and insert under one write lock, so two uploads created at once cannot both take the last bytes.
-    db.transaction(() => {
-      if (free !== Infinity && u.length > free - this.reserved()) throw new AppError('QUOTA_EXCEEDED');
-      db.prepare(`INSERT INTO uploads (id, user_id, source, path, length, received, on_collision, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, userId, u.source, nt, u.length, u.onCollision, now.toISOString(), expiresAt);
-    }).immediate();
+    // Walk, reservation check and insert under the member's lock (shared with direct writes and copies, #197) and one
+    // write lock, so two uploads or writes started at once cannot both take the last bytes.
+    await underUserLock(userId, async () => {
+      const free = await this.freeBeforeReservations();
+      db.transaction(() => {
+        if (free !== Infinity && u.length > free - this.reserved()) throw new AppError('QUOTA_EXCEEDED');
+        db.prepare(`INSERT INTO uploads (id, user_id, source, path, length, received, on_collision, created_at, expires_at)
+          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, userId, u.source, nt, u.length, u.onCollision, now.toISOString(), expiresAt);
+      }).immediate();
+    });
     try {
       const fh = await open(await this.uploadBytes(id), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW);
       await fh.close();
@@ -930,9 +976,16 @@ export class LocalBackend implements StorageBackend {
       if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
     };
     checkIfMatch(st);
-    const quotaLeft = await this.remainingQuota();
-    if (opts.size !== undefined && opts.size > quotaLeft) throw new AppError('QUOTA_EXCEEDED');
     const tmp = join(dir, `.${randomBytes(8).toString('hex')}.upload`);
+    // The declared size is reserved before a byte is read (#197); without one the write may fill what is left.
+    const { granted: quotaLeft, release } = await this.reserve(opts.size, tmp);
+    try { return await this.writeReserved(p, body, opts, { target, dir, tmp, quotaLeft, current, checkIfMatch }); }
+    finally { await release(); }
+  }
+
+  private async writeReserved(p: string, body: Readable, opts: WriteOptions, w: { target: string; dir: string; tmp: string;
+    quotaLeft: number; current: () => Promise<Stats | undefined>; checkIfMatch: (s: Stats | undefined) => void }): Promise<Entry> {
+    const { target, dir, tmp, quotaLeft, current, checkIfMatch } = w;
     let written = 0;
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {

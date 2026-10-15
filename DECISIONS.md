@@ -515,3 +515,11 @@ No dead UI. `e2e/polish.spec.ts` opens each main screen (folder, trash, Recent, 
 Header. The member's display name from the OIDC `name` claim (`/api/v1/me`) sits at the right of the header, muted, with the e-mail as its tooltip.
 
 Memory bound in the provider tests. The 1 GB down/up tests of Drive, Dropbox and Graph sample `heapUsed + arrayBuffers`, which counts garbage that has not been collected yet; under a parallel suite run the Graph test peaked at 101 MB against a 96 MB bound without any buffering. The bound is now 256 MB in all three: GC timing no longer fails it, and buffering the 1 GB file would still exceed it fourfold.
+
+## 2026-10-15: quota reservations for direct writes and copies (#197)
+
+Question: parallel `PUT content`, WebDAV `PUT` and copies each compared their own bytes against the whole free space, so together they exceeded the quota. How do they share it, and what does a write without a declared length get?
+
+Decision: they reserve before reading a byte, like tus creation. A reservation is held in memory per member (the app is one process) and is taken and released under the member's lock that restore and purge already use; tus creation now walks and inserts under that lock too. The free space is the quota minus the disk walk minus open tus uploads minus the reservations in flight; the walk leaves out the staged path of each write in flight, so its bytes count once, through the reservation. A write with a declared length reserves that length; one without reserves all the free space left and may fill it, so other writes are refused until it finishes. A copy reserves the source's size and is refused if the staged copy came out larger.
+
+Why: the issue asks for exactly this, and a chunked request without length is rare (browsers, rclone and the WebDAV clients send one); growing a reservation per chunk would need the walk and the release to agree on every chunk, which is more machinery than the case is worth (YAGNI). A database table would survive a restart, but a restart ends every write in flight anyway.
