@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "pnpm -r test",
     "test:live": "pnpm --filter @files/server test:live",
+    "test:litmus": "pnpm --filter @files/server test:litmus",
     "build": "pnpm --filter @files/web build && pnpm --filter @files/server build",
     "e2e": "pnpm build && playwright test -c e2e/playwright.config.ts",
     "dev": "pnpm --filter @files/server dev"

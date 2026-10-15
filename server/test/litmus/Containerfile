@@ -1,0 +1,4 @@
+# litmus, the WebDAV server compliance suite (#157), from Debian's package. Built and run by litmus.test.ts.
+FROM docker.io/library/debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends litmus && rm -rf /var/lib/apt/lists/*
+ENTRYPOINT ["litmus"]

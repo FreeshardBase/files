@@ -38,9 +38,15 @@ import { registerMigrationRoutes } from './routes/migrations.ts';
 import { registerVersionRoutes } from './routes/versions.ts';
 import { registerFavouriteRoutes } from './routes/favourites.ts';
 import { registerStorageRoutes } from './routes/storage.ts';
+import { registerAppPasswordRoutes } from './routes/appPasswords.ts';
+import { registerDavRoutes } from './dav/routes.ts';
 
 declare module 'fastify' {
-  interface FastifyContextConfig { public?: boolean }
+  /**
+   * `public`: reachable without a session (the allowlist in routeInventory.test.ts). `appPassword`: the WebDAV route
+   * family (#157), authenticated by an app password over HTTP Basic instead of the session.
+   */
+  interface FastifyContextConfig { public?: boolean; appPassword?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
     thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections; transfers: TransferEngine } }
 }
@@ -133,6 +139,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerVersionRoutes(app);
   await registerFavouriteRoutes(app);
   await registerStorageRoutes(app);
+  await registerAppPasswordRoutes(app);
+  await registerDavRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

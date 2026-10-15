@@ -9,13 +9,14 @@ pnpm install
 pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile Chromium, Firefox for the PDF preview); picks free ports itself
 pnpm test:live                              # real cloud providers; skipped (never passed) without LIVE_* tokens in server/.env.live
+pnpm test:litmus                            # litmus (basic, copymove, props, locks) in a podman/docker container against WebDAV; skipped without an engine
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped. The image has no `USER`: `main.ts` starts as root, chowns `/data` itself (never recursively, `server/src/dataDir.ts`) and drops to `node` (uid 1000) before opening anything. Do not add `USER node` to the image or `user: 0:0` to the app template.
 
 ## Invariants (reviewer rejects violations)
 - Every user path goes through `server/src/storage/resolveInRoot.ts`. No `path.join` on user input anywhere else.
-- Auth is deny-by-default (`server/src/auth/guard.ts`). Every matched route needs a session (and CSRF for mutating methods) unless it carries `config: { public: true }`; the path prefix does not matter. Public today: `/healthz`, `/auth/login`, `/auth/callback`, `/s/:token/*` (public links, #147), the SPA fallback and the static assets (marked by the encapsulated static plugin's `onRoute` hook). Unmatched requests get 401 without a session. A new public route needs a stated reason in the PR. `server/test/routeInventory.test.ts` walks every registered route and enforces this.
+- Auth is deny-by-default (`server/src/auth/guard.ts`). Every matched route needs a session (and CSRF for mutating methods) unless it carries `config: { public: true }`; the path prefix does not matter. Public today: `/healthz`, `/auth/login`, `/auth/callback`, `/s/:token/*` (public links, #147), the SPA fallback and the static assets (marked by the encapsulated static plugin's `onRoute` hook). Unmatched requests get 401 without a session. A new public route needs a stated reason in the PR. The one other mode is `config: { appPassword: true }`, only on WebDAV (`/dav`, `/dav/*`, #157): HTTP Basic with an app password, the session cookie ignored; app passwords open nothing else. `server/test/routeInventory.test.ts` walks every registered route and enforces this.
 - Never decide security on raw `req.url`; use the matched route (`req.routeOptions`) or the decoded pathname.
 - Session cookies are `__Host-fs_sid` and `__Host-fs_login` on https; the plain names `fs_sid` and `fs_login` exist only on http loopback (dev, E2E).
 - The internal area `<root>/.files/` is unaddressable by users. Temporary upload files are `.<16hex>.upload` and stay hidden from listings.

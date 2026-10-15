@@ -29,6 +29,8 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'versions', ownerColumn: 'user_id', pathColumn: 'path', trashColumn: 'trash_id' },
   // #155, asserted in server/test/favourites.test.ts
   { table: 'favourites', ownerColumn: 'user_id', pathColumn: 'path', sourceColumn: 'source', goneColumn: 'gone_at' },
+  // #157, asserted in server/test/webdav.test.ts
+  { table: 'dav_props', ownerColumn: 'user_id', pathColumn: 'path' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;

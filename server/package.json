@@ -6,6 +6,7 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
+    "test:litmus": "vitest run --config vitest.litmus.config.ts",
     "build": "node build.mjs",
     "dev": "tsx watch src/dev.ts",
     "reindex": "tsx src/reindex.ts"
@@ -16,6 +17,7 @@
     "@fastify/static": "^10.1.6",
     "@files/shared": "workspace:*",
     "@node-rs/argon2": "^2.2.2",
+    "@xmldom/xmldom": "^0.9.12",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.7",
     "openid-client": "^6.8.8",

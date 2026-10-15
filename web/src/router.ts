@@ -10,12 +10,13 @@ import MigrateView from './views/MigrateView.vue';
 import MigrationJobView from './views/MigrationJobView.vue';
 import StorageView from './views/StorageView.vue';
 import MembersView from './views/MembersView.vue';
+import SettingsView from './views/SettingsView.vue';
 
 /** A public link's share page: no session is loaded and no login is asked for there. */
 export const isPublicPage = (pathname: string): boolean => /^\/s\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
-// `/favourites`, `/shared`, `/connections`, `/storage` and `/members` can never clash with a folder, since folders live
+// `/favourites`, `/shared`, `/connections`, `/storage`, `/members` and `/settings` can never clash with a folder, since folders live
 // under their source.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
@@ -28,6 +29,8 @@ export const routes: RouteRecordRaw[] = [
   // The storage overview for every member, and the admin's page of members and quotas (#156).
   { path: '/storage', component: StorageView },
   { path: '/members', component: MembersView },
+  // Settings (#157): the WebDAV address and the member's app passwords.
+  { path: '/settings', component: SettingsView },
   // A cloud folder or account onto the shard (#153): the wizard, and one migration's progress, summary and cleanup.
   { path: '/migrate', component: MigrateView },
   { path: '/migrate/:id([0-9a-f]{32})', component: MigrationJobView },

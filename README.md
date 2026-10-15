@@ -17,6 +17,7 @@ pnpm install
 pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile)
 pnpm test:live                              # real-provider tests; skipped without LIVE_* tokens in server/.env.live
+pnpm test:litmus                            # litmus WebDAV suites (basic, copymove, props, locks) in a podman/docker container
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 
@@ -25,6 +26,8 @@ Sign-in always goes through OIDC. `pnpm dev` starts a fake identity provider for
 Members connect their own cloud accounts under "Cloud accounts". Google Drive is offered when `FILES_GOOGLE_CLIENT_ID` and `FILES_GOOGLE_CLIENT_SECRET` (an OAuth client of type "Web application" at Google, with the Drive API enabled and the redirect URI `<FILES_PUBLIC_URL>/api/v1/connections/callback`) are set; Dropbox when `FILES_DROPBOX_CLIENT_ID` and `FILES_DROPBOX_CLIENT_SECRET` (the app key and secret of a scoped Dropbox app with full Dropbox access, the permissions `account_info.read`, `files.metadata.read`, `files.content.read` and `files.content.write`, and the same redirect URI) are set; OneDrive and SharePoint when `FILES_GRAPH_CLIENT_ID` and `FILES_GRAPH_CLIENT_SECRET` (an Azure app registration of type "Web" with the same redirect URI, a client secret, and the delegated Microsoft Graph permissions `offline_access`, `User.Read`, `Files.ReadWrite`, `Files.ReadWrite.All` and `Sites.Read.All`) are set, with `FILES_GRAPH_TENANT` naming the sign-in tenant (`common` unless set: work and personal accounts; a tenant id or domain for a single-tenant registration). The live tests' Graph suite also reads `LIVE_GRAPH_TENANT`. Refresh tokens are stored encrypted with `FILES_ENCRYPTION_KEY`; changing that key makes every connection fail until it is connected again. The live tests (`pnpm test:live`) read `LIVE_<GDRIVE|DROPBOX|GRAPH>_REFRESH_TOKEN`, `_CLIENT_ID` and `_CLIENT_SECRET` from the untracked `server/.env.live`; without them they report skipped.
 
 Thumbnails need `ffmpeg` (video frames) and `pdftoppm` from poppler-utils (PDF pages) on the `PATH`; images use `sharp`, which brings its own libvips. The container image installs both tools. `FILES_THUMB_CACHE_BYTES` caps the thumbnail cache (default 512 MiB) and `FILES_THUMB_TIMEOUT_MS` limits each generator run (default 30 000).
+
+Members mount their shard storage as a network drive at `<FILES_PUBLIC_URL>/dav/` (WebDAV class 1 and 2: Finder, Windows Explorer, davfs2, rclone). They sign in there with an app password created under "Settings", with any user name; the shard session does not open WebDAV, and an app password opens nothing else. Deletes go to the trash.
 
 When a file in shard storage is replaced, its previous content is kept as a version (details drawer). `FILES_VERSIONS_MAX_COUNT` (default 10) and `FILES_VERSIONS_MAX_BYTES` (default 1 GiB) cap the versions of each file; the oldest go first. Versions count towards the member's quota.
 

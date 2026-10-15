@@ -16,7 +16,45 @@
     "migrate": "Move to shard",
     "favourites": "Favourites",
     "storage": "Storage usage",
-    "members": "Members"
+    "members": "Members",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "webdav": {
+      "heading": "Network drive (WebDAV)",
+      "intro": "Connect your storage on the shard as a network drive: in Finder, in Windows Explorer, with davfs2 or rclone. Sign in there with an app password, not with your shard password.",
+      "address": "Address",
+      "username": "User name: any name you like. The app password tells the shard who you are."
+    }
+  },
+  "appPasswords": {
+    "heading": "App passwords",
+    "label": "Device or program",
+    "invalid": "Enter a name for the device or program.",
+    "create": "Create app password",
+    "created": "App password for “{label}” created",
+    "empty": "No app passwords yet.",
+    "columns": {
+      "label": "Device or program",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "actions": "Actions"
+    },
+    "lastUsed": "Last used {date}",
+    "never": "Not used yet",
+    "revoke": "Revoke",
+    "revokeLabel": "Revoke “{label}”",
+    "revokeTitle": "Revoke “{label}”?",
+    "revokeMessage": "Devices and programs that sign in with this app password lose access at once. You can create a new one at any time.",
+    "revoked": "“{label}” revoked",
+    "shownTitle": "App password for “{label}”",
+    "shownText": "Enter this password in the device or program, together with the address. You can see it only now: if you lose it, revoke it and create a new one.",
+    "password": "App password",
+    "copy": "Copy",
+    "copied": "Copied to the clipboard",
+    "copyManually": "The password is selected: copy it with Ctrl+C or ⌘C.",
+    "done": "Done"
   },
   "storage": {
     "title": "Storage usage",
@@ -427,7 +465,8 @@
     "JOB_RUNNING": "The migration is still running.",
     "SOURCE_CHANGED": "Changed in the cloud since the migration, so it was kept.",
     "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept.",
-    "NOT_SUPPORTED": "This source doesn't offer that."
+    "NOT_SUPPORTED": "This source doesn't offer that.",
+    "APP_PASSWORD_LIMIT": "You can have at most {max} app passwords. Revoke one you no longer use first."
   },
   "versions": {
     "title": "Versions",
