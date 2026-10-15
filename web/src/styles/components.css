@@ -1,0 +1,133 @@
+/* Freeshard web-terminal — component recipes
+ * v0.1 · 2026-05-31. Depends on tokens.css (var(--*)).
+ * Copy-paste starting points for agents applying the style. Flat, no shadows.
+ * Prose rationale + do/don't: ../design-guide.md
+ */
+
+/* ---- labels ---- */
+.fs-label {
+  font: 600 var(--fs-label)/1 var(--font-ui);
+  text-transform: uppercase; letter-spacing: var(--ls-label);
+  color: var(--ink-muted);
+}
+.fs-mono { font: 400 var(--fs-mono)/1 var(--font-mono); letter-spacing: var(--ls-mono); }
+
+/* ---- sheet / card ---- */
+.fs-sheet {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sheet);
+  padding: var(--space-5);
+}
+
+/* ---- buttons: outline only, transparent fill, equal weight ---- */
+.fs-btn {
+  font: 400 var(--fs-small)/1 var(--font-ui);
+  padding: 9px 16px; border-radius: var(--radius-control);
+  border: var(--border-w) solid var(--border-cool);
+  color: var(--ink); background: transparent; cursor: pointer;
+}
+.fs-btn--primary { border-color: var(--accent); color: var(--accent); } /* the ONE forward action per view */
+.fs-btn--danger  { border-color: var(--danger); color: var(--danger); }
+.fs-btn:disabled { opacity: .5; cursor: default; }
+
+/* ---- text field ---- */
+.fs-field { max-width: 280px; margin-bottom: var(--space-4); }
+.fs-field > .fs-label { display: block; margin-bottom: 5px; }
+.fs-input {
+  font: 400 14px/1.3 var(--font-ui);
+  width: 100%; padding: 8px 11px;
+  border: var(--border-w) solid var(--border-cool);
+  border-radius: var(--radius-control);
+  background: var(--surface); color: var(--ink);
+}
+.fs-input:focus {
+  outline: none; border-color: var(--line);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 25%, transparent);
+}
+.fs-input[aria-invalid="true"] { border-color: var(--danger); }
+.fs-field__error { font-size: 11px; color: var(--danger); margin-top: 4px; }
+
+/* ---- checkbox (square), radio (circle), toggle (pill) ---- */
+.fs-check, .fs-radio {
+  width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  border: var(--border-w-glyph) solid var(--border-cool); background: transparent;
+}
+.fs-check { border-radius: 5px; }
+.fs-radio { border-radius: 50%; }
+.fs-check[aria-checked="true"] { border-color: var(--data); background: var(--data); } /* white check glyph inside */
+.fs-radio[aria-checked="true"] { border-color: var(--data); }                          /* teal dot inside */
+.fs-toggle {
+  position: relative; display: inline-block; width: 36px; height: 20px;
+  border-radius: var(--radius-pill); background: var(--border-cool);
+}
+.fs-toggle[aria-checked="true"] { background: var(--data); }
+.fs-toggle__knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); }
+.fs-toggle[aria-checked="true"] .fs-toggle__knob { left: auto; right: 2px; }
+/* Controls never glow, even in dark. */
+
+/* ---- app tile ---- */
+.fs-tile {
+  width: 100px; height: 88px; gap: 9px;
+  border: var(--border-w) solid var(--border-cool); border-radius: var(--radius-tile);
+  background: var(--surface); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font: 400 11px/1 var(--font-ui);
+}
+.fs-tile__glyph { width: 28px; height: 28px; border: var(--border-w-glyph) solid var(--line); border-radius: var(--radius-glyph); }
+.fs-tile--add { color: var(--accent); }
+.fs-tile--add .fs-tile__glyph { border-style: dashed; border-color: var(--accent); }
+
+/* ---- status dot (glows ONLY when live, dark theme) ---- */
+.fs-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--data); }
+[data-theme="dark"] .fs-dot[data-live="true"], .theme-dark .fs-dot[data-live="true"] { box-shadow: var(--glow-live); }
+
+/* ---- avatar / profile picture (mutable; NOT the identity badge) ---- */
+.fs-avatar {
+  border-radius: 50%; background: var(--border-cool);
+  border: var(--border-w) solid var(--border-cool);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 0.38em/1 var(--font-ui); color: var(--ink);  /* font-size set per instance; 0.38em of box */
+}
+/* sizes: 24 / 32 / 48 / 64 px */
+
+/* ---- data gauge (SVG): arc length MUST equal the real ratio ----
+ * <svg viewBox="0 0 64 64">
+ *   <circle cx=32 cy=32 r=27 fill=none stroke=var(--border) stroke-width=2/>
+ *   <circle cx=32 cy=32 r=27 fill=none stroke=var(--data) stroke-width=2
+ *           stroke-dasharray="{ratio*169.6} 169.6" stroke-linecap=round transform="rotate(-90 32 32)"/>
+ * </svg>   // r=27 -> circumference C=169.6; dasharray = ratio*C
+ */
+
+/* ---- keyboard navigation: roving focus + Alt-hold hints ----
+ * Keyboard is first-class. One shared focus; move it by Tab (between regions),
+ * arrows (within AND across regions — everything is arrow-reachable), or Alt-hold
+ * key jumps. Enter activates, Esc steps out. No on/off setting: chrome is summoned
+ * by intent, invisible at rest. Distinct from .fs-input:focus (a field's own ring).
+ */
+/* Focus = teal outline (zero reflow) + slight scale (compositor transform, no reflow).
+ * Never amber (reserved for the forward action), never a fill. :focus-visible →
+ * shows only on keyboard interaction, never on mouse click. */
+.fs-focusable { transform-origin: center; }
+.fs-focusable:focus-visible {
+  outline: 2px solid var(--line); outline-offset: 3px;
+  position: relative; z-index: 3;
+  transform: scale(1.2);            /* tiles/buttons; drop or lower for full-width rows that could overflow */
+}
+/* Alt-hold reveals key badges on a separate layer (no reflow). Toggle by adding
+ * [data-keyhints="on"] to a nav root on keydown(Alt), removing it on keyup. */
+.fs-keyhint {
+  position: absolute; z-index: 4; pointer-events: none;
+  top: -7px; left: -7px;            /* top-left corner, overlapping (anchored to the target box) */
+  font: 500 11px/1 var(--font-mono);
+  color: var(--ink); background: var(--surface);
+  border: var(--border-w) solid var(--line); border-radius: 5px; padding: 3px 5px;
+}
+[data-keyhints]:not([data-keyhints="on"]) .fs-keyhint { display: none; }
+
+/* ---- shard identity badge ----
+ * Diamond logomark + 6-digit id, ~110x30. No avatar/name/domain/copy button.
+ * Frame treatment UNDECIDED (see DECISIONS.md): candidates = corner brackets,
+ * double hairline, or hash-derived variable-width perimeter fingerprint.
+ * Generator for the fingerprint frame lives in build/build_guide.py (badge()).
+ */

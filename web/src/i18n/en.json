@@ -1,0 +1,58 @@
+{
+  "app": {
+    "name": "Files",
+    "retry": "Try again",
+    "signInAgain": "Sign in again"
+  },
+  "nav": {
+    "home": "My storage",
+    "breadcrumbRoot": "My storage"
+  },
+  "folder": {
+    "empty": "This folder is empty.",
+    "loading": "Loading …",
+    "columns": {
+      "name": "Name",
+      "size": "Size",
+      "modified": "Modified"
+    },
+    "newFolder": "New folder",
+    "newFolderPrompt": "What should the folder be called?",
+    "create": "Create",
+    "cancel": "Cancel"
+  },
+  "upload": {
+    "button": "Upload",
+    "progress": "{name}: {percent} %",
+    "done": "{name} uploaded",
+    "keepBoth": "Upload as copy",
+    "replace": "Replace",
+    "skip": "Skip",
+    "summary": "{done} of {total} uploaded",
+    "failedHeading": "Not uploaded:",
+    "failedItem": "{name}: {reason}"
+  },
+  "errors": {
+    "UNAUTHENTICATED": "You are no longer signed in.",
+    "FORBIDDEN": "You don't have permission to do that.",
+    "CSRF": "The request was rejected for security reasons. Reload the page.",
+    "VALIDATION": "The input is not valid.",
+    "NOT_FOUND": "This doesn't exist (any more).",
+    "FILE_EXISTS": "An item with this name already exists.",
+    "PATH_INVALID": "This name or path is not allowed.",
+    "PATH_SYMLINK": "Links are not opened, for security reasons.",
+    "NOT_A_DIRECTORY": "This is not a folder.",
+    "IS_A_DIRECTORY": "This is a folder, not a file.",
+    "PAYLOAD_TOO_LARGE": "The file is too large.",
+    "UNSUPPORTED_MEDIA_TYPE": "This file type is not accepted here.",
+    "RANGE_NOT_SATISFIABLE": "This part of the file does not exist.",
+    "STORAGE_FULL": "Storage is full.",
+    "LOGIN_FAILED": "Signing in didn't work. Please try again.",
+    "INTERNAL": "Something went wrong. Please try again later.",
+    "NETWORK": "No connection to the shard."
+  },
+  "a11y": {
+    "fileList": "Files in {folder}",
+    "breadcrumbs": "Path"
+  }
+}

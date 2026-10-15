@@ -1,0 +1,62 @@
+/* Freeshard web-terminal — "Daylight Instrument" design tokens
+ * v0.1 · 2026-05-31
+ * Mirrors tokens.json (canonical). Source of truth prose: ../design-guide.md
+ * Light is the default; dark applies under [data-theme="dark"] or .theme-dark.
+ * Keep in sync with tokens.json and build/build_guide.py when editing values.
+ */
+
+:root {
+  /* color — light (primary) */
+  --bg:          #f6f4ef;   /* warm paper ground */
+  --surface:     #fffefb;   /* raised sheets / tiles / panels */
+  --border:      #d8d2c6;   /* warm separators / sheet edges */
+  --border-cool: #b7c7cd;   /* control / tile borders */
+  --ink:         #1d3a45;   /* primary text (teal-ink, not black) */
+  --ink-muted:   #6b7d82;   /* labels, secondary text */
+  --line:        #006070;   /* functional strokes, glyph outlines */
+  --data:        #007080;   /* gauges, status dot */
+  --accent:      #c8761f;   /* single forward action (amber) — never a fill */
+  --danger:      #b04a3a;   /* destructive actions */
+
+  /* typography */
+  --font-ui:   'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --fs-display: 34px; --fw-display: 600;
+  --fs-h1: 26px; --fs-h2: 20px; --fs-h3: 16px;
+  --fs-body: 15px; --fs-small: 13px;
+  --fs-label: 10px; --ls-label: 0.14em;   /* uppercase */
+  --fs-mono: 13px;  --ls-mono: 0.06em;
+
+  /* spacing scale */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+
+  /* radius */
+  --radius-sheet: 14px; --radius-tile: 10px; --radius-control: 8px;
+  --radius-glyph: 7px;  --radius-pill: 999px;
+
+  /* border */
+  --border-w: 1px;        /* structural */
+  --border-w-glyph: 1.5px;/* glyph / arc outlines */
+
+  /* elevation: NONE. No drop shadows, no glow. Depth = border + surface tone. */
+  --shadow: none;
+  /* glow is a dark-only signal applied inline to LIVE elements (see --glow-live below) */
+}
+
+[data-theme="dark"], .theme-dark {
+  /* color — dark ("dusk"). Teal relaxed to softened cyan for legibility. */
+  --bg:          #16140f;
+  --surface:     #211d16;
+  --border:      #3a342a;
+  --border-cool: #473f31;
+  --ink:         #ece4d6;
+  --ink-muted:   #a89a82;
+  --line:        #9fd8e6;
+  --data:        #9fd8e6;
+  --accent:      #f0b35e;
+  --danger:      #d8665a;
+
+  /* glow = signal, never decoration. Apply ONLY to actively live/changing elements. */
+  --glow-live: 0 0 7px var(--data);
+}

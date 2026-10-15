@@ -1,0 +1,1 @@
+{ "extends": "../tsconfig.base.json", "compilerOptions": { "types": ["vite/client"], "jsx": "preserve", "lib": ["ES2024", "DOM", "DOM.Iterable"], "resolveJsonModule": true }, "include": ["src", "test", "vite.config.ts"] }
