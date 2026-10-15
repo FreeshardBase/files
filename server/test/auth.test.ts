@@ -201,3 +201,18 @@ describe('CSRF', () => {
     expect(r.statusCode).toBe(403);
   });
 });
+
+// shard_core sends no role claim yet (freeshard#251): without the claim config nobody is admin.
+describe('OIDC login without an admin claim config', () => {
+  it('maps the IdP admin test user to member', async () => {
+    const u = await startTestApp({ FILES_OIDC_ROLE_CLAIM: undefined, FILES_OIDC_ADMIN_VALUE: undefined });
+    try {
+      const s = await login(u, 'testuser');
+      const r = await u.app.inject({ url: '/api/v1/me', headers: { cookie: s.cookie } });
+      expect(r.statusCode).toBe(200);
+      expect(r.json()).toMatchObject({ email: 'testuser@example.com', role: 'member' });
+    } finally {
+      await u.close();
+    }
+  });
+});

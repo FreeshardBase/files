@@ -34,11 +34,15 @@ const Schema = z.object({
   FILES_OIDC_ISSUER: issuerUrl,
   FILES_OIDC_CLIENT_ID: z.string().min(1),
   FILES_OIDC_CLIENT_SECRET: z.string().min(1),
-  FILES_OIDC_ROLE_CLAIM: z.string().min(1),
-  FILES_OIDC_ADMIN_VALUE: z.string().min(1),
+  // Optional as a pair: shard_core sends no role claim yet (freeshard#251). Without them nobody is admin.
+  FILES_OIDC_ROLE_CLAIM: z.string().min(1).optional(),
+  FILES_OIDC_ADMIN_VALUE: z.string().min(1).optional(),
   FILES_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 ** 3),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
+}).refine((e) => (e.FILES_OIDC_ROLE_CLAIM === undefined) === (e.FILES_OIDC_ADMIN_VALUE === undefined), {
+  path: ['FILES_OIDC_ROLE_CLAIM'],
+  message: 'FILES_OIDC_ROLE_CLAIM and FILES_OIDC_ADMIN_VALUE must be set both or neither',
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -56,8 +60,10 @@ export function loadConfig(env: Record<string, string | undefined>) {
     encryptionKey: e.FILES_ENCRYPTION_KEY,
     oidc: {
       issuer: e.FILES_OIDC_ISSUER, clientId: e.FILES_OIDC_CLIENT_ID,
-      clientSecret: e.FILES_OIDC_CLIENT_SECRET, roleClaim: e.FILES_OIDC_ROLE_CLAIM,
-      adminValue: e.FILES_OIDC_ADMIN_VALUE,
+      clientSecret: e.FILES_OIDC_CLIENT_SECRET,
+      admin: e.FILES_OIDC_ROLE_CLAIM !== undefined && e.FILES_OIDC_ADMIN_VALUE !== undefined
+        ? { claim: e.FILES_OIDC_ROLE_CLAIM, value: e.FILES_OIDC_ADMIN_VALUE }
+        : undefined,
     },
     maxUploadBytes: e.FILES_MAX_UPLOAD_BYTES,
     port: e.FILES_PORT,

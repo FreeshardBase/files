@@ -13,8 +13,9 @@ import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 export type TestApp = { app: FastifyInstance; config: Config; db: Db; dataDir: string; idp: FakeIdp; routes: RouteOptions[];
   close(): Promise<void> };
 
+/** An override of `undefined` removes that variable from the config. */
 export async function startTestApp(
-  overrides: Record<string, string> = {},
+  overrides: Record<string, string | undefined> = {},
   extend?: (app: FastifyInstance) => void,
   logStream?: NodeJS.WritableStream,
 ): Promise<TestApp> {

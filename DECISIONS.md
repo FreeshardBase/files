@@ -57,3 +57,7 @@ The workspace uses pnpm 12. Dependency build scripts are denied unless listed un
 ## 2026-10-15: encryption key derived from a shard secret
 
 The shard's app template can only fill in `{{ secret('…') }}` (32 characters of `[A-Za-z0-9]`), so `FILES_ENCRYPTION_KEY` takes any secret of at least 32 characters. Startup refuses a shorter one. The AES-256 key is derived with HKDF-SHA256, using salt `freeshard-files`, info `files/encryption-key/v1` and 32 bytes of output (`server/src/config.ts`). A base64 key from before this change is still accepted, but it is now treated as a secret and hashed, so it yields a different key. Nothing has been deployed and nothing has been encrypted yet, so there is no migration path. Changing the salt or info later would orphan encrypted refresh tokens and needs a versioned re-encryption.
+
+## 2026-10-15: admin role claim is optional
+
+shard_core's OIDC provider sends `sub`, `name`, `preferred_username` and `email`, but no role claim, so the app template cannot fill in `FILES_OIDC_ROLE_CLAIM` / `FILES_OIDC_ADMIN_VALUE`. Both variables are now optional, but only as a pair: setting one without the other refuses to start. Without them every login maps to `member` and admin-only features stay unavailable (least privilege). An earlier admin is demoted on their next login, because the role is written on every login. Guessing a claim or making the first user admin would grant rights the platform never asserted. Once freeshard#251 lands, the template sets the claim (`freeshard_role` = `owner`).

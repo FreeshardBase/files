@@ -46,6 +46,23 @@ describe('process startup', () => {
     expect(r.stderr).not.toContain('FILES_SESSION_SECRET');
   });
 
+  it.each([['FILES_OIDC_ROLE_CLAIM', 'groups'], ['FILES_OIDC_ADMIN_VALUE', 'admin']])(
+    'exits 1 when only %s of the admin claim pair is set', (key, value) => {
+      const r = spawnSync(process.execPath, ['--import', 'tsx', mainTs], {
+        env: {
+          PATH: process.env.PATH, NODE_ENV: 'production',
+          FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: join(tmpdir(), 'files-startup-unused'),
+          FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'k'.repeat(32),
+          FILES_OIDC_ISSUER: 'https://idp.example.com', FILES_OIDC_CLIENT_ID: 'files',
+          FILES_OIDC_CLIENT_SECRET: 'files-secret', [key]: value,
+        },
+        encoding: 'utf8', timeout: 20000,
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/FILES_OIDC_ROLE_CLAIM.*FILES_OIDC_ADMIN_VALUE.*both or neither/);
+    });
+
+  // Boots the way the shard's app template configures it: no admin role claim, because shard_core sends none yet.
   it('boots with a 32-character shard secret and shuts down cleanly with exit 0 on SIGTERM', async () => {
     const idp = await startFakeIdp();
     const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-'));
@@ -56,7 +73,6 @@ describe('process startup', () => {
         FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: dataDir,
         FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1BcD4F',
         FILES_OIDC_ISSUER: idp.issuer, FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
-        FILES_OIDC_ROLE_CLAIM: 'groups', FILES_OIDC_ADMIN_VALUE: 'admin',
         FILES_LOG_LEVEL: 'fatal', FILES_PORT: String(port),
         FILES_WEB_DIST: join(dataDir, 'no-web-dist'),
       },
