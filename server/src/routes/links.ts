@@ -108,10 +108,13 @@ export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
     const keys = [`link:${row.id}`, `ip:${req.ip}`] as const;
     const wait = Math.max(perLink.blockedFor(keys[0]), perIp.blockedFor(keys[1]));
     if (wait > 0) { reply.header('retry-after', String(wait)); throw new AppError('TOO_MANY_ATTEMPTS'); }
-    if (!await verifyPassword(row.password_hash, password)) {
-      perLink.fail(keys[0]); perIp.fail(keys[1]);
-      throw new AppError('PASSWORD_WRONG');
-    }
+    // Reserved before the first await, so parallel guesses see this one as counted (#196). A check that throws counts
+    // as a failure.
+    perLink.begin(keys[0]); perIp.begin(keys[1]);
+    let right = false;
+    try { right = await verifyPassword(row.password_hash, password); }
+    finally { perLink.end(keys[0], !right); perIp.end(keys[1], !right); }
+    if (!right) throw new AppError('PASSWORD_WRONG');
     const until = Date.now() + UNLOCK_MS;
     reply.setCookie(cookie, unlockValue(row, until), { signed: true, httpOnly: true, sameSite: 'strict', path: `/s/${row.token}/`,
       secure: cookieNames(config).prefixed, maxAge: UNLOCK_MS / 1000 });

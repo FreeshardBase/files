@@ -245,6 +245,42 @@ describe('password (#104)', () => {
     expect((await unlock(ls[5]!.token, 'pw', '203.0.113.51')).statusCode).toBe(204);
   });
 
+  const codeOf = (r: { statusCode: number; json: () => { code: string } }) => (r.statusCode === 204 ? 'UNLOCKED' : r.json().code);
+  // #196: the check and the count are one step. Without that, a burst all passes the check before argon2 has settled a
+  // single guess, and any number of guesses get through.
+  it('a burst of parallel guesses at one token gets 5 password checks; the rest, a correct one included, are 429', async () => {
+    const dir = await folder({ 'a.txt': 'alpha' });
+    const l = await link(`${dir}/a.txt`, { password: 'correct horse' });
+    const rs = await Promise.all(Array.from({ length: 40 }, (_, i) =>
+      unlock(l.token, i === 39 ? 'correct horse' : `wrong ${i}`, `192.0.2.${i + 1}`)));
+    const codes = rs.map(codeOf);
+    expect(codes.filter((c) => c === 'PASSWORD_WRONG')).toHaveLength(5);
+    expect(codes.filter((c) => c === 'TOO_MANY_ATTEMPTS')).toHaveLength(35);
+    expect(rs[39]!.statusCode).toBe(429);
+  });
+
+  it('a burst of parallel guesses from one address across links gets 20 password checks; the rest are 429', async () => {
+    const dir = await folder({ 'a.txt': 'alpha' });
+    const ls = [];
+    for (let i = 0; i < 9; i++) ls.push(await link(`${dir}/a.txt`, { password: 'pw' }));
+    // 4 per link stays under the per-link limit: only the per-address one can stop this burst.
+    const guesses = ls.slice(0, 8).flatMap((l) => Array.from({ length: 4 }, () => unlock(l.token, 'nope', '198.51.100.200')));
+    const rs = await Promise.all([...guesses, unlock(ls[8]!.token, 'pw', '198.51.100.200')]);
+    const codes = rs.map(codeOf);
+    expect(codes.filter((c) => c === 'PASSWORD_WRONG')).toHaveLength(20);
+    expect(codes.filter((c) => c === 'TOO_MANY_ATTEMPTS')).toHaveLength(13);
+    expect(rs[32]!.statusCode).toBe(429);
+  });
+
+  it('a correct password releases its reserved attempt: it never counts against the link', async () => {
+    const dir = await folder({ 'a.txt': 'alpha' });
+    const l = await link(`${dir}/a.txt`, { password: 'correct horse' });
+    for (let i = 0; i < 4; i++) expect((await unlock(l.token, `wrong ${i}`, '192.0.2.100')).statusCode).toBe(403);
+    for (let i = 0; i < 3; i++) expect((await unlock(l.token, 'correct horse', '192.0.2.100')).statusCode).toBe(204);
+    expect((await unlock(l.token, 'wrong 4', '192.0.2.100')).statusCode).toBe(403);
+    expect((await unlock(l.token, 'correct horse', '192.0.2.100')).statusCode).toBe(429);
+  });
+
   it('the unlock cookie holds for its link only and dies with a password change; no cross-site unlock', async () => {
     const dir = await folder({ 'a.txt': 'alpha' });
     const a = await link(`${dir}/a.txt`, { password: 'same' });
