@@ -174,6 +174,7 @@ test('keyboard only: select, cut, open the folder, paste; the row menu opens wit
   const menu = page.getByRole('menu');
   await expect(menu.getByRole('menuitem').first()).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: /^(Verschieben|Move)$/ })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);

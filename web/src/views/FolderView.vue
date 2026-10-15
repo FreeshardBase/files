@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import type { CollisionPolicy, Entry, ErrorCode } from '@files/shared';
 import { join, useFolderStore } from '../stores/folder.ts';
 import { ApiFailure } from '../api/client.ts';
-import { folderRoute } from '../api/paths.ts';
+import { downloadHref, folderRoute } from '../api/paths.ts';
 import FileList, { type ItemAction } from '../components/FileList.vue';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
@@ -149,8 +149,17 @@ async function rename(name: string) {
   if (placed && r.failed.length === 0) status.value = t('transfer.renamed', { name: placed.name });
 }
 
+// The server sends an attachment; a link with `download` keeps the page even if the request fails.
+function download(entries: Entry[]) {
+  const a = document.createElement('a');
+  a.href = downloadHref(folder.source, entries);
+  a.download = '';
+  a.click();
+}
+
 function onAction(action: ItemAction, entries: Entry[]) {
-  if (action === 'rename') renaming.value = entries[0]!;
+  if (action === 'download') download(entries);
+  else if (action === 'rename') renaming.value = entries[0]!;
   else if (action === 'trash') void trash(entries);
   else {
     const mode = action === 'cut' ? 'move' : 'copy';
@@ -189,6 +198,13 @@ function onDrop(paths: string[], dir: string) {
       :aria-label="$t('actions.toolbar')"
     >
       <template v-if="selectedEntries.length">
+        <a
+          class="button"
+          :href="downloadHref(source, selectedEntries)"
+          download
+        >
+          {{ $t('actions.download') }}
+        </a>
         <button
           v-if="selectedEntries.length === 1"
           type="button"

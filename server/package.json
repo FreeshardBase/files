@@ -22,9 +22,11 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.5",
+    "@types/yauzl": "^3.4.0",
     "esbuild": "^0.28.2",
     "jose": "^6.2.12",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.4",
+    "yauzl": "^3.4.0"
   }
 }

@@ -3,6 +3,12 @@
 /** API base for one source: `/api/v1/sources/<source>`. */
 export const sourceApi = (source: string): string => `/api/v1/sources/${encodeURIComponent(source)}`;
 
+/** Download URL for items of one source: a single file as itself, a folder or several items as one streamed ZIP. */
+export const downloadHref = (source: string, items: readonly { path: string; type: 'file' | 'directory' }[]): string =>
+  items.length === 1 && items[0]!.type === 'file'
+    ? `${sourceApi(source)}/content?path=${encodeURIComponent(items[0]!.path)}&download=1`
+    : `${sourceApi(source)}/zip?${items.map((e) => `path=${encodeURIComponent(e.path)}`).join('&')}`;
+
 /** SPA location of a folder: `/<source>/<path…>`, each segment encoded. The source segment keeps folder
  * names such as `api` or `auth` from colliding with server routes on reload. */
 export const folderRoute = (source: string, path: string): string =>

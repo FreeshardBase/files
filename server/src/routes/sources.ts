@@ -1,11 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
+import { posix } from 'node:path';
 import { CollisionPolicy, DeleteRequest, TransferRequest } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
 import { resolveSource, type Access } from '../storage/resolveSource.ts';
 import { parseRange } from '../http/range.ts';
+import { normalizeUserPath } from '../storage/resolveInRoot.ts';
+import { zipStream, type ZipRoot } from '../storage/zip.ts';
 
 // Allowlist, not denylist: anything not known to be inert in a browser is downloaded, never rendered.
 const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain']);
@@ -15,6 +18,9 @@ const inlineSafe = (mime: string): boolean => {
 };
 const CONTENT_CSP = "sandbox; default-src 'none'";
 const PathQ = z.object({ path: z.string().min(1) });
+const MAX_ZIP_PATHS = 1000;
+// `path` once for a folder or a file, repeated for a selection (the querystring parser makes that an array).
+const ZipQ = z.object({ path: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(MAX_ZIP_PATHS)]) });
 
 // First thing in every handler: resolve the source and check the access the route needs, before any input is read.
 async function backendFor(req: FastifyRequest, need: Access): Promise<StorageBackend> {
@@ -71,6 +77,35 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
       reply.header('content-length', r.entry.size);
     }
     return reply.send(r.stream);
+  });
+
+  // A folder or a selection in one folder, streamed as a ZIP while it is read (spec §2.1 Transfer, #139). Everything
+  // that can be refused is checked before the first byte; after that an error aborts the response (see zipStream).
+  app.get('/api/v1/sources/:source/zip', async (req, reply) => {
+    const b = await backendFor(req, 'read');
+    const q = ZipQ.parse(req.query);
+    const all = [...new Set((Array.isArray(q.path) ? q.path : [q.path]).map(normalizeUserPath))];
+    // An item beneath another selected one comes with it; whatever is left must share one folder.
+    const top = all.includes('/') ? ['/'] : all.filter((p) => !all.some((o) => p.startsWith(o + '/')));
+    const parents = new Set(top.map((p) => posix.dirname(p)));
+    if (parents.size !== 1) throw new AppError('VALIDATION');
+    const roots: ZipRoot[] = [];
+    for (const p of top) {
+      const entry = await b.stat(p);
+      if (p !== '/') { roots.push({ name: entry.name, entry }); continue; }
+      // The whole source: its children sit at the top of the archive.
+      let cursor: string | undefined;
+      do {
+        const page = await b.list('/', cursor, MAX_ZIP_PATHS);
+        for (const e of page.entries) roots.push({ name: e.name, entry: e });
+        cursor = page.next;
+      } while (cursor);
+    }
+    const parent = [...parents][0]!;
+    const archive = top[0] === '/' ? 'files' : top.length === 1 ? roots[0]!.name : parent === '/' ? 'files' : posix.basename(parent);
+    reply.header('content-type', 'application/zip').header('content-disposition', disposition('attachment', `${archive}.zip`))
+      .header('cache-control', 'private, no-store').header('content-security-policy', CONTENT_CSP);
+    return reply.send(Readable.from(zipStream(b, roots), { objectMode: false }));
   });
 
   // The gate runs in onRequest, before any content-type parser: otherwise JSON/text bodies would be

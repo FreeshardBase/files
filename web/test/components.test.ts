@@ -96,11 +96,11 @@ describe('FileList actions', () => {
     const menu = w.find('[role=menu]');
     expect(menu.attributes('aria-label')).toBe('Actions for a b.txt');
     const items = menu.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Rename', 'Move', 'Copy', 'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Move to trash']);
     expect(document.activeElement).toBe(items[0]!.element);
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]!.element);
-    await items[3]!.trigger('click');
+    await items[4]!.trigger('click');
     expect(w.find('[role=menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(w.findAll('tbody tr')[1]!.element);
     expect(w.emitted('action')).toEqual([['trash', [entries[1]]]]);

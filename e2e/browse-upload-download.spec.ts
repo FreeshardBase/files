@@ -43,8 +43,8 @@ test('file list is keyboard reachable and operable', async ({ page }, info) => {
   await page.keyboard.press('ArrowUp');
   expect(await rowName()).toBe(first);
 
-  // Focus the target file row, then Enter downloads it.
-  for (let i = 0; i < 20 && !(await rowName())?.startsWith(fileName); i++) await page.keyboard.press('ArrowDown');
+  // Focus the target file row, then Enter downloads it. The home root is shared by every spec, so the row can be far down.
+  for (let i = 0; i < 200 &&!(await rowName())?.startsWith(fileName); i++) await page.keyboard.press('ArrowDown');
   expect(await rowName()).toContain(fileName);
   const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
   expect(download.suggestedFilename()).toBe(fileName);
