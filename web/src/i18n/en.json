@@ -6,7 +6,9 @@
   },
   "nav": {
     "home": "My storage",
-    "breadcrumbRoot": "My storage"
+    "breadcrumbRoot": "My storage",
+    "sources": "Places",
+    "trash": "Trash"
   },
   "folder": {
     "empty": "This folder is empty.",
@@ -71,6 +73,34 @@
     "failedHeading": "Not done:",
     "failedItem": "{name}: {reason}"
   },
+  "trash": {
+    "title": "Trash",
+    "empty": "The trash is empty.",
+    "retention": "Deleted items are kept for one day, then deleted permanently. | Deleted items are kept for {days} days, then deleted permanently.",
+    "usage": "{size} in the trash, counted towards your storage.",
+    "columns": {
+      "name": "Name",
+      "origin": "Original location",
+      "deleted": "Deleted",
+      "size": "Size",
+      "actions": "Actions"
+    },
+    "restore": "Restore",
+    "restoreLabel": "Restore {name}",
+    "delete": "Delete permanently",
+    "deleteLabel": "Delete {name} permanently",
+    "emptyButton": "Empty trash",
+    "confirmEmptyTitle": "Empty trash?",
+    "confirmEmptyMessage": "All items in the trash ({count}) will be deleted permanently. This can't be undone.",
+    "confirmDeleteTitle": "Delete permanently?",
+    "confirmDeleteMessage": "“{name}” will be deleted permanently. This can't be undone.",
+    "cancel": "Cancel",
+    "restored": "“{name}” restored to {folder}",
+    "notRestored": "“{name}” was not restored.",
+    "deleted": "“{name}” deleted permanently",
+    "emptied": "Trash emptied",
+    "openFolder": "Open folder"
+  },
   "errors": {
     "UNAUTHENTICATED": "You are no longer signed in.",
     "FORBIDDEN": "You don't have permission to do that.",
@@ -92,7 +122,8 @@
     "LOGIN_FAILED": "Signing in didn't work. Please try again.",
     "INTERNAL": "Something went wrong. Please try again later.",
     "NETWORK": "No connection to the shard.",
-    "TARGET_INSIDE_SOURCE": "A folder can't be moved or copied into itself."
+    "TARGET_INSIDE_SOURCE": "A folder can't be moved or copied into itself.",
+    "PURGE_FAILED": "Some items ({count}) could not be deleted permanently. They stay in the trash. Please try again later."
   },
   "a11y": {
     "fileList": "Files in {folder}",

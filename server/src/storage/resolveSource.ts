@@ -30,15 +30,19 @@ async function resolveShare(_user: User, _id: string): Promise<ResolvedSource> {
   throw new AppError('SOURCE_NOT_FOUND');
 }
 
+/** The caller's own home. Used by `resolveSource` and by the trash routes, which exist only for the home. */
+export function homeBackend(req: FastifyRequest): LocalBackend {
+  const { user } = requireUser(req);
+  const { config, db, pathTables, trashTables } = req.server.deps;
+  return new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables, trashTables });
+}
+
 /** The one place a source id becomes a backend and the caller's access level. Routes never build a backend. */
 export async function resolveSource(req: FastifyRequest, source: string): Promise<ResolvedSource> {
   const { user } = requireUser(req);
   const ref = parseSource(source);
   switch (ref.kind) {
-    case 'home': {
-      const { config, db, pathTables } = req.server.deps;
-      return { backend: new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables }), access: 'edit' };
-    }
+    case 'home': return { backend: homeBackend(req), access: 'edit' };
     case 'conn': return resolveConnection(user, ref.id);
     case 'share': return resolveShare(user, ref.id);
   }

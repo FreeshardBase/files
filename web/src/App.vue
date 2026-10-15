@@ -22,12 +22,39 @@ onMounted(async () => {
     <header class="app-header">
       <span class="app-title">{{ $t('app.name') }}</span>
     </header>
-    <main
+    <div
       v-if="session.me"
-      class="app-main"
+      class="app-body"
     >
-      <RouterView />
-    </main>
+      <nav
+        class="app-nav"
+        :aria-label="$t('nav.sources')"
+      >
+        <RouterLink
+          to="/home"
+          active-class="active"
+        >
+          <span
+            class="icon icon-home"
+            aria-hidden="true"
+          />
+          {{ $t('nav.home') }}
+        </RouterLink>
+        <RouterLink
+          to="/trash"
+          active-class="active"
+        >
+          <span
+            class="icon icon-trash"
+            aria-hidden="true"
+          />
+          {{ $t('nav.trash') }}
+        </RouterLink>
+      </nav>
+      <main class="app-main">
+        <RouterView />
+      </main>
+    </div>
     <main
       v-else-if="session.error && session.error.code === 'UNAUTHENTICATED' && showLoginFailed"
       class="app-main"

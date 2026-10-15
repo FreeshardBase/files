@@ -24,7 +24,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash); plus `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
@@ -40,7 +40,9 @@ All file access goes through `StorageBackend` (`server/src/storage/backend.ts`):
 
 Writes stream into a hidden temp file `.<16hex>.upload` in the target directory, are `fsync`ed and then renamed (or hard-linked for "keep both"/"fail if exists"). The target directory is `fsync`ed after that, so the new entry survives a crash. "Fail if exists" answers `FILE_EXISTS` with the taken `name` in `params` before the body is read, so the SPA can ask the collision question without uploading twice. "Keep both" names are `name (n).ext`, starting at `(1)`, within 255 bytes, cut at whole characters; the extension is dropped only when not even one character of the name fits before it. Temp files left behind by a crash are removed by a sweep over every home in an `onReady` hook, so it finishes before the server listens; it removes only regular files with exactly that name and never follows symlinks. `<root>/.files/` is reserved for trash, copy staging (`tmp/`) and versions and cannot be addressed by users; the backend reaches it only through `resolveInRoot`.
 
-Moves, deletes and "replace" run in one SQLite `BEGIN IMMEDIATE` transaction around synchronous renames, which are undone in reverse if anything after them fails, so files and rows never disagree (spec §3.6). "Replace" sends the old item to the trash, never deletes it. Delete renames the item to `.files/trash/<id>` and writes a `trash` row; a batch is all or nothing. A folder never moves or copies into itself or a descendant (`TARGET_INSIDE_SOURCE`). Copies are built in `.files/tmp/` with `copyFile` (kernel copy, no buffer) and renamed into place; the startup sweep empties `.files/tmp/`. Rows that point at home paths (shares, favourites, search, versions; none exist yet) are listed in `PATH_TABLES` (`server/src/storage/pathRefs.ts`): a move rewrites the item's rows and those beneath it, a delete removes them, in the same transaction. Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
+Moves, deletes and "replace" run in one SQLite `BEGIN IMMEDIATE` transaction around synchronous renames, which are undone in reverse if anything after them fails, so files and rows never disagree (spec §3.6). "Replace" sends the old item to the trash, never deletes it. Delete renames the item to `.files/trash/<id>` and writes a `trash` row; a batch is all or nothing. A folder never moves or copies into itself or a descendant (`TARGET_INSIDE_SOURCE`). Copies are built in `.files/tmp/` with `copyFile` (kernel copy, no buffer) and renamed into place; the startup sweep empties `.files/tmp/`. Rows that point at home paths (shares, favourites, search, versions; none exist yet) are listed in `PATH_TABLES` (`server/src/storage/pathRefs.ts`): a move rewrites the item's rows and those beneath it, a delete removes them, in the same transaction.
+
+The trash is part of the home, so trashed bytes count towards the member's usage until purged. A trash row holds the original path, type, size (a folder's whole tree) and deletion time. Restore puts one item back at its original path through `resolveInRoot`, recreating missing parents, with the move's collision rules (never a silent overwrite). `LocalBackend.purge` is the only way out of the trash, for single delete, "empty trash" and expiry alike: bytes first, then the row and the rows in `TRASH_TABLES` in one transaction; if the bytes stay, the row stays, the error is logged and the caller sees the item as failed (`PURGE_FAILED`). The expiry job (`server/src/storage/trash.ts`) runs after start-up and hourly and purges what is older than `FILES_TRASH_RETENTION_DAYS` (default 30). Names that are not canonical on disk (NFD, control characters, invalid UTF-8) are skipped in listings. No code outside this layer builds filesystem paths, and no backend holds a whole file in memory.
 
 ## Deny by default
 
@@ -82,10 +84,12 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `auth/sessions.ts` | Session and login-attempt rows (hashed ids, TTLs, single-use take, purge). |
 | `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. Invalid specs (first > last, multi-range, other units) are ignored: whole file, 200. |
 | `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir; content-type gate and inline allowlist. |
+| `routes/trash.ts` | The trash API: list (with total size and retention), restore one item, delete permanently, empty. |
+| `storage/trash.ts` | The expiry job: `expireTrash` (through `LocalBackend.purge`) and its hourly schedule. |
 | `storage/backend.ts` | The `StorageBackend` interface, write options, `RangeNotSatisfiable`. |
-| `storage/resolveSource.ts` | `resolveSource`: source id to backend and access level; `conn:`/`share:` extension points. |
-| `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes; move, copy and trash in one transaction with undoable renames. |
-| `storage/pathRefs.ts` | `PATH_TABLES` and the move/delete cascade for rows that point at home paths. |
+| `storage/resolveSource.ts` | `resolveSource`: source id to backend and access level; `conn:`/`share:` extension points; `homeBackend` for the trash routes. |
+| `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes; move, copy and trash in one transaction with undoable renames; trash list, restore and the one purge. |
+| `storage/pathRefs.ts` | `PATH_TABLES` and the move/delete cascade for rows that point at home paths; `TRASH_TABLES` purged with a trash row. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
 | `storage/mime.ts` | Extension to MIME lookup. |
 | `storage/uploadSweep.ts` | Startup sweep that removes orphaned `.<16hex>.upload` temp files and interrupted copies in `.files/tmp/` from every home. |
@@ -95,8 +99,11 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | File | Purpose |
 | :--- | :--- |
 | `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync. |
-| `App.vue` | Shell: header, session load, startup error, failed-login alert. |
-| `router.ts` | `/:source(home)/:path…` to the folder view; `/` and unknown paths redirect to `/home`. |
+| `App.vue` | Shell: header, source sidebar (My storage, Trash), session load, startup error, failed-login alert. |
+| `router.ts` | `/:source(home)/:path…` to the folder view, `/trash` to the trash view; `/` and unknown paths redirect to `/home`. |
+| `views/TrashView.vue` | The trash: list, restore (collision dialog), delete permanently and empty trash (both confirmed). |
+| `stores/trash.ts` | Pinia store for `/api/v1/trash`. |
+| `components/ConfirmDialog.vue` | Confirmation before an irreversible action; Cancel has the focus, Esc cancels. |
 | `format.ts` | `Intl`-based size and date formatting. |
 | `env.d.ts` | Type shim for `.vue` imports. |
 | `api/client.ts` | Handwritten fetch wrapper: CSRF header, error codes as `ApiFailure`, redirect to login on 401 (not while `loginError=1`). |
@@ -111,7 +118,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `components/Breadcrumbs.vue` | Path navigation; every crumb is a drop target. |
 | `components/UploadButton.vue` | File picker emitting chosen files; exposes its input as the focus target for dialogs it causes. |
 | `components/AppDialog.vue` | The only dialog primitive (lint-enforced): `role="dialog"`, `aria-modal`, labelled title, focus trap, inert background, root scroll lock, Esc emits `close`, focus restored on unmount. |
-| `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Used by upload, rename, move and copy; restore later. |
+| `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Used by upload, rename, move, copy and restore. |
 | `i18n/index.ts` | vue-i18n setup and `resolveLocale` (stored, browser, default Deutsch Du). |
 | `i18n/htmlLang.ts` | Keeps `<html lang>` in step with the locale. |
 | `i18n/de-du.json`, `de-sie.json`, `en.json` | The three UI languages; every key in every file. |
@@ -123,7 +130,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 
 - Only the `home` source exists; `conn:` and `share:` are parsed by `resolveSource` but answer `SOURCE_NOT_FOUND` until #148 and #146.
 - No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
-- No trash view, restore or expiry (#138), no moves between sources (#152), no versions, thumbnails, search, sharing or WebDAV. Move and copy within a source are direct requests, not the persistent jobs of spec §3.4. See spec §2.1 and the Phase D queue.
+- No moves between sources (#152), no versions, thumbnails, search, sharing or WebDAV. Move and copy within a source are direct requests, not the persistent jobs of spec §3.4. See spec §2.1 and the Phase D queue.
 - The details drawer and transfer panel from spec §3.8 are not built.
 - Routes Zod-parse params, query and body, but there are no Zod response schemas and no generated OpenAPI document (spec §3.3).
 - The web API client is handwritten (`web/src/api/client.ts`), not generated from `shared/` (spec §3.8).

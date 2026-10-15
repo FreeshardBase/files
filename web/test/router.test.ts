@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { routes } from '../src/router.ts';
 import FolderView from '../src/views/FolderView.vue';
+import TrashView from '../src/views/TrashView.vue';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
 
@@ -18,6 +19,13 @@ describe('router', () => {
       expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
       expect(r.currentRoute.value.params).toEqual({ source: 'home', path: [name, 'x'] });
     }
+  });
+  it('routes /trash to the trash view, and a folder named "trash" stays a folder', async () => {
+    const r = mk();
+    await r.push('/trash');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(TrashView);
+    await r.push('/home/trash');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
   });
   it('treats /home as the root folder', async () => {
     const r = mk();

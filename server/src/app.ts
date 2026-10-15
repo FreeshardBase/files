@@ -13,21 +13,25 @@ import { registerAuthRoutes } from './auth/routes.ts';
 import { registerSourceRoutes } from './routes/sources.ts';
 import { purgeExpired } from './auth/sessions.ts';
 import { sweepUploadTemps } from './storage/uploadSweep.ts';
-import { PATH_TABLES, type PathTable } from './storage/pathRefs.ts';
+import { PATH_TABLES, TRASH_TABLES, type PathTable, type TrashTable } from './storage/pathRefs.ts';
+import { registerTrashRoutes } from './routes/trash.ts';
+import { scheduleTrashExpiry } from './storage/trash.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
-  interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[] } }
+  interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[] } }
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
   /** Path-dependent tables that moves and deletes cascade to; `PATH_TABLES` unless a test brings its own. */
   pathTables?: readonly PathTable[];
+  /** Tables whose rows hang off a trash row and are purged with it; `TRASH_TABLES` unless a test brings its own. */
+  trashTables?: readonly TrashTable[];
   logStream?: NodeJS.WritableStream;
   /** Observes every registered route (the test harness builds the route inventory from it). */
   onRoute?: (route: RouteOptions) => void };
 
-export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -51,13 +55,18 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     },
     crossOriginEmbedderPolicy: false,
   });
-  app.decorate('deps', { config, db, pathTables });
+  app.decorate('deps', { config, db, pathTables, trashTables });
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); });
+  // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
+  let expiry: { stop(): Promise<void> } | undefined;
+  app.addHook('onReady', async () => { expiry = scheduleTrashExpiry(app.deps, app.log); });
+  app.addHook('onClose', async () => { await expiry?.stop(); });
 
   registerGuard(app);
   await registerAuthRoutes(app);
   await registerSourceRoutes(app);
+  await registerTrashRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });
