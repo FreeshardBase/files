@@ -78,7 +78,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `auth/oidc.ts` | `openid-client` wrapper: discovery, authorization URL, code exchange, PKCE helpers. |
 | `auth/routes.ts` | `/auth/login`, `/auth/callback` (failures redirect to `/?loginError=1`), `/auth/logout`, `/api/v1/me`, safe `returnTo`. |
 | `auth/sessions.ts` | Session and login-attempt rows (hashed ids, TTLs, single-use take, purge). |
-| `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. |
+| `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. Invalid specs (first > last, multi-range, other units) are ignored: whole file, 200. |
 | `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir; content-type gate and inline allowlist. |
 | `storage/backend.ts` | The `StorageBackend` interface. |
 | `storage/local.ts` | `LocalBackend`, fs error mapping, atomic streaming writes. |

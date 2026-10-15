@@ -58,6 +58,21 @@ describe('sources/home', () => {
     expect(r.headers['content-range']).toBe('bytes */10');
     expect(r.json()).toEqual({ code: 'RANGE_NOT_SATISFIABLE' });
   });
+  it('ignores an invalid Range (first > last) and answers 200 with the whole file', async () => {
+    const f = uniq('digits');
+    expect((await put(a, f, '0123456789')).statusCode).toBe(201);
+    const r = await get(a, `/api/v1/sources/home/content?path=${q(f)}`, { range: 'bytes=5-2' });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toBe('0123456789');
+    expect(r.headers['content-range']).toBeUndefined();
+  });
+  it('still answers a valid but unsatisfiable Range with 416', async () => {
+    const f = uniq('digits');
+    expect((await put(a, f, '0123456789')).statusCode).toBe(201);
+    const r = await get(a, `/api/v1/sources/home/content?path=${q(f)}`, { range: 'bytes=999999-' });
+    expect(r.statusCode).toBe(416);
+    expect(r.headers['content-range']).toBe('bytes */10');
+  });
   it('answers HEAD with headers and no body', async () => {
     const f = uniq('digits');
     expect((await put(a, f, '0123456789')).statusCode).toBe(201);
