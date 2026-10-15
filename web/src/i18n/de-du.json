@@ -47,6 +47,9 @@
     "UNSUPPORTED_MEDIA_TYPE": "Dieses Dateiformat wird hier nicht angenommen.",
     "RANGE_NOT_SATISFIABLE": "Dieser Teil der Datei existiert nicht.",
     "STORAGE_FULL": "Der Speicher ist voll.",
+    "SOURCE_NOT_FOUND": "Diesen Speicherort gibt es nicht, oder er steht dir nicht zur Verfügung.",
+    "PRECONDITION_FAILED": "Die Datei wurde inzwischen geändert. Lade neu und versuch es noch einmal.",
+    "SIZE_MISMATCH": "Der Upload war unvollständig. Versuch es noch einmal.",
     "LOGIN_FAILED": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal.",
     "INTERNAL": "Etwas ist schiefgelaufen. Versuch es später noch einmal.",
     "NETWORK": "Keine Verbindung zum Shard."

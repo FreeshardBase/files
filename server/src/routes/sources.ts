@@ -3,10 +3,8 @@ import { z } from 'zod';
 import type { Readable } from 'node:stream';
 import { CollisionPolicy } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { requireUser } from '../auth/guard.ts';
-import { LocalBackend } from '../storage/local.ts';
-import { homeRoot } from '../paths.ts';
-import type { StorageBackend } from '../storage/backend.ts';
+import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
+import { resolveSource, type Access } from '../storage/resolveSource.ts';
 import { parseRange } from '../http/range.ts';
 
 // Allowlist, not denylist: anything not known to be inert in a browser is downloaded, never rendered.
@@ -18,10 +16,12 @@ const inlineSafe = (mime: string): boolean => {
 const CONTENT_CSP = "sandbox; default-src 'none'";
 const PathQ = z.object({ path: z.string().min(1) });
 
-function backendFor(app: FastifyInstance, req: FastifyRequest): StorageBackend {
+// First thing in every handler: resolve the source and check the access the route needs, before any input is read.
+async function backendFor(req: FastifyRequest, need: Access): Promise<StorageBackend> {
   const { source } = z.object({ source: z.string() }).parse(req.params);
-  if (source !== 'home') throw new AppError('NOT_FOUND');
-  return new LocalBackend(homeRoot(app.deps.config.dataDir, requireUser(req).user.id));
+  const resolved = await resolveSource(req, source);
+  if (need === 'edit' && resolved.access !== 'edit') throw new AppError('FORBIDDEN');
+  return resolved.backend;
 }
 
 const disposition = (kind: 'inline' | 'attachment', name: string) => {
@@ -35,40 +35,40 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
   app.addContentTypeParser('application/octet-stream', (_req, payload, done) => done(null, payload));
 
   app.get('/api/v1/sources/:source/list', async (req) => {
+    const b = await backendFor(req, 'read');
     const q = z.object({
       path: z.string().min(1), cursor: z.string().optional(), limit: z.coerce.number().int().optional(),
     }).parse(req.query);
-    return backendFor(app, req).list(q.path, q.cursor, q.limit);
+    return b.list(q.path, q.cursor, q.limit);
   });
 
-  app.get('/api/v1/sources/:source/stat', async (req) => backendFor(app, req).stat(PathQ.parse(req.query).path));
+  app.get('/api/v1/sources/:source/stat', async (req) => {
+    const b = await backendFor(req, 'read');
+    return b.stat(PathQ.parse(req.query).path);
+  });
 
   // Fastify derives HEAD from GET: the body is dropped and the stream destroyed by reply.send.
+  // One backend read: the Range is resolved against the size of the file actually opened.
   app.get('/api/v1/sources/:source/content', async (req, reply) => {
+    const b = await backendFor(req, 'read');
     const q = z.object({ path: z.string().min(1), download: z.literal('1').optional() }).parse(req.query);
-    const b = backendFor(app, req);
-    const entry = await b.stat(q.path);
-    if (entry.type === 'directory') throw new AppError('IS_A_DIRECTORY');
-    const range = parseRange(req.headers.range, entry.size);
-    if (range === 'unsatisfiable') {
-      reply.header('content-range', `bytes */${entry.size}`);
-      throw new AppError('RANGE_NOT_SATISFIABLE');
-    }
-    const r = await b.read(q.path, range).catch(async (e: unknown) => {
-      if (e instanceof AppError && e.code === 'RANGE_NOT_SATISFIABLE') {
-        // File changed between stat and read: report its current size, not the stale one.
-        reply.header('content-range', `bytes */${(await b.stat(q.path)).size}`);
-      }
+    const r = await b.read(q.path, (size) => {
+      const range = parseRange(req.headers.range, size);
+      if (range === 'unsatisfiable') throw new RangeNotSatisfiable(size);
+      return range;
+    }).catch((e: unknown) => {
+      if (e instanceof RangeNotSatisfiable) reply.header('content-range', `bytes */${e.size}`);
       throw e;
     });
-    const kind = q.download || !inlineSafe(r.mime) ? 'attachment' : 'inline';
-    reply.header('content-type', r.mime).header('etag', r.etag).header('accept-ranges', 'bytes')
-      .header('content-disposition', disposition(kind, entry.name)).header('cache-control', 'private, no-cache').header('content-security-policy', CONTENT_CSP);
-    if (range) {
-      reply.status(206).header('content-range', `bytes ${range.start}-${range.end}/${r.size}`)
-        .header('content-length', range.end - range.start + 1);
+    const mime = r.entry.mime ?? 'application/octet-stream';
+    const kind = q.download || !inlineSafe(mime) ? 'attachment' : 'inline';
+    reply.header('content-type', mime).header('etag', r.etag).header('accept-ranges', 'bytes')
+      .header('content-disposition', disposition(kind, r.entry.name)).header('cache-control', 'private, no-cache').header('content-security-policy', CONTENT_CSP);
+    if (r.range) {
+      reply.status(206).header('content-range', `bytes ${r.range.start}-${r.range.end}/${r.entry.size}`)
+        .header('content-length', r.range.end - r.range.start + 1);
     } else {
-      reply.header('content-length', r.size);
+      reply.header('content-length', r.entry.size);
     }
     return reply.send(r.stream);
   });
@@ -86,19 +86,23 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     }
   };
   app.put('/api/v1/sources/:source/content', { onRequest: requireOctetStream }, async (req, reply) => {
+    const b = await backendFor(req, 'edit');
     const q = z.object({ path: z.string().min(1), onCollision: CollisionPolicy }).parse(req.query);
+    const h = z.object({ 'if-match': z.string().min(1).optional() }).parse(req.headers);
     const max = app.deps.config.maxUploadBytes;
     const declared = Number(req.headers['content-length'] ?? NaN);
     if (Number.isFinite(declared) && declared > max) {
       reply.header('connection', 'close');
       throw new AppError('PAYLOAD_TOO_LARGE');
     }
-    const entry = await backendFor(app, req).write(q.path, req.body as Readable, { onCollision: q.onCollision, maxBytes: max });
+    const entry = await b.write(q.path, req.body as Readable, { onCollision: q.onCollision, maxBytes: max,
+      ...(Number.isSafeInteger(declared) ? { size: declared } : {}), ...(h['if-match'] ? { ifMatch: h['if-match'] } : {}) });
     return reply.status(201).send(entry);
   });
 
   app.post('/api/v1/sources/:source/mkdir', async (req, reply) => {
+    const b = await backendFor(req, 'edit');
     const body = PathQ.parse(req.body);
-    return reply.status(201).send(await backendFor(app, req).mkdir(body.path));
+    return reply.status(201).send(await b.mkdir(body.path));
   });
 }

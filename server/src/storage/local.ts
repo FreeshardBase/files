@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import type { CollisionPolicy, Entry } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
-import type { StorageBackend } from './backend.ts';
+import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from './backend.ts';
 import { lookupMime } from './mime.ts';
 
 const INTERNAL = '.files';
@@ -15,6 +15,9 @@ export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
 const MAX_NAME_BYTES = 255;
 const MAX_LIMIT = 1000;
 const isErr = (e: unknown, code: string) => (e as NodeJS.ErrnoException).code === code;
+// Inode in the tag: a replace with identical size and mtime still changes it.
+const etagOf = (st: { ino: number; size: number; mtimeMs: number }) =>
+  `"${st.ino.toString(16)}-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
 
 // Translate low-level errno into API errors; anything else passes through unchanged.
 export function mapFsError(e: unknown): unknown {
@@ -76,9 +79,9 @@ export class LocalBackend implements StorageBackend {
 
   stat(p: string): Promise<Entry> { return this.statImpl(p).catch(rethrowMapped); }
   list(p: string, cursor?: string, limit = 500) { return this.listImpl(p, cursor, limit).catch(rethrowMapped); }
-  read(p: string, range?: { start: number; end: number }) { return this.readImpl(p, range).catch(rethrowMapped); }
+  read(p: string, range?: ByteRange | ((size: number) => ByteRange | undefined)) { return this.readImpl(p, range).catch(rethrowMapped); }
   mkdir(p: string): Promise<Entry> { return this.mkdirImpl(p).catch(rethrowMapped); }
-  write(p: string, body: Readable, opts: { onCollision: CollisionPolicy; maxBytes: number }): Promise<Entry> {
+  write(p: string, body: Readable, opts: WriteOptions): Promise<Entry> {
     return this.writeImpl(p, body, opts).catch(rethrowMapped);
   }
 
@@ -119,7 +122,7 @@ export class LocalBackend implements StorageBackend {
       : { entries };
   }
 
-  private async readImpl(p: string, range?: { start: number; end: number }) {
+  private async readImpl(p: string, wanted?: ByteRange | ((size: number) => ByteRange | undefined)) {
     const a = await this.abs(p);
     // lstat first: opening a FIFO would block; O_NOFOLLOW + fh.stat() below close the race.
     const pre = await lstat(a).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
@@ -134,12 +137,12 @@ export class LocalBackend implements StorageBackend {
       const st = await fh.stat();
       if (st.isDirectory()) throw new AppError('IS_A_DIRECTORY');
       if (!st.isFile()) throw new AppError('NOT_FOUND');
+      const range = typeof wanted === 'function' ? wanted(st.size) : wanted;
       if (range && (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0 || range.start > range.end || range.end >= st.size)) {
-        throw new AppError('RANGE_NOT_SATISFIABLE');
+        throw new RangeNotSatisfiable(st.size);
       }
       const stream = fh.createReadStream({ autoClose: true, ...(range ? { start: range.start, end: range.end } : {}) });
-      const etag = `"${st.ino.toString(16)}-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
-      return { stream, size: st.size, etag, mime: lookupMime(basename(a)) };
+      return { entry: this.entry(p, st), stream, etag: etagOf(st), ...(range ? { range } : {}) };
     } catch (e) {
       await fh.close();
       throw e;
@@ -153,23 +156,34 @@ export class LocalBackend implements StorageBackend {
     return this.statImpl(p);
   }
 
-  private async writeImpl(p: string, body: Readable, opts: { onCollision: CollisionPolicy; maxBytes: number }): Promise<Entry> {
+  private async writeImpl(p: string, body: Readable, opts: WriteOptions): Promise<Entry> {
+    if (opts.ifMatch !== undefined && opts.onCollision !== 'replace') throw new AppError('VALIDATION');
+    if (opts.size !== undefined && opts.size > opts.maxBytes) throw new AppError('PAYLOAD_TOO_LARGE');
     const target = await this.abs(p);
     const dir = dirname(target);
     await mkdir(dir, { recursive: true });
-    const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+    const current = () => lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+    const st = await current();
     if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    // Checked before the body is read (fail fast) and again just before the rename (narrows the lost-update window).
+    const checkIfMatch = (s: Awaited<ReturnType<typeof current>>) => {
+      if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
+    };
+    checkIfMatch(st);
     const tmp = join(dir, `.${randomBytes(8).toString('hex')}.upload`);
     let written = 0;
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         written += chunk.length;
-        cb(written > opts.maxBytes ? new AppError('PAYLOAD_TOO_LARGE') : null, chunk);
+        if (written > opts.maxBytes) return cb(new AppError('PAYLOAD_TOO_LARGE'));
+        cb(opts.size !== undefined && written > opts.size ? new AppError('SIZE_MISMATCH') : null, chunk);
       },
     });
     try {
       await pipeline(body, limiter, createWriteStream(tmp, { flags: 'wx' }));
+      if (opts.size !== undefined && written !== opts.size) throw new AppError('SIZE_MISMATCH');
       const fh = await open(tmp, 'r+'); await fh.sync(); await fh.close();
+      checkIfMatch(await current());
       const finalPath = await this.place(tmp, target, opts.onCollision);
       // The rename/link lives in the directory entry; without this a crash can lose the file after we answered 201.
       const dh = await open(dir, 'r');
