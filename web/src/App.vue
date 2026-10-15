@@ -170,6 +170,16 @@ onMounted(async () => {
           />
           {{ $t('nav.members') }}
         </RouterLink>
+        <RouterLink
+          to="/settings"
+          active-class="active"
+        >
+          <span
+            class="icon icon-settings"
+            aria-hidden="true"
+          />
+          {{ $t('nav.settings') }}
+        </RouterLink>
       </nav>
       <main class="app-main">
         <UploadPanel />

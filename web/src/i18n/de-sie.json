@@ -16,7 +16,45 @@
     "migrate": "Auf den Shard umziehen",
     "favourites": "Favoriten",
     "storage": "Speicherbelegung",
-    "members": "Mitglieder"
+    "members": "Mitglieder",
+    "settings": "Einstellungen"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "webdav": {
+      "heading": "Netzlaufwerk (WebDAV)",
+      "intro": "Binden Sie Ihren Speicher auf dem Shard als Netzlaufwerk ein: im Finder, im Windows-Explorer, mit davfs2 oder rclone. Melden Sie sich dort mit einem App-Passwort an, nicht mit Ihrem Shard-Passwort.",
+      "address": "Adresse",
+      "username": "Benutzername: ein beliebiger Name. Am App-Passwort erkennt der Shard, wer Sie sind."
+    }
+  },
+  "appPasswords": {
+    "heading": "App-Passwörter",
+    "label": "Gerät oder Programm",
+    "invalid": "Geben Sie einen Namen für das Gerät oder Programm ein.",
+    "create": "App-Passwort erstellen",
+    "created": "App-Passwort für „{label}“ erstellt",
+    "empty": "Noch keine App-Passwörter.",
+    "columns": {
+      "label": "Gerät oder Programm",
+      "created": "Erstellt",
+      "lastUsed": "Zuletzt benutzt",
+      "actions": "Aktionen"
+    },
+    "lastUsed": "Zuletzt benutzt am {date}",
+    "never": "Noch nicht benutzt",
+    "revoke": "Widerrufen",
+    "revokeLabel": "„{label}“ widerrufen",
+    "revokeTitle": "„{label}“ widerrufen?",
+    "revokeMessage": "Geräte und Programme, die sich mit diesem App-Passwort anmelden, verlieren sofort den Zugriff. Sie können jederzeit ein neues erstellen.",
+    "revoked": "„{label}“ widerrufen",
+    "shownTitle": "App-Passwort für „{label}“",
+    "shownText": "Geben Sie dieses Passwort zusammen mit der Adresse im Gerät oder Programm ein. Sie sehen es nur jetzt: Wenn Sie es verlieren, widerrufen Sie es und erstellen Sie ein neues.",
+    "password": "App-Passwort",
+    "copy": "Kopieren",
+    "copied": "In die Zwischenablage kopiert",
+    "copyManually": "Das Passwort ist markiert: Kopieren Sie es mit Strg+C oder ⌘C.",
+    "done": "Fertig"
   },
   "storage": {
     "title": "Speicherbelegung",
@@ -427,7 +465,8 @@
     "JOB_RUNNING": "Der Umzug läuft noch.",
     "SOURCE_CHANGED": "Seit dem Umzug in der Cloud geändert, deshalb behalten.",
     "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original.",
-    "NOT_SUPPORTED": "Diese Quelle bietet das nicht an."
+    "NOT_SUPPORTED": "Diese Quelle bietet das nicht an.",
+    "APP_PASSWORD_LIMIT": "Sie können höchstens {max} App-Passwörter haben. Widerrufen Sie zuerst eines, das Sie nicht mehr brauchen."
   },
   "versions": {
     "title": "Versionen",

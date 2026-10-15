@@ -488,6 +488,21 @@ body {
 .icon-members {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8.5' cy='8' r='3'/%3E%3Ccircle cx='16' cy='8' r='3'/%3E%3Cpath d='M3 18c.5-3 2.6-4.5 5.5-4.5s5 1.5 5.5 4.5M13.5 13.6c.8-.1 1.6-.1 2.5-.1 2.9 0 5 1.5 5.5 4.5'/%3E%3C/svg%3E");
 }
+/* Settings (#157): three sliders; an app password: a key. */
+.icon-settings {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1'/%3E%3Ccircle cx='15' cy='6' r='2'/%3E%3Ccircle cx='9' cy='12' r='2'/%3E%3Ccircle cx='17' cy='18' r='2'/%3E%3C/svg%3E");
+}
+.icon-key {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='14' r='4'/%3E%3Cpath d='M11 11l8-8M16 6l2 2M14 8l2 2'/%3E%3C/svg%3E");
+}
+.settings-section { margin-bottom: var(--space-6); max-width: 48rem; }
+.settings-heading { margin: 0 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.settings-field { max-width: 32rem; }
+.settings-mono { font-family: var(--font-mono); }
+.settings-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin-bottom: var(--space-4); }
+.settings-form .settings-field { flex: 1 1 16rem; margin-bottom: 0; }
+.settings-alert { color: var(--danger); }
+
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
 .icon-star, .icon-star-filled {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z'/%3E%3C/svg%3E");
