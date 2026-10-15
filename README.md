@@ -35,6 +35,8 @@ Name search answers from an index that the app keeps up to date on every change 
 
 ## Container and the `/data` volume
 
+Configuration comes from the environment; `cp .env.example .env` and fill in the required values. A missing or invalid value stops startup with a list of what is wrong.
+
 The server keeps its database, user homes and the thumbnail cache in `/data`. On a shard, `/data` is a bind mount that the Docker daemon creates as root. The container therefore starts as root, but only long enough to do two things. First, it makes `/data` itself owned by `node` (uid 1000); it creates `/data` if it is missing. Second, it drops to uid 1000, and only then is anything opened. Existing contents are never chowned. If `/data` holds files from an earlier root-run container, chown them on the host once: `chown -R 1000:1000 <host dir>`. If `/data`, `files.db` or `homes/` is not writable after this step, the container exits 1 and names the path.
 
 To check this with podman, use a root-owned, empty bind mount. Rootless podman maps your host user to root in the container, so a directory you own appears as root-owned inside:
@@ -46,3 +48,7 @@ podman run -d --name files-check --env-file .env -v /tmp/files-data:/data:Z free
 podman exec files-check stat -c '%u %n' /data /data/files.db   # 1000 /data, 1000 /data/files.db
 podman top files-check user huser args                        # node runs as user node (uid 1000)
 ```
+
+## Licence
+
+[FSL-1.1-ALv2](LICENSE), the same as the FreeShard platform. Each version becomes Apache-2.0 two years after its release.
