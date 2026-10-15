@@ -17,6 +17,8 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'name_index', ownerColumn: 'user_id', pathColumn: 'path' }, // #145, asserted in server/test/search.test.ts
   // #146, asserted in server/test/shares.test.ts
   { table: 'shares', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
+  // #147, asserted in server/test/publicLinks.test.ts
+  { table: 'public_links', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;

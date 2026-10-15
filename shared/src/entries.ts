@@ -154,3 +154,66 @@ export type IncomingShareList = z.infer<typeof IncomingShareListSchema>;
 /** Body of `trash/delete`: delete these items permanently. */
 export const PurgeRequest = z.object({ ids: z.array(TrashId).min(1).max(1000) });
 export type PurgeRequest = z.infer<typeof PurgeRequest>;
+
+/** A public link's token (#147): 16 random bytes as base64url, the part after `/s/`. */
+export const LinkToken = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
+
+/**
+ * Fields of a public link the owner sets. `expiresAt` is an ISO date-time with offset in the future, or null for none;
+ * the server checks it itself (`unknown` here), so anything it cannot parse is INVALID_EXPIRY, never "no expiry".
+ * `maxDownloads` null means no limit, 0 means no downloads. `password` null means none (on update: remove it).
+ */
+const LinkFields = {
+  label: z.string().trim().max(100),
+  expiresAt: z.unknown(),
+  maxDownloads: z.number().int().min(0).max(1_000_000).nullable(),
+  password: z.string().min(1).max(256).nullable(),
+};
+
+/** Body of `POST /api/v1/links`: a link to one item of the caller's own source. */
+export const CreateLinkRequest = z.object({
+  source: z.string().min(1), path: z.string().min(1),
+  ...LinkFields, label: LinkFields.label.default(''), expiresAt: LinkFields.expiresAt.optional(),
+  maxDownloads: LinkFields.maxDownloads.default(null), password: LinkFields.password.default(null),
+}).strict();
+export type CreateLinkRequest = z.input<typeof CreateLinkRequest>;
+
+/** Body of `PATCH /api/v1/links/:id`: only the fields given change. */
+export const UpdateLinkRequest = z.object({
+  label: LinkFields.label.optional(), expiresAt: LinkFields.expiresAt.optional(),
+  maxDownloads: LinkFields.maxDownloads.optional(), password: LinkFields.password.optional(),
+}).strict();
+export type UpdateLinkRequest = z.input<typeof UpdateLinkRequest>;
+
+/** A public link as its owner sees it (the share dialog). The link itself is `/s/<token>` on the shard's origin. */
+export const PublicLinkSchema = z.object({
+  id: z.string(), token: LinkToken, label: z.string(),
+  expiresAt: z.iso.datetime().nullable(), maxDownloads: z.number().int().nonnegative().nullable(),
+  /** Byte-serving requests counted so far, previews included. */
+  downloads: z.number().int().nonnegative(),
+  hasPassword: z.boolean(), createdAt: z.iso.datetime(),
+  /** The item was deleted: the link answers SHARE_ORPHANED until the owner revokes it. */
+  orphaned: z.boolean(),
+});
+export type PublicLink = z.infer<typeof PublicLinkSchema>;
+
+/** `GET /api/v1/links?source=&path=`: the caller's links to one item. */
+export const PublicLinkListSchema = z.object({ items: z.array(PublicLinkSchema) });
+export type PublicLinkList = z.infer<typeof PublicLinkListSchema>;
+
+/**
+ * `GET /s/<token>/info`: what a visitor may know. A locked link (password not entered yet) reveals only the item's name
+ * and type; the rest comes once it is unlocked.
+ */
+export const PublicLinkInfoSchema = z.object({
+  name: z.string().min(1), type: z.enum(['file', 'directory']), locked: z.boolean(),
+  size: z.number().int().nonnegative().optional(), mime: z.string().optional(),
+  expiresAt: z.iso.datetime().nullable().optional(),
+  /** Downloads left before the limit; null means no limit. */
+  downloadsLeft: z.number().int().nonnegative().nullable().optional(),
+});
+export type PublicLinkInfo = z.infer<typeof PublicLinkInfoSchema>;
+
+/** `POST /s/<token>/unlock`. */
+export const UnlockRequest = z.object({ password: z.string().min(1).max(256) }).strict();
+export type UnlockRequest = z.infer<typeof UnlockRequest>;

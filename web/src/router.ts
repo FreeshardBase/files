@@ -3,6 +3,10 @@ import FolderView from './views/FolderView.vue';
 import TrashView from './views/TrashView.vue';
 import RecentView from './views/RecentView.vue';
 import SharedView from './views/SharedView.vue';
+import PublicLinkView from './views/PublicLinkView.vue';
+
+/** A public link's share page: no session is loaded and no login is asked for there. */
+export const isPublicPage = (pathname: string): boolean => /^\/s\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>. `home` and `share:<id>` (#146) are routed; `conn:<id>` comes with #148.
 // `/trash`, `/recent` and `/shared` can never clash with a folder, since folders live under their source.
@@ -12,6 +16,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/recent', component: RecentView },
   { path: '/shared', component: SharedView },
   { path: '/trash', component: TrashView },
+  // A public link's share page (#147): for visitors, outside the signed-in shell (App.vue).
+  { path: '/s/:token([A-Za-z0-9_-]{22})', component: PublicLinkView },
   { path: '/:pathMatch(.*)*', redirect: '/home' },
 ];
 

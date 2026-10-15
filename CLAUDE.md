@@ -14,7 +14,7 @@ Container: with podman use `podman build --format docker .`, otherwise the `HEAL
 
 ## Invariants (reviewer rejects violations)
 - Every user path goes through `server/src/storage/resolveInRoot.ts`. No `path.join` on user input anywhere else.
-- Auth is deny-by-default (`server/src/auth/guard.ts`). Every matched route needs a session (and CSRF for mutating methods) unless it carries `config: { public: true }`; the path prefix does not matter. Public today: `/healthz`, `/auth/login`, `/auth/callback`, the SPA fallback and the static assets (marked by the encapsulated static plugin's `onRoute` hook). Unmatched requests get 401 without a session. A new public route needs a stated reason in the PR. `server/test/routeInventory.test.ts` walks every registered route and enforces this.
+- Auth is deny-by-default (`server/src/auth/guard.ts`). Every matched route needs a session (and CSRF for mutating methods) unless it carries `config: { public: true }`; the path prefix does not matter. Public today: `/healthz`, `/auth/login`, `/auth/callback`, `/s/:token/*` (public links, #147), the SPA fallback and the static assets (marked by the encapsulated static plugin's `onRoute` hook). Unmatched requests get 401 without a session. A new public route needs a stated reason in the PR. `server/test/routeInventory.test.ts` walks every registered route and enforces this.
 - Never decide security on raw `req.url`; use the matched route (`req.routeOptions`) or the decoded pathname.
 - Session cookies are `__Host-fs_sid` and `__Host-fs_login` on https; the plain names `fs_sid` and `fs_login` exist only on http loopback (dev, E2E).
 - The internal area `<root>/.files/` is unaddressable by users. Temporary upload files are `.<16hex>.upload` and stay hidden from listings.

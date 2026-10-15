@@ -41,11 +41,25 @@ describe('route inventory', () => {
     expect(patterns).toEqual(expect.arrayContaining(['/api/v1/me', '/auth/logout', '/api/v1/sources/:source/content', '/dav/*', '/s/:token']));
   });
 
+  // Every public route and why it may be reached without a session.
+  const PUBLIC: Record<string, string> = {
+    '/healthz': 'container health check',
+    '/auth/login': 'starts the OIDC login',
+    '/auth/callback': 'the OIDC provider redirects back here',
+    '/*': 'SPA fallback (index.html; also the public share page /s/<token>)',
+    '/': 'static asset', '/index.html': 'static asset', '/assets/app.js': 'static asset',
+    '/s/:token/*': 'public links (#147): visitors have no session; token, password, expiry and download limit guard it',
+  };
+
   it('only the allowlisted routes and the static assets are public', () => {
-    const allow = new Set(['/healthz', '/auth/login', '/auth/callback', '/*', '/', '/index.html', '/assets/app.js']);
     const pub = probes(t.routes).filter((p) => p.isPublic).map((p) => p.pattern);
-    expect(pub.filter((p) => !allow.has(p))).toEqual([]);
-    expect(pub).toEqual(expect.arrayContaining(['/healthz', '/auth/login', '/auth/callback', '/*', '/assets/app.js']));
+    expect(pub.filter((p) => !(p in PUBLIC))).toEqual([]);
+    expect(pub).toEqual(expect.arrayContaining(['/healthz', '/auth/login', '/auth/callback', '/*', '/assets/app.js', '/s/:token/*']));
+  });
+
+  it('/s/:token/* is the one public route family of public links, for GET and POST only', () => {
+    const links = probes(t.routes).filter((p) => p.pattern.startsWith('/s/'));
+    expect(links.filter((p) => p.isPublic).map((p) => `${p.method} ${p.pattern}`).sort()).toEqual(['GET /s/:token/*', 'POST /s/:token/*']);
   });
 
   it('every non-public route answers 401 without a session', async () => {

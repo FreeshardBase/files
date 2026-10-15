@@ -4,19 +4,12 @@ import { Readable } from 'node:stream';
 import { posix } from 'node:path';
 import { CollisionPolicy, DeleteRequest, THUMB_SIZES, TransferRequest, type ListResponse, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
+import type { StorageBackend } from '../storage/backend.ts';
 import { resolveSource, type Access } from '../storage/resolveSource.ts';
-import { parseRange } from '../http/range.ts';
+import { CONTENT_CSP, disposition, readRanged, sendContent } from '../http/content.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { zipStream, type ZipRoot } from '../storage/zip.ts';
 
-// Allowlist, not denylist: anything not known to be inert in a browser is downloaded, never rendered.
-const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf', 'text/plain']);
-const inlineSafe = (mime: string): boolean => {
-  const base = mime.split(';')[0]!.trim().toLowerCase();
-  return INLINE.has(base) || base.startsWith('video/') || base.startsWith('audio/');
-};
-const CONTENT_CSP = "sandbox; default-src 'none'";
 const PathQ = z.object({ path: z.string().min(1) });
 const MAX_ZIP_PATHS = 1000;
 const ThumbQ = z.object({ path: z.string().min(1),
@@ -32,13 +25,6 @@ async function resolvedFor(req: FastifyRequest, need: Access) {
   return resolved;
 }
 const backendFor = async (req: FastifyRequest, need: Access): Promise<StorageBackend> => (await resolvedFor(req, need)).backend;
-
-const disposition = (kind: 'inline' | 'attachment', name: string) => {
-  const fallback = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
-  // RFC 5987 attr-char excludes ' ( ) * ! which encodeURIComponent leaves alone.
-  const encoded = encodeURIComponent(name).replace(/['()*!]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `${kind}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
-};
 
 export async function registerSourceRoutes(app: FastifyInstance): Promise<void> {
   app.addContentTypeParser('application/octet-stream', (_req, payload, done) => done(null, payload));
@@ -62,25 +48,8 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
   app.get('/api/v1/sources/:source/content', async (req, reply) => {
     const b = await backendFor(req, 'read');
     const q = z.object({ path: z.string().min(1), download: z.literal('1').optional() }).parse(req.query);
-    const r = await b.read(q.path, (size) => {
-      const range = parseRange(req.headers.range, size);
-      if (range === 'unsatisfiable') throw new RangeNotSatisfiable(size);
-      return range;
-    }).catch((e: unknown) => {
-      if (e instanceof RangeNotSatisfiable) reply.header('content-range', `bytes */${e.size}`);
-      throw e;
-    });
-    const mime = r.entry.mime ?? 'application/octet-stream';
-    const kind = q.download || !inlineSafe(mime) ? 'attachment' : 'inline';
-    reply.header('content-type', mime).header('etag', r.etag).header('accept-ranges', 'bytes')
-      .header('content-disposition', disposition(kind, r.entry.name)).header('cache-control', 'private, no-cache').header('content-security-policy', CONTENT_CSP);
-    if (r.range) {
-      reply.status(206).header('content-range', `bytes ${r.range.start}-${r.range.end}/${r.entry.size}`)
-        .header('content-length', r.range.end - r.range.start + 1);
-    } else {
-      reply.header('content-length', r.entry.size);
-    }
-    return reply.send(r.stream);
+    const r = await readRanged(b, q.path, req, reply);
+    return sendContent(reply, r, !q.download, 'private, no-cache');
   });
 
   // A small WebP of an image, a video frame or a PDF's first page (#144). The SPA adds the file's modified time as `v`,

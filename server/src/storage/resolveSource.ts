@@ -33,9 +33,10 @@ function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
   return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs });
 }
 
-// The owner's own source behind a share, reached on the server: their home, or their cloud connection (#148). A
-// connection the owner has unlinked leaves the share orphaned; it never falls back to another source (#95).
-async function ownerSource(deps: FastifyInstance['deps'], row: ShareRow): Promise<StorageBackend> {
+// The owner's own source behind a share or a public link (#147), reached on the server: their home, or their cloud
+// connection (#148). A connection the owner has unlinked leaves the share orphaned; it never falls back to another
+// source (#95).
+export async function ownerSource(deps: FastifyInstance['deps'], row: Pick<ShareRow, 'id' | 'owner_id' | 'source'>): Promise<StorageBackend> {
   if (row.source === 'home') return homeOf(deps, row.owner_id);
   const ref = parseSource(row.source);
   const owner = getUser(deps.db, row.owner_id);
