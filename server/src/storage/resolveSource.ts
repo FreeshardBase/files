@@ -30,8 +30,11 @@ async function resolveConnection(deps: FastifyInstance['deps'], user: User, id: 
   return { backend: conn.backend, access: 'edit' };
 }
 
-/** The home of `userId`, with that member's rows. Only the caller's home, or a share's owner's home, is ever built. */
-function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
+/**
+ * The home of `userId`, with that member's rows. Only the caller's home or a share's owner's home is ever built for
+ * file access; the admin's member list builds other homes only to measure their usage (#156).
+ */
+export function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
   const { config, db, pathTables, trashTables, thumbs } = deps;
   return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, versions: config.versions });
 }

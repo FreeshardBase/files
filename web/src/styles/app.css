@@ -364,6 +364,28 @@ body {
 .upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
+/* Storage overview (#156): one block per source, its figures over a usage gauge (red from 90 %), then the breakdown. */
+.storage-heading { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.storage-source { margin: 0 0 var(--space-4); }
+.storage-clouds { list-style: none; margin: 0; padding: 0; }
+.storage-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.storage-figures { margin: var(--space-1) 0 var(--space-2); font-variant-numeric: tabular-nums; }
+.storage-error { margin: var(--space-1) 0 0; color: var(--danger); }
+.usage-bar { height: 6px; max-width: 480px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
+.usage-bar > span { display: block; height: 100%; background: var(--data); }
+.usage-bar[data-high='true'] > span { background: var(--danger); }
+.storage-breakdown { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; }
+.storage-breakdown dt { font: 600 var(--fs-label)/1.4 var(--font-ui); text-transform: uppercase; letter-spacing: var(--ls-label); color: var(--ink-muted); }
+.storage-breakdown dd { margin: 0; font-variant-numeric: tabular-nums; }
+.storage-largest .name a { color: var(--ink); overflow-wrap: anywhere; }
+/* Members (#156): name over e-mail, and a compact quota form per row. */
+.members-name { flex-direction: column; align-items: flex-start; gap: 0; }
+.members-email { font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
+.members-role { margin-left: var(--space-2); font: 600 var(--fs-label)/1 var(--font-ui); text-transform: uppercase; letter-spacing: var(--ls-label); color: var(--ink-muted); }
+.members-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.members-amount { width: 7em; }
+.members-unit { width: auto; }
+.members-error { flex-basis: 100%; }
 /* Migration (#153): one column of steps; a folder picker is crumbs over a hairline list of folder buttons. */
 .migrate { max-width: 720px; }
 .migrate-step { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
@@ -458,6 +480,13 @@ body {
 }
 .icon-trash {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6'/%3E%3C/svg%3E");
+}
+/* Storage overview (#156): a gauge arc with its needle; members: two heads with a key line under them. */
+.icon-storage {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 17a8 8 0 1 1 16 0'/%3E%3Cpath d='M12 17l3.5-5'/%3E%3Cpath d='M4 20h16'/%3E%3C/svg%3E");
+}
+.icon-members {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8.5' cy='8' r='3'/%3E%3Ccircle cx='16' cy='8' r='3'/%3E%3Cpath d='M3 18c.5-3 2.6-4.5 5.5-4.5s5 1.5 5.5 4.5M13.5 13.6c.8-.1 1.6-.1 2.5-.1 2.9 0 5 1.5 5.5 4.5'/%3E%3C/svg%3E");
 }
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
 .icon-star, .icon-star-filled {
