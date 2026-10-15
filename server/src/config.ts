@@ -40,6 +40,9 @@ const Schema = z.object({
   FILES_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 ** 3),
   // Days an item stays in the trash before the expiry job deletes it permanently.
   FILES_TRASH_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  // The thumbnail cache's size cap (the least recently used thumbnails go first) and each generator's time limit.
+  FILES_THUMB_CACHE_BYTES: z.coerce.number().int().positive().default(512 * 1024 ** 2),
+  FILES_THUMB_TIMEOUT_MS: z.coerce.number().int().min(1).max(600_000).default(30_000),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
 }).refine((e) => (e.FILES_OIDC_ROLE_CLAIM === undefined) === (e.FILES_OIDC_ADMIN_VALUE === undefined), {
@@ -69,6 +72,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
     },
     maxUploadBytes: e.FILES_MAX_UPLOAD_BYTES,
     trashRetentionDays: e.FILES_TRASH_RETENTION_DAYS,
+    thumbCacheBytes: e.FILES_THUMB_CACHE_BYTES,
+    thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,
     port: e.FILES_PORT,
     logLevel: e.FILES_LOG_LEVEL,
   };

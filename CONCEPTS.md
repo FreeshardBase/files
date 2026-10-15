@@ -24,13 +24,15 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Sources and addressing
 
-A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP); plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/uploads` (resumable uploads over tus 1.0, see below), `/api/v1/recent` (the caller's recent items), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
+A file is identified by `{source, path}`. Only `home` (the member's own shard storage) exists today; `conn:<id>` (own cloud connection) and `share:<id>` (shared with me) come later. Every source route gets its backend and the caller's access (`read` or `edit`) from `resolveSource(req, source)` (`server/src/storage/resolveSource.ts`) before reading any input; no route builds a backend itself, and mutating routes answer `FORBIDDEN` without `edit`. An unknown or malformed source id is `SOURCE_NOT_FOUND` (404), never a fallback to `home` (#95). The API is one route family under `/api/v1/sources/:source/`: `list`, `stat`, `content` (GET with Range, PUT streaming upload), `mkdir`, `move` (also rename), `copy`, `delete` (to the trash), `zip` (a folder or a selection in one folder as a streamed ZIP), `thumbnail`; plus `/api/v1/trash` (list, `restore`, `delete`, `empty`; the home's local trash), `/api/v1/uploads` (resumable uploads over tus 1.0, see below), `/api/v1/recent` (the caller's recent items), `/api/v1/me`, `/auth/*` and `/healthz`. Errors are `{ code, params }`; codes and HTTP statuses live in `shared/` and the client translates them.
 
-All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
+All data-root locations (`files.db`, `homes/<userId>`, `thumbs/`) are derived in `server/src/paths.ts`.
 
 Content is served inline only for an allowlist (images except SVG, video, audio, PDF, `text/plain`) with `Content-Security-Policy: sandbox`; everything else is an attachment. The MIME type comes from the extension only (`storage/mime.ts`), never from the bytes.
 
 The preview overlay (#142) loads files through that same content route. Images, video and audio point their element at it. PDFs are drawn by pdf.js on a canvas, because the browser's own viewer refuses a sandboxed document. Text and Markdown are fetched with a Range request capped at 512 KiB. Markdown is parsed by markdown-it with raw HTML off, and `web/src/markdown.ts` builds Vue nodes from an allowlist of elements, so no HTML string ever reaches the DOM and no image is loaded. The SPA picks the viewer from the listed `mime` (`web/src/preview.ts`), and the server's allowlist stays the guard.
+
+Thumbnails (#144) come from `thumbnail` (`size` 128, 256 or 512): a WebP whose longer side has that many pixels. Local ones are generated on first request (`storage/thumbnails.ts`): images by `sharp` in the process, a video frame by ffmpeg, a PDF's first page by `pdftoppm`. Tools get only the absolute path from `resolveInRoot` in an argument array without a shell (after `--`, or as `file:` with a fixed demuxer and only the file protocol), with a time limit and at most two generators at once. They are cached under `<DATA_DIR>/thumbs/` (`paths.ts`), outside every home, with one `thumbnails` row each; a row whose source ETag changed is regenerated, the least recently used ones go once the cache exceeds its cap, and every write, move or delete through the app drops the thumbnails of the paths it touched. Cloud backends will proxy the provider's thumbnail through `StorageBackend.thumbnail?`. The folder view shows them in the list and in the gallery view, whose tiles open the preview overlay as the lightbox.
 
 A ZIP download is built while it is sent. It walks only the backend's own `list` and `read`, so it holds exactly what a listing shows: no symlinks, no `.files/`, no temp files. Entries are stored, every file is ZIP64 with a data descriptor, and names are relative and UTF-8. Nothing is buffered or written to disk except the central directory. An error after the first byte aborts the response instead of ending a short archive.
 
@@ -85,7 +87,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `config.ts` | Zod-validated config from `FILES_*` env; throws `ConfigError`, no defaults for secrets. |
 | `db.ts` | Opens SQLite (WAL) and applies `server/migrations/NNN_name.sql` in order. Each one is checked and applied in one `BEGIN IMMEDIATE` transaction, so processes starting at the same time apply it once. |
 | `errors.ts` | `AppError` and the one error handler that maps errors to status and code (framework 4xx by the code that owns the status). |
-| `paths.ts` | The single data-root module: `dbPath`, `homesDir`, `homeRoot`. |
+| `paths.ts` | The single data-root module: `dbPath`, `homesDir`, `homeRoot`, `thumbsDir`. |
 | `users.ts` | Upserts users from OIDC claims (`iss`, `sub`) and looks them up by internal id. |
 | `auth/cookies.ts` | Chooses `__Host-` or plain cookie names from the public URL scheme. |
 | `auth/guard.ts` | Deny-by-default hook, session loading, CSRF checks, `requireUser`. |
@@ -93,7 +95,8 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `auth/routes.ts` | `/auth/login`, `/auth/callback` (failures redirect to `/?loginError=1`), `/auth/logout`, `/api/v1/me`, safe `returnTo`. |
 | `auth/sessions.ts` | Session and login-attempt rows (hashed ids, TTLs, single-use take, purge). |
 | `http/range.ts` | Parses a `Range` header into a byte range or `unsatisfiable`. Invalid specs (first > last, multi-range, other units) are ignored: whole file, 200. |
-| `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir, move, copy, delete, zip; content-type gate and inline allowlist. |
+| `routes/sources.ts` | The sources API: list, stat, content GET/PUT, mkdir, move, copy, delete, zip, thumbnail; content-type gate and inline allowlist. |
+| `storage/thumbnails.ts` | `ThumbnailCache`: lazy generation (sharp, ffmpeg, pdftoppm; time limit, bounded concurrency, file paths only as guarded arguments), the cache under `thumbs/` with ETag check, LRU eviction under the cap, `forget` for writes/moves/deletes, and the startup sweep. |
 | `storage/zip.ts` | `zipStream`: a folder walk over any `StorageBackend` as a streamed, stored ZIP64 archive. |
 | `routes/trash.ts` | The trash API: list (with total size and retention), restore one item, delete permanently, empty. |
 | `storage/trash.ts` | The expiry job: `expireTrash` (through `LocalBackend.purge`) and its hourly schedule. |
@@ -131,13 +134,14 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `api/paths.ts` | `sourceApi(source)` for API URLs, `downloadHref` (one file as itself, else a ZIP) and `folderRoute(source, path)` for SPA URLs. |
 | `stores/session.ts` | Pinia store for `/api/v1/me`. |
 | `stores/folder.ts` | Pinia store for the current folder and its source: list, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
-| `views/FolderView.vue` | The folder page: breadcrumbs, upload (pick or desktop drop, into the uploads store), selection bar, list, states; one collision loop for move and copy. |
+| `views/FolderView.vue` | The folder page: breadcrumbs, list/gallery toggle (kept in localStorage), upload (pick or desktop drop, into the uploads store), selection bar, list or gallery, states; one collision loop for move and copy. |
 | `components/FileList.vue` | File table with roving tabindex, arrow keys, selection (Space, Ctrl/Shift+click), F2, Delete, Ctrl+C/X/V, row action menus and drag & drop onto folders. Enter or a click on a file's name opens the preview; the link itself still downloads (new tab, save link as). |
 | `components/PreviewDialog.vue` | The preview overlay on `<AppDialog>`: one file of the folder at a time, ←/→ and Previous/Next, Download, Esc/Close; reports the file shown last so its row gets the focus back. |
+| `components/GalleryGrid.vue` | The gallery view: a tile per entry with its thumbnail or line icon; a folder tile opens the folder, a file tile the preview overlay (the lightbox). |
 | `components/PdfView.vue` | pdf.js on a canvas, one page at a time, worker from the app's origin, loaded only when a PDF is opened. |
 | `components/MarkdownView.vue` | Renders a Markdown source through `markdown.ts`. |
 | `markdown.ts` | markdown-it tokens to Vue nodes: allowlisted elements, raw HTML as text, http(s)/mailto links only (new tab, no referrer), images as their alt text. |
-| `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, and `fetchText` (Range-capped text fetch). |
+| `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, `hasThumbnail`/`thumbnailHref`, and `fetchText` (Range-capped text fetch). |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
 | `dnd.ts` | Drag & drop payload of list items (own MIME type); desktop drops of files and folders (entries walked recursively). |
@@ -156,7 +160,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 
 - Only the `home` source exists; `conn:` and `share:` are parsed by `resolveSource` but answer `SOURCE_NOT_FOUND` until #148 and #146.
 - No locale setting or platform preference yet (freeshard#168); the language comes from the browser or a stored choice.
-- No moves between sources (#152), no versions, thumbnails, search, sharing or WebDAV. Move and copy within a source are direct requests, not the persistent jobs of spec §3.4. See spec §2.1 and the Phase D queue.
+- No moves between sources (#152), no versions, search, sharing or WebDAV. Thumbnails exist only for the home; cloud ones come with #149–#151. Move and copy within a source are direct requests, not the persistent jobs of spec §3.4. See spec §2.1 and the Phase D queue.
 - The details drawer and the transfer part of the spec §3.8 panel are not built; the upload panel is.
 - Routes Zod-parse params, query and body, but there are no Zod response schemas and no generated OpenAPI document (spec §3.3).
 - The web API client is handwritten (`web/src/api/client.ts`), not generated from `shared/` (spec §3.8).

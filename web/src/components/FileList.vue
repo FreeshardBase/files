@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
+import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import ItemMenu from './ItemMenu.vue';
 
 export type ItemAction = 'download' | 'rename' | 'cut' | 'copy' | 'trash';
@@ -95,6 +96,8 @@ function onDrop(e: DragEvent, entry: Entry) {
   if (paths) emit('drop', paths.filter((p) => p !== entry.path), entry.path);
 }
 
+// A thumbnail that could not be loaded falls back to the line icon instead of a broken image.
+const thumbFailed = reactive(new Set<string>());
 const sizeText = (e: Entry) => (e.type === 'file' ? formatSize(e.size, intlLocale(locale.value)) : '');
 const fileHref = (e: Entry) => downloadHref(props.source, [e]);
 </script>
@@ -175,7 +178,17 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
           role="cell"
         >
           <div class="name-inner">
+            <img
+              v-if="hasThumbnail(e) && !thumbFailed.has(e.path)"
+              class="row-thumb"
+              :src="thumbnailHref(source, e, 128)"
+              alt=""
+              loading="lazy"
+              draggable="false"
+              @error="thumbFailed.add(e.path)"
+            >
             <span
+              v-else
               class="icon"
               :class="e.type === 'directory' ? 'icon-folder' : 'icon-file'"
               aria-hidden="true"

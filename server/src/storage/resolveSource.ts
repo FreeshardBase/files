@@ -33,8 +33,8 @@ async function resolveShare(_user: User, _id: string): Promise<ResolvedSource> {
 /** The caller's own home. Used by `resolveSource` and by the trash routes, which exist only for the home. */
 export function homeBackend(req: FastifyRequest): LocalBackend {
   const { user } = requireUser(req);
-  const { config, db, pathTables, trashTables } = req.server.deps;
-  return new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables, trashTables });
+  const { config, db, pathTables, trashTables, thumbs } = req.server.deps;
+  return new LocalBackend(homeRoot(config.dataDir, user.id), { db, userId: user.id, pathTables, trashTables, thumbs });
 }
 
 /** The one place a source id becomes a backend and the caller's access level. Routes never build a backend. */

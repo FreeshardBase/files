@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
-import type { CollisionPolicy, Entry, TrashItem } from '@files/shared';
+import type { CollisionPolicy, Entry, ThumbSize, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOptions } from './backend.ts';
@@ -13,6 +13,7 @@ import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
 import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type TrashTable } from './pathRefs.ts';
 import { recordRecent } from './recent.ts';
+import type { ThumbnailCache } from './thumbnails.ts';
 
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
@@ -105,8 +106,12 @@ async function syncDir(dir: string): Promise<void> {
   try { await dh.sync(); } finally { await dh.close(); }
 }
 
-/** The database side of a home: path-dependent rows and trash rows change in the same transaction as the files. */
-export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[] };
+/**
+ * The database side of a home: path-dependent rows and trash rows change in the same transaction as the files.
+ * `thumbs` is the app's thumbnail cache; a backend without it (the expiry jobs, unit tests) has no `thumbnail`.
+ */
+export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
+  thumbs?: ThumbnailCache };
 
 // Renames done inside a database transaction; undone in reverse order when anything after them fails.
 class FsSteps {
@@ -191,6 +196,23 @@ export class LocalBackend implements StorageBackend {
     return this.copyImpl(from, to, onCollision).catch(rethrowMapped);
   }
   delete(paths: readonly string[]): Promise<void> { return this.deleteImpl(paths).catch(rethrowMapped); }
+  thumbnail(p: string, size: ThumbSize): Promise<Readable | null> { return this.thumbnailImpl(p, size).catch(rethrowMapped); }
+
+  private async thumbnailImpl(p: string, size: ThumbSize): Promise<Readable | null> {
+    const { thumbs, userId } = this.index;
+    if (!thumbs) throw new Error('this LocalBackend was built without a thumbnail cache');
+    const a = await this.abs(p);
+    const st = await lstat(a).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
+    if (st.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    if (!st.isFile()) throw new AppError('NOT_FOUND');
+    return thumbs.get({ userId, path: normalizeUserPath(p), abs: a, etag: etagOf(st), mime: lookupMime(basename(a)) }, size);
+  }
+
+  // After a write, move or delete has landed: the thumbnails of the paths it touched (and beneath them) go. A stale one
+  // would never be served anyway (the ETag check), so this only frees the cache at once.
+  private async forgetThumbs(...paths: string[]): Promise<void> {
+    for (const p of new Set(paths)) await this.index.thumbs?.forget(this.index.userId, p);
+  }
 
   // The internal area goes through the same resolver; only this class may name it.
   private async internalDir(name: 'trash' | 'tmp' | 'uploads'): Promise<string> {
@@ -269,6 +291,7 @@ export class LocalBackend implements StorageBackend {
       return rel;
     });
     for (const d of new Set([dirname(e.src), dirname(e.dst), trash])) await syncDir(d);
+    await this.forgetThumbs(e.nf, e.nt, placed);
     return this.statImpl(placed);
   }
 
@@ -288,6 +311,7 @@ export class LocalBackend implements StorageBackend {
         return rel;
       });
       for (const d of new Set([dirname(e.dst), trash])) await syncDir(d);
+      await this.forgetThumbs(placed);
       return await this.statImpl(placed);
     } catch (err) {
       await rm(stage, { recursive: true, force: true });
@@ -306,6 +330,7 @@ export class LocalBackend implements StorageBackend {
     const trash = await this.internalDir('trash');
     this.atomically((fs) => { for (const it of items) this.trashSync(fs, trash, it.a, it.p, it.size); });
     for (const d of new Set([...items.map((it) => dirname(it.a)), trash])) await syncDir(d);
+    await this.forgetThumbs(...items.map((it) => it.p));
   }
 
   /** The member's trash, newest first. */
@@ -370,6 +395,7 @@ export class LocalBackend implements StorageBackend {
       return rel;
     });
     for (const d of new Set([dirname(dst), trash])) await syncDir(d);
+    await this.forgetThumbs(placed);
     return this.statImpl(placed);
   }
 
@@ -602,7 +628,9 @@ export class LocalBackend implements StorageBackend {
       return final;
     });
     for (const d of new Set([dirname(target), dirname(staged)])) await syncDir(d);
-    return this.statImpl(join(dirname(nt), basename(placed)));
+    const rel = join(dirname(nt), basename(placed));
+    await this.forgetThumbs(rel);
+    return this.statImpl(rel);
   }
 
   private async statImpl(p: string): Promise<Entry> {
@@ -715,6 +743,7 @@ export class LocalBackend implements StorageBackend {
       const rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
       const { db, userId } = this.index;
       db.transaction(() => recordRecent(db, userId, rel, 'file')).immediate();
+      await this.forgetThumbs(rel);
       return this.statImpl(rel);
     } catch (e) {
       await unlink(tmp).catch((u) => { if (!isErr(u, 'ENOENT')) throw u; }); // handled: tmp may not exist yet

@@ -19,10 +19,13 @@ import { scheduleTrashExpiry } from './storage/trash.ts';
 import { registerUploadRoutes } from './routes/uploads.ts';
 import { scheduleUploadExpiry } from './storage/uploads.ts';
 import { registerRecentRoutes } from './routes/recent.ts';
+import { ThumbnailCache } from './storage/thumbnails.ts';
+import { thumbsDir } from './paths.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
-  interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[] } }
+  interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
+    thumbs: ThumbnailCache } }
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
@@ -58,9 +61,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     },
     crossOriginEmbedderPolicy: false,
   });
-  app.decorate('deps', { config, db, pathTables, trashTables });
+  const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs });
+  app.decorate('deps', { config, db, pathTables, trashTables, thumbs });
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
-  app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); });
+  app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log); });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
   let expiry: { stop(): Promise<void> } | undefined;
   let uploadExpiry: { stop(): Promise<void> } | undefined;

@@ -16,6 +16,10 @@ export const ListResponseSchema = z.object({
 });
 export type ListResponse = z.infer<typeof ListResponseSchema>;
 
+/** Edge lengths a thumbnail can be asked for (#144); the longer side of the thumbnail has this many pixels. */
+export const THUMB_SIZES = [128, 256, 512] as const;
+export type ThumbSize = (typeof THUMB_SIZES)[number];
+
 export const CollisionPolicy = z.enum(['fail', 'replace', 'keep-both']);
 export type CollisionPolicy = z.infer<typeof CollisionPolicy>;
 
