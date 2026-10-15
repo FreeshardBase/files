@@ -18,6 +18,7 @@ import GalleryGrid from '../components/GalleryGrid.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
+import { useFavouritesStore } from '../stores/favourites.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
 const route = useRoute(); const router = useRouter(); const { t } = useI18n();
@@ -25,6 +26,7 @@ const folder = useFolderStore();
 const uploads = useUploadsStore();
 const connections = useConnectionsStore();
 const transfers = useTransfersStore();
+const favourites = useFavouritesStore();
 const status = ref('');
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
@@ -162,6 +164,7 @@ const showFailures = (heading: string, failed: Outcome['failed'], item: string) 
 };
 // Relist once per batch (the list stays mounted) and, if the action took the focused row away, refocus the list.
 async function settle(at: { source: string; dir: string }) {
+  void favourites.load(); // moves and deletes carry favourites along on the server (#155)
   if (at.dir === folder.path && at.source === folder.source) await folder.open(at.dir, { refresh: true });
   await nextTick();
   if (!conflict.value && !renaming.value && (document.activeElement === document.body || !document.activeElement)) list.value?.focus();
@@ -245,8 +248,23 @@ function download(entries: Entry[]) {
   a.click();
 }
 
+const starred = computed(() => favourites.items.filter((f) => f.source === source.value).map((f) => f.path));
+// Stars or unstars one item of this source (#155); the status line says which.
+async function toggleFavourite(e: Entry) {
+  failures.value = null;
+  try {
+    const now = await favourites.toggle(source.value, e.path);
+    status.value = t(now ? 'favourites.added' : 'favourites.removed', { name: e.name });
+  } catch (err) {
+    if (!(err instanceof ApiFailure)) throw err;
+    status.value = '';
+    failures.value = { heading: t('favourites.failedHeading'), items: [t(`errors.${err.code}`)] };
+  }
+}
+
 function onAction(action: ItemAction, entries: Entry[]) {
   if (action === 'download') download(entries);
+  else if (action === 'favourite') void toggleFavourite(entries[0]!);
   else if (action === 'share') sharing.value = entries[0]!;
   else if (action === 'details') details.value = entries[0]!;
   else if (action === 'rename') renaming.value = entries[0]!;
@@ -499,6 +517,7 @@ function onDrop(paths: string[], dir: string) {
       :source="source"
       :editable="editable"
       :shareable="own"
+      :starred="starred"
       @open="open"
       @action="onAction"
       @paste="paste"

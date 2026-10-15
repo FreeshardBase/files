@@ -11,9 +11,11 @@ import type { Db } from '../db.ts';
  * `trashColumn`: the rows go to the trash with their item: a delete to the trash sets this column to the trash id
  * instead of removing the row (the table is then also in `TRASH_TABLES`, which brings the rows back on restore and
  * purges them with the item). Such rows stand for bytes on disk, so a delete that names no trash item leaves them.
+ * `goneColumn`: when the whole source is gone (`orphanSourceRefs`), this column is set instead of removing the row, so the
+ * row can be shown as unavailable (a favourite of an unlinked connection); a delete of the item still removes it.
  */
 export type PathTable = { table: string; ownerColumn: string; pathColumn: string; sourceColumn?: string; orphanColumn?: string;
-  trashColumn?: string };
+  trashColumn?: string; goneColumn?: string };
 
 /** Every path-dependent table that exists. Each issue that adds one appends it here and extends the cascade test. */
 export const PATH_TABLES: readonly PathTable[] = [
@@ -25,11 +27,13 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'public_links', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
   // #154, asserted in server/test/versions.test.ts
   { table: 'versions', ownerColumn: 'user_id', pathColumn: 'path', trashColumn: 'trash_id' },
+  // #155, asserted in server/test/favourites.test.ts
+  { table: 'favourites', ownerColumn: 'user_id', pathColumn: 'path', sourceColumn: 'source', goneColumn: 'gone_at' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 function checked(t: PathTable): PathTable {
-  const names = [t.table, t.ownerColumn, t.pathColumn, ...[t.sourceColumn, t.orphanColumn, t.trashColumn].filter((c) => c !== undefined)];
+  const names = [t.table, t.ownerColumn, t.pathColumn, ...[t.sourceColumn, t.orphanColumn, t.trashColumn, t.goneColumn].filter((c) => c !== undefined)];
   if (!names.every((s) => IDENT.test(s))) throw new Error(`invalid path table ${JSON.stringify(t)}`);
   return t;
 }
@@ -83,14 +87,16 @@ export function restoreTrashRefs(db: Db, tables: readonly TrashTable[], trashId:
 
 /**
  * A whole source of the owner is gone (an unlinked connection, #148): rows of tables that hold other sources than the
- * home (`sourceColumn`) are orphaned where the table has an `orphanColumn`, else removed. Runs in the caller's transaction.
+ * home (`sourceColumn`) are orphaned where the table has an `orphanColumn`, marked gone where it has a `goneColumn`, else
+ * removed. Runs in the caller's transaction.
  */
 export function orphanSourceRefs(db: Db, tables: readonly PathTable[], owner: string, source: string): void {
   for (const t of tables.map(checked)) {
     if (!t.sourceColumn) continue;
-    if (t.orphanColumn) {
-      db.prepare(`UPDATE ${t.table} SET ${t.orphanColumn} = @now WHERE ${t.ownerColumn} = @owner AND ${t.sourceColumn} = @source
-        AND ${t.orphanColumn} IS NULL`).run({ owner, source, now: new Date().toISOString() });
+    const mark = t.orphanColumn ?? t.goneColumn;
+    if (mark) {
+      db.prepare(`UPDATE ${t.table} SET ${mark} = @now WHERE ${t.ownerColumn} = @owner AND ${t.sourceColumn} = @source
+        AND ${mark} IS NULL`).run({ owner, source, now: new Date().toISOString() });
     } else {
       db.prepare(`DELETE FROM ${t.table} WHERE ${t.ownerColumn} = @owner AND ${t.sourceColumn} = @source`).run({ owner, source });
     }

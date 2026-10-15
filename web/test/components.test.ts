@@ -96,16 +96,17 @@ describe('FileList actions', () => {
     expect(w.emitted('action')).toBeUndefined();
     expect(w.emitted('paste')).toBeUndefined();
     expect(w.findAll('tbody tr').map((r) => r.attributes('draggable'))).toEqual(['false', 'false']);
-    await w.findAll('.icon-button')[1]!.trigger('click');
-    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details']);
+    await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
+    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Add to favourites', 'Details']);
     w.unmount();
   });
   it('the member\'s own items offer "Share", which acts on the row alone', async () => {
     const w = mount(FileList, { props: { ...both, shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
-    await w.findAll('.icon-button')[0]!.trigger('click');
+    await w.findAll('.item-menu .icon-button')[0]!.trigger('click');
     const items = w.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Share', 'Details', 'Move to trash']);
-    await items[4]!.trigger('click');
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Share', 'Details',
+      'Move to trash']);
+    await items[5]!.trigger('click');
     expect(w.emitted('action')).toEqual([['share', [entries[0]]]]);
     w.unmount();
   });
@@ -128,11 +129,11 @@ describe('FileList actions', () => {
     const menu = w.find('[role=menu]');
     expect(menu.attributes('aria-label')).toBe('Actions for a b.txt');
     const items = menu.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Details', 'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Details', 'Move to trash']);
     expect(document.activeElement).toBe(items[0]!.element);
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]!.element);
-    await items[5]!.trigger('click');
+    await items[6]!.trigger('click');
     expect(w.find('[role=menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(w.findAll('tbody tr')[1]!.element);
     expect(w.emitted('action')).toEqual([['trash', [entries[1]]]]);
@@ -140,11 +141,25 @@ describe('FileList actions', () => {
   });
   it('keys inside the open menu do not reach the row', async () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, attachTo: document.body, global: { plugins: [i18n] } });
-    await w.findAll('.icon-button')[0]!.trigger('click');
+    await w.findAll('.item-menu .icon-button')[0]!.trigger('click');
     await w.find('[role=menu]').trigger('keydown', { key: 'Delete' });
     expect(w.emitted('action')).toBeUndefined();
     await w.find('[role=menu]').trigger('keydown', { key: 'Escape' });
     expect(w.find('[role=menu]').exists()).toBe(false);
+    w.unmount();
+  });
+  it('every row has a star toggle and a menu entry that say whether it is a favourite; both act on the row alone (#155)', async () => {
+    const w = mount(FileList, { props: { ...both, starred: ['/a b.txt'] }, attachTo: document.body, global: { plugins: [i18n] } });
+    const stars = w.findAll('.star-toggle');
+    expect(stars.map((s) => [s.attributes('aria-label'), s.attributes('aria-pressed')]))
+      .toEqual([['Favourite: Fotos', 'false'], ['Favourite: a b.txt', 'true']]);
+    await stars[0]!.trigger('click');
+    expect(w.emitted('action')).toEqual([['favourite', [entries[0]]]]);
+    expect(w.emitted('open')).toBeUndefined(); // the star is not a click on the row's name
+    await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
+    const fav = w.findAll('[role=menuitem]').find((i) => i.text() === 'Remove from favourites')!;
+    await fav.trigger('click');
+    expect(w.emitted('action')![1]).toEqual(['favourite', [entries[1]]]); // the row, though the selection holds both
     w.unmount();
   });
   it('dropping list items on a folder row moves them there; a file row is no target', async () => {
@@ -165,8 +180,8 @@ describe('FileList accessibility and focus', () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
     expect(w.find('table').attributes('role')).toBe('table');
     expect(w.findAll('[role=row]')).toHaveLength(3);
-    expect(w.findAll('[role=columnheader]')).toHaveLength(5);
-    expect(w.findAll('[role=cell]')).toHaveLength(10);
+    expect(w.findAll('[role=columnheader]')).toHaveLength(6);
+    expect(w.findAll('[role=cell]')).toHaveLength(12);
   });
   it('a click moves the tab stop to that row', async () => {
     const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
