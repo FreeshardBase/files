@@ -195,6 +195,34 @@ body {
 .file-list .select, .file-list .menu-cell { width: 1%; padding-left: var(--space-3); padding-right: var(--space-3); }
 .file-list .select input { width: 18px; height: 18px; margin: 0; vertical-align: middle; accent-color: var(--data); cursor: pointer; }
 
+/* Thumbnails (#144): a small square in the row's icon slot; in the gallery a tile of the surface tone with a hairline. */
+.row-thumb { flex: none; width: 28px; height: 28px; margin: -4px 0; object-fit: cover; border-radius: 4px; background: var(--bg); }
+.toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.view-toggle { display: flex; gap: var(--space-1); }
+/* The current view is marked like the current place in the sidebar: teal hairline and teal text, never a fill. */
+.view-toggle .button[aria-pressed='true'] { border-color: var(--line); color: var(--line); }
+.gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3);
+  list-style: none; margin: 0; padding: 0;
+}
+.gallery-tile {
+  display: flex; flex-direction: column; width: 100%; padding: 0; overflow: hidden; cursor: pointer; text-align: left;
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: var(--border-w) solid var(--border); border-radius: var(--radius-tile);
+}
+.gallery-tile:hover { border-color: var(--line); }
+.gallery-tile:focus-visible { outline-offset: 2px; }
+.gallery-thumb, .gallery-icon { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg); }
+.gallery-icon { display: flex; align-items: center; justify-content: center; }
+.gallery-icon .icon { width: 40px; height: 40px; }
+.gallery-name {
+  padding: var(--space-2) var(--space-3); font-size: var(--fs-small);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-top: var(--border-w) solid var(--border);
+}
+@media (max-width: 600px) {
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-2); }
+}
+
 /* Selection actions sit above the list; "Move here"/"Copy here" is the one forward action while items are marked. */
 .selection-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
 

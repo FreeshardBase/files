@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { CollisionPolicy, Entry } from '@files/shared';
+import type { CollisionPolicy, Entry, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 
 export type ByteRange = { start: number; end: number };
@@ -35,4 +35,9 @@ export interface StorageBackend {
   copy(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry>;
   /** Move every path to the trash, all or nothing. */
   delete(paths: readonly string[]): Promise<void>;
+  /**
+   * A WebP whose longer side is `size` pixels, or null if the file's type has no thumbnail. Local files are generated
+   * and cached (storage/thumbnails.ts); cloud backends proxy the provider's thumbnail (#149–#151).
+   */
+  thumbnail?(path: string, size: ThumbSize): Promise<Readable | null>;
 }

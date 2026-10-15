@@ -164,7 +164,14 @@
     "PURGE_FAILED": "Einige Elemente ({count}) ließen sich nicht endgültig löschen. Diese bleiben im Papierkorb. Bitte versuchen Sie es später erneut.",
     "QUOTA_EXCEEDED": "Das passt nicht mehr in Ihren Speicherplatz.",
     "OFFSET_MISMATCH": "Der Upload passt nicht mehr zum Stand auf dem Shard. Bitte versuchen Sie es erneut.",
-    "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Bitte versuchen Sie es gleich erneut."
+    "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Bitte versuchen Sie es gleich erneut.",
+    "NO_THUMBNAIL": "Für diesen Dateityp gibt es kein Vorschaubild.",
+    "THUMBNAIL_FAILED": "Das Vorschaubild konnte nicht erstellt werden."
+  },
+  "view": {
+    "label": "Ansicht",
+    "list": "Liste",
+    "gallery": "Galerie"
   },
   "preview": {
     "previous": "Zurück",
@@ -183,6 +190,7 @@
   },
   "a11y": {
     "fileList": "Dateien in {folder}",
+    "gallery": "Galerie von {folder}",
     "breadcrumbs": "Pfad"
   }
 }

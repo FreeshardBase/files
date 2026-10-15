@@ -12,6 +12,7 @@ import UploadButton from '../components/UploadButton.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
+import GalleryGrid from '../components/GalleryGrid.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
@@ -51,8 +52,15 @@ function open(e: Entry) {
 async function closePreview(path: string) {
   preview.value = null;
   await nextTick(); // after AppDialog restored focus to where the preview was opened
-  list.value?.focusPath(path);
+  (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(path);
 }
+
+// List or gallery (#144), remembered on this device across folders and reloads.
+type View = 'list' | 'gallery';
+const VIEW_KEY = 'files.view';
+const view = ref<View>(localStorage.getItem(VIEW_KEY) === 'gallery' ? 'gallery' : 'list');
+function setView(v: View) { view.value = v; localStorage.setItem(VIEW_KEY, v); }
+const gallery = ref<InstanceType<typeof GalleryGrid>>();
 
 // The open collision question; answering it resolves the promise the batch loop waits on.
 const conflict = ref<{ name: string; remaining: number; returnFocus?: HTMLElement | null; answer: (c: CollisionChoice) => void } | null>(null);
@@ -222,10 +230,28 @@ function onDrop(paths: string[], dir: string) {
         :path="path"
         @drop="onDrop"
       />
-      <UploadButton
-        ref="uploadButton"
-        @files="upload"
-      />
+      <div class="toolbar-actions">
+        <div
+          class="view-toggle"
+          role="group"
+          :aria-label="$t('view.label')"
+        >
+          <button
+            v-for="v in (['list', 'gallery'] as const)"
+            :key="v"
+            type="button"
+            class="button"
+            :aria-pressed="view === v"
+            @click="setView(v)"
+          >
+            {{ $t(`view.${v}`) }}
+          </button>
+        </div>
+        <UploadButton
+          ref="uploadButton"
+          @files="upload"
+        />
+      </div>
     </div>
     <div
       v-if="selectedEntries.length || folder.clipboard"
@@ -342,6 +368,14 @@ function onDrop(paths: string[], dir: string) {
     <p v-else-if="folder.entries.length === 0">
       {{ $t('folder.empty') }}
     </p>
+    <GalleryGrid
+      v-else-if="view === 'gallery'"
+      ref="gallery"
+      :entries="folder.entries"
+      :folder-name="folderName"
+      :source="source"
+      @open="open"
+    />
     <FileList
       v-else
       ref="list"

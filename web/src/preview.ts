@@ -1,5 +1,6 @@
 // What the preview overlay shows for a file (#142). Decided from the listed MIME type, which the server derives from
 // the extension; the server's inline allowlist (routes/sources.ts) is the guard, this only picks the viewer.
+import type { Entry, ThumbSize } from '@files/shared';
 import { rawRequest } from './api/client.ts';
 import { sourceApi } from './api/paths.ts';
 
@@ -20,6 +21,16 @@ export function previewKind(mime: string | undefined): PreviewKind {
   if (base.startsWith('text/') || TEXT.has(base)) return 'text';
   return 'none';
 }
+
+// Types the server makes a thumbnail of (server/src/storage/thumbnails.ts); everything else keeps its line icon.
+const THUMBNAILED = new Set([...IMAGES, 'video/mp4', 'video/quicktime', 'video/webm', 'video/ogg', 'application/pdf']);
+
+export const hasThumbnail = (e: Entry): boolean =>
+  e.type === 'file' && THUMBNAILED.has((e.mime ?? '').split(';')[0]!.trim().toLowerCase());
+
+/** The thumbnail route; `v` (the modified time) gives a changed file a new URL, so the browser may cache each one. */
+export const thumbnailHref = (source: string, e: Entry, size: ThumbSize): string =>
+  `${sourceApi(source)}/thumbnail?path=${encodeURIComponent(e.path)}&size=${size}&v=${encodeURIComponent(e.modified)}`;
 
 /** URL the viewers load: the content route without `download=1`, inline for the allowlist. */
 export const contentHref = (source: string, path: string): string => `${sourceApi(source)}/content?path=${encodeURIComponent(path)}`;

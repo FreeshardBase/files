@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { posix } from 'node:path';
-import { CollisionPolicy, DeleteRequest, TransferRequest } from '@files/shared';
+import { CollisionPolicy, DeleteRequest, THUMB_SIZES, TransferRequest, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { RangeNotSatisfiable, type StorageBackend } from '../storage/backend.ts';
 import { resolveSource, type Access } from '../storage/resolveSource.ts';
@@ -19,6 +19,8 @@ const inlineSafe = (mime: string): boolean => {
 const CONTENT_CSP = "sandbox; default-src 'none'";
 const PathQ = z.object({ path: z.string().min(1) });
 const MAX_ZIP_PATHS = 1000;
+const ThumbQ = z.object({ path: z.string().min(1),
+  size: z.coerce.number().refine((n): n is ThumbSize => (THUMB_SIZES as readonly number[]).includes(n)) });
 // `path` once for a folder or a file, repeated for a selection (the querystring parser makes that an array).
 const ZipQ = z.object({ path: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(MAX_ZIP_PATHS)]) });
 
@@ -77,6 +79,18 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
       reply.header('content-length', r.entry.size);
     }
     return reply.send(r.stream);
+  });
+
+  // A small WebP of an image, a video frame or a PDF's first page (#144). The SPA adds the file's modified time as `v`,
+  // so a changed file gets a new URL and the browser may keep this one for a day.
+  app.get('/api/v1/sources/:source/thumbnail', async (req, reply) => {
+    const b = await backendFor(req, 'read');
+    const q = ThumbQ.parse(req.query);
+    const stream = b.thumbnail ? await b.thumbnail(q.path, q.size) : null;
+    if (!stream) throw new AppError('NO_THUMBNAIL');
+    reply.header('content-type', 'image/webp').header('cache-control', 'private, max-age=86400')
+      .header('content-security-policy', CONTENT_CSP);
+    return reply.send(stream);
   });
 
   // A folder or a selection in one folder, streamed as a ZIP while it is read (spec §2.1 Transfer, #139). Everything

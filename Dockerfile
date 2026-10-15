@@ -12,6 +12,8 @@ RUN pnpm build
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production FILES_DATA_DIR=/data FILES_WEB_DIST=/app/web FILES_PORT=3005
 WORKDIR /app
+# Thumbnail generators (#144): ffmpeg for a video frame, pdftoppm (poppler-utils) for a PDF's first page.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg poppler-utils && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && mkdir /data && chown node:node /data
 COPY --from=build /src/pnpm-lock.yaml /src/pnpm-workspace.yaml /src/package.json ./
 COPY --from=build /src/shared/package.json shared/

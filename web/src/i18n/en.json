@@ -164,7 +164,14 @@
     "PURGE_FAILED": "Some items ({count}) could not be deleted permanently. They stay in the trash. Please try again later.",
     "QUOTA_EXCEEDED": "This doesn't fit into your storage quota.",
     "OFFSET_MISMATCH": "The upload got out of step with the server. Please try again.",
-    "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment."
+    "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment.",
+    "NO_THUMBNAIL": "There is no thumbnail for this file type.",
+    "THUMBNAIL_FAILED": "The thumbnail could not be created."
+  },
+  "view": {
+    "label": "View",
+    "list": "List",
+    "gallery": "Gallery"
   },
   "preview": {
     "previous": "Previous",
@@ -183,6 +190,7 @@
   },
   "a11y": {
     "fileList": "Files in {folder}",
+    "gallery": "Gallery of {folder}",
     "breadcrumbs": "Path"
   }
 }

@@ -30,6 +30,10 @@ The guide has no recipe for progress or transfer lists. The upload panel is a sh
 
 The guide has no viewer recipe. The preview is an `<AppDialog>` with `wide`: the same sheet, up to 1100 px wide and at most the viewport high, with the content scrolling inside and the actions always in view. On phone width it fills the screen apart from the scrim margin, and Previous, the position ("2 of 5", mono face, muted) and Next take their own row above Download and Close. Previous and Next stay focusable at the ends and are dimmed (`aria-disabled`), so the focus never drops out of the dialog. Images and video are contained to the sheet with the tile radius. Text sits in a `--bg` well with a hairline border in the mono face, and Markdown is set at a 72-character measure with links in `--line`. For an unsupported type or a failed preview, Download becomes the forward action (`.button.primary`). A PDF page is drawn on white with a hairline border in both themes, because it is a printed page and its own colours assume paper.
 
+## Thumbnails and gallery
+
+The guide has no media grid. A list row shows a 28 px thumbnail with a 4 px radius in place of the file icon. The gallery is a grid of tiles at least 160 px wide (104 px on phone width): each tile is surface tone with a hairline border and the tile radius, a square image cut to fill (`object-fit: cover`) on `--bg`, and the name in one line under a hairline. A file without a thumbnail, and a folder, show their line icon at 40 px in the same square. Hover turns the hairline teal (`--line`); there is no shadow and no zoom. The "List / Gallery" toggle is two outline buttons; the current view takes the teal hairline and teal text, like the current place in the sidebar, never a fill, because amber stays the one forward action (Upload).
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

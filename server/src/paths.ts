@@ -8,3 +8,6 @@ export const dbPath = (dataDir: string): string => join(dataDir, 'files.db');
 export const homesDir = (dataDir: string): string => join(dataDir, 'homes');
 
 export const homeRoot = (dataDir: string, userId: string): string => join(homesDir(dataDir), userId);
+
+/** The thumbnail cache (#144): beside the homes, so no user path can reach it. */
+export const thumbsDir = (dataDir: string): string => join(dataDir, 'thumbs');
