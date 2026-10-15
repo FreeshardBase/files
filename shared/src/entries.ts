@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ERROR_CODES } from './errors.ts';
 
 export const EntrySchema = z.object({
   name: z.string().min(1),
@@ -79,6 +80,24 @@ export type RecentItem = z.infer<typeof RecentItemSchema>;
 /** `GET /api/v1/recent`: the caller's own items, newest first. */
 export const RecentListSchema = z.object({ items: z.array(RecentItemSchema) });
 export type RecentList = z.infer<typeof RecentListSchema>;
+
+/** `GET /api/v1/search?q=`: part of a name, matched literally and without regard to case. */
+export const SearchQuery = z.object({ q: z.string().trim().min(1).max(200) });
+export type SearchQuery = z.infer<typeof SearchQuery>;
+
+/** Results of one source: the home first, then each connected cloud. A source whose search failed has `error`. */
+export const SearchGroupSchema = z.object({
+  source: z.string().min(1),
+  items: z.array(EntrySchema),
+  /** The source had more matches than `items` holds; a longer query narrows them. */
+  more: z.boolean(),
+  error: z.object({ code: z.enum(ERROR_CODES) }).optional(),
+});
+export type SearchGroup = z.infer<typeof SearchGroupSchema>;
+
+/** `GET /api/v1/search`: one group per source the caller can search. */
+export const SearchResponseSchema = z.object({ groups: z.array(SearchGroupSchema) });
+export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
 /** Body of `trash/delete`: delete these items permanently. */
 export const PurgeRequest = z.object({ ids: z.array(TrashId).min(1).max(1000) });

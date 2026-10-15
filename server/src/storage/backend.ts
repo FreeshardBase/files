@@ -40,4 +40,12 @@ export interface StorageBackend {
    * and cached (storage/thumbnails.ts); cloud backends proxy the provider's thumbnail (#149–#151).
    */
   thumbnail?(path: string, size: ThumbSize): Promise<Readable | null>;
+  /**
+   * Items whose name contains `query` (literally, ignoring case), at most `limit`. The home answers from its name index;
+   * cloud backends ask their provider live (#149–#151). A failure is reported for this source only (routes/search.ts).
+   */
+  search?(query: string, limit: number): Promise<Entry[]>;
 }
+
+/** One of the member's own cloud connections, searched and addressed as the source `conn:<id>`. */
+export type ConnectedBackend = { id: string; backend: StorageBackend };

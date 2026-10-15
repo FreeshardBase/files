@@ -19,25 +19,35 @@ import { scheduleTrashExpiry } from './storage/trash.ts';
 import { registerUploadRoutes } from './routes/uploads.ts';
 import { scheduleUploadExpiry } from './storage/uploads.ts';
 import { registerRecentRoutes } from './routes/recent.ts';
+import { registerSearchRoutes } from './routes/search.ts';
+import type { ConnectedBackend } from './storage/backend.ts';
+import type { User } from './users.ts';
 import { ThumbnailCache } from './storage/thumbnails.ts';
 import { thumbsDir } from './paths.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-    thumbs: ThumbnailCache } }
+    thumbs: ThumbnailCache; connections: Connections } }
 }
+
+/** A member's own cloud connections. None exist until #148 adds the connection rows. */
+export type Connections = (user: User) => Promise<ConnectedBackend[]>;
+const noConnections: Connections = async () => [];
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
   /** Path-dependent tables that moves and deletes cascade to; `PATH_TABLES` unless a test brings its own. */
   pathTables?: readonly PathTable[];
   /** Tables whose rows hang off a trash row and are purged with it; `TRASH_TABLES` unless a test brings its own. */
   trashTables?: readonly TrashTable[];
+  /** The member's cloud connections (search merges them); none until #148, unless a test brings its own backends. */
+  connections?: Connections;
   logStream?: NodeJS.WritableStream;
   /** Observes every registered route (the test harness builds the route inventory from it). */
   onRoute?: (route: RouteOptions) => void };
 
-export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES,
+  connections = noConnections }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -62,7 +72,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     crossOriginEmbedderPolicy: false,
   });
   const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs });
-  app.decorate('deps', { config, db, pathTables, trashTables, thumbs });
+  app.decorate('deps', { config, db, pathTables, trashTables, thumbs, connections });
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log); });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
@@ -80,6 +90,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerTrashRoutes(app);
   await registerUploadRoutes(app);
   await registerRecentRoutes(app);
+  await registerSearchRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

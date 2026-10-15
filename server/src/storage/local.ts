@@ -13,6 +13,7 @@ import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
 import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type TrashTable } from './pathRefs.ts';
 import { recordRecent } from './recent.ts';
+import { indexedItem, indexItems, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
 import type { ThumbnailCache } from './thumbnails.ts';
 
 export const INTERNAL = '.files';
@@ -144,6 +145,25 @@ class FsSteps {
   }
 }
 
+/**
+ * Every file and folder beneath the folder `abs` that a listing would show, with paths relative to it (`/a/b`): no
+ * symlinks, no temp files, no unaddressable names, and no internal area when `abs` is a home root.
+ */
+export async function walkTree(abs: string, isHome: boolean): Promise<IndexedItem[]> {
+  const out: IndexedItem[] = [];
+  const visit = async (dir: string, rel: string) => {
+    for (const d of await readdir(dir, { withFileTypes: true })) {
+      if ((isHome && rel === '' && d.name === INTERNAL) || !(d.isFile() || d.isDirectory()) || !addressable(d.name)) continue;
+      const st = await lstat(join(dir, d.name)).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+      if (!st || !(st.isFile() || st.isDirectory())) continue; // gone or replaced by something else since readdir
+      out.push(indexedItem(`${rel}/${d.name}`, st));
+      if (st.isDirectory()) await visit(join(dir, d.name), `${rel}/${d.name}`);
+    }
+  };
+  await visit(abs, '');
+  return out;
+}
+
 // Copies a file or a folder tree; files go through copy_file_range in the kernel, never through a buffer in memory.
 async function copyTree(src: string, dst: string): Promise<void> {
   const st = await lstat(src).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
@@ -212,6 +232,33 @@ export class LocalBackend implements StorageBackend {
   // would never be served anyway (the ETag check), so this only frees the cache at once.
   private async forgetThumbs(...paths: string[]): Promise<void> {
     for (const p of new Set(paths)) await this.index.thumbs?.forget(this.index.userId, p);
+  }
+
+  // Inside the transaction of a write: index rows for the item now at `rel` (absolute `abs`), for the folders above it
+  // that were created on the way (folder upload, restore, mkdir) and for `beneath`, the tree a copied or restored folder
+  // brought along (paths relative to the item). A move brings its rows along through the PATH_TABLES cascade and only
+  // needs the item itself, whose name may have changed.
+  private indexPlaced(rel: string, abs: string, beneath: readonly IndexedItem[] = []): void {
+    const { db, userId } = this.index;
+    const above: IndexedItem[] = [];
+    for (let r = posix.dirname(rel), a = dirname(abs); r !== '/'; r = posix.dirname(r), a = dirname(a)) above.push(indexedItem(r, lstatSync(a)));
+    indexItems(db, userId, above, 'keep');
+    indexItems(db, userId, [indexedItem(rel, lstatSync(abs)), ...beneath.map((b) => ({ ...b, path: rel + b.path }))]);
+  }
+
+  /** Name search over the member's index (#145): what the app last wrote, without touching the disk. */
+  async search(query: string, limit: number): Promise<Entry[]> {
+    return searchIndex(this.index.db, this.index.userId, query, limit);
+  }
+
+  /**
+   * Replaces the member's name index with what is on disk (recovery after changes outside the app). The walk runs
+   * before the transaction, so a write that lands during the walk may be missed until the next rebuild.
+   */
+  async rebuildNameIndex(): Promise<number> {
+    const items = await walkTree(await this.abs('/'), true).catch(rethrowMapped);
+    this.index.db.transaction(() => replaceIndex(this.index.db, this.index.userId, items)).immediate();
+    return items.length;
   }
 
   // The internal area goes through the same resolver; only this class may name it.
@@ -288,6 +335,7 @@ export class LocalBackend implements StorageBackend {
       deletePathRefs(db, pathTables, userId, rel);
       movePathRefs(db, pathTables, userId, e.nf, rel);
       recordRecent(db, userId, rel, e.type);
+      this.indexPlaced(rel, target);
       return rel;
     });
     for (const d of new Set([dirname(e.src), dirname(e.dst), trash])) await syncDir(d);
@@ -302,12 +350,14 @@ export class LocalBackend implements StorageBackend {
     const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
     try {
       await copyTree(e.src, stage);
+      const beneath = e.type === 'directory' ? await walkTree(stage, false) : [];
       const replacedSize = policy === 'replace' ? await treeSize(e.dst) : 0;
       const placed = this.atomically((fs) => {
         const target = this.claim(fs, trash, e.dst, e.nt, policy, replacedSize);
         fs.rename(stage, target);
         const rel = join(dirname(e.nt), basename(target));
         recordRecent(this.index.db, this.index.userId, rel, e.type);
+        this.indexPlaced(rel, target, beneath);
         return rel;
       });
       for (const d of new Set([dirname(e.dst), trash])) await syncDir(d);
@@ -386,12 +436,14 @@ export class LocalBackend implements StorageBackend {
       throw e;
     });
     const replacedSize = policy === 'replace' ? await treeSize(dst) : 0;
+    const beneath = row.type === 'directory' ? await walkTree(src, false) : [];
     const placed = this.atomically((fs) => {
       const target = this.claim(fs, trash, dst, nt, policy, replacedSize);
       fs.rename(src, target);
       this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
       const rel = join(dirname(nt), basename(target));
       recordRecent(this.index.db, this.index.userId, rel, row.type);
+      this.indexPlaced(rel, target, beneath);
       return rel;
     });
     for (const d of new Set([dirname(dst), trash])) await syncDir(d);
@@ -625,6 +677,7 @@ export class LocalBackend implements StorageBackend {
       else final = fs.linkInto(staged, policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i)));
       db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(row.id, userId);
       recordRecent(db, userId, join(dirname(nt), basename(final)), 'file');
+      this.indexPlaced(join(dirname(nt), basename(final)), final);
       return final;
     });
     for (const d of new Set([dirname(target), dirname(staged)])) await syncDir(d);
@@ -701,6 +754,7 @@ export class LocalBackend implements StorageBackend {
     const a = await this.abs(p);
     await mkdir(dirname(a), { recursive: true });
     await mkdir(a).catch((e) => { if (isErr(e, 'EEXIST')) throw new AppError('FILE_EXISTS'); throw e; });
+    this.index.db.transaction(() => this.indexPlaced(normalizeUserPath(p), a)).immediate();
     return this.statImpl(p);
   }
 
@@ -742,7 +796,7 @@ export class LocalBackend implements StorageBackend {
       await syncDir(dir);
       const rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
       const { db, userId } = this.index;
-      db.transaction(() => recordRecent(db, userId, rel, 'file')).immediate();
+      db.transaction(() => { recordRecent(db, userId, rel, 'file'); this.indexPlaced(rel, finalPath); }).immediate();
       await this.forgetThumbs(rel);
       return this.statImpl(rel);
     } catch (e) {

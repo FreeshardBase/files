@@ -24,6 +24,16 @@
     "openFolderLabel": "Ordner von {name} öffnen",
     "openLabel": "{name} öffnen"
   },
+  "search": {
+    "label": "Dateien nach Namen suchen",
+    "placeholder": "Nach Namen suchen",
+    "results": "Suchergebnisse",
+    "searching": "Suche läuft …",
+    "empty": "Nichts gefunden, das „{query}“ im Namen hat.",
+    "sourceFailed": "{source} konnte nicht durchsucht werden: {reason}",
+    "more": "{source} hat weitere Treffer. Gib mehr vom Namen ein, um sie einzugrenzen.",
+    "count": "Keine Treffer | Ein Treffer | {count} Treffer"
+  },
   "folder": {
     "empty": "Dieser Ordner ist leer.",
     "loading": "Wird geladen …",
@@ -166,7 +176,8 @@
     "OFFSET_MISMATCH": "Der Upload passt nicht mehr zum Stand auf dem Shard. Versuch es noch einmal.",
     "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Versuch es gleich noch einmal.",
     "NO_THUMBNAIL": "Für diesen Dateityp gibt es kein Vorschaubild.",
-    "THUMBNAIL_FAILED": "Das Vorschaubild konnte nicht erstellt werden."
+    "THUMBNAIL_FAILED": "Das Vorschaubild konnte nicht erstellt werden.",
+    "SEARCH_FAILED": "Die Suche bei diesem Anbieter ist fehlgeschlagen."
   },
   "view": {
     "label": "Ansicht",

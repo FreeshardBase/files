@@ -34,6 +34,10 @@ The guide has no viewer recipe. The preview is an `<AppDialog>` with `wide`: the
 
 The guide has no media grid. A list row shows a 28 px thumbnail with a 4 px radius in place of the file icon. The gallery is a grid of tiles at least 160 px wide (104 px on phone width): each tile is surface tone with a hairline border and the tile radius, a square image cut to fill (`object-fit: cover`) on `--bg`, and the name in one line under a hairline. A file without a thumbnail, and a folder, show their line icon at 40 px in the same square. Hover turns the hairline teal (`--line`); there is no shadow and no zoom. The "List / Gallery" toggle is two outline buttons; the current view takes the teal hairline and teal text, like the current place in the sidebar, never a fill, because amber stays the one forward action (Upload).
 
+## Search
+
+The guide has no search or combobox recipe. The field sits in the header right of the app name: a `.fs-input` with a muted line magnifier inside its left edge, at most 480 px wide; on phone width it takes its own full-width row under the name and is a 44 px touch target. Results open in a sheet-like popup under the field (surface tone, hairline border, tile radius, no shadow). Each source is a group with an uppercase label in the label style; an option shows its line icon, the name, and the folder it is in as a muted second line. The active option (arrow keys or hover) is marked like a selected row: a teal hairline on its left edge and the 9 % teal tint, never amber. Below the results come muted notes: "searching", the empty-state sentence, "more matches" per capped source, and a source that could not be searched in `--danger`.
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.
