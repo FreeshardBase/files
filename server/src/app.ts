@@ -26,30 +26,42 @@ import type { ConnectedBackend } from './storage/backend.ts';
 import type { User } from './users.ts';
 import { ThumbnailCache } from './storage/thumbnails.ts';
 import { thumbsDir } from './paths.ts';
+import { CloudConnections } from './cloud/connections.ts';
+import { systemClock, type Clock, type Provider } from './cloud/oauth.ts';
+import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-    thumbs: ThumbnailCache; connections: Connections } }
+    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections } }
 }
 
-/** A member's own cloud connections. None exist until #148 adds the connection rows. */
+/** A member's own cloud connections as backends: `conn:<id>` resolves only among these, as do search and shares. */
 export type Connections = (user: User) => Promise<ConnectedBackend[]>;
-const noConnections: Connections = async () => [];
+
+/**
+ * The cloud providers the shard offers. None yet: Google Drive, Dropbox and Microsoft Graph come with their backends
+ * (#149–#151), each with fixed endpoints and client credentials from config.
+ */
+export const PROVIDERS: readonly Provider[] = [];
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;
+  /** The providers members can connect; `PROVIDERS` unless a test or the E2E server brings fake ones. */
+  providers?: readonly Provider[];
+  /** Time for token expiry and backoff; the system clock unless a test brings a fake one. */
+  clock?: Clock;
   /** Path-dependent tables that moves and deletes cascade to; `PATH_TABLES` unless a test brings its own. */
   pathTables?: readonly PathTable[];
   /** Tables whose rows hang off a trash row and are purged with it; `TRASH_TABLES` unless a test brings its own. */
   trashTables?: readonly TrashTable[];
-  /** The member's cloud connections (search merges them); none until #148, unless a test brings its own backends. */
+  /** The member's cloud connections as backends; the `connections` rows unless a test brings its own backends. */
   connections?: Connections;
   logStream?: NodeJS.WritableStream;
   /** Observes every registered route (the test harness builds the route inventory from it). */
   onRoute?: (route: RouteOptions) => void };
 
 export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES,
-  connections = noConnections }: AppDeps): Promise<FastifyInstance> {
+  connections, providers = PROVIDERS, clock = systemClock }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -75,7 +87,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     crossOriginEmbedderPolicy: false,
   });
   const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs });
-  app.decorate('deps', { config, db, pathTables, trashTables, thumbs, connections });
+  const cloud = new CloudConnections({ db, key: config.encryptionKey, providers, clock, pathTables,
+    redirectUri: new URL(CONNECT_CALLBACK_PATH, config.publicUrl).href });
+  app.decorate('deps', { config, db, pathTables, trashTables, thumbs, cloud,
+    connections: connections ?? (async (user) => cloud.backends(user.id)) });
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log); });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
@@ -96,13 +111,14 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerSearchRoutes(app);
   await registerShareRoutes(app);
   await registerLinkRoutes(app);
+  await registerConnectionRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });
     }
     return reply.status(404).send({ code: 'NOT_FOUND' });
   });
-  const purge = setInterval(() => purgeExpired(db), 3600_000);
+  const purge = setInterval(() => { purgeExpired(db); cloud.purgeExpiredAttempts(); }, 3600_000);
   purge.unref();
   app.addHook('onClose', async () => clearInterval(purge));
 

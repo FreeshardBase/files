@@ -58,6 +58,22 @@ export function deleteTrashRefs(db: Db, tables: readonly TrashTable[], trashId: 
   }
 }
 
+/**
+ * A whole source of the owner is gone (an unlinked connection, #148): rows of tables that hold other sources than the
+ * home (`sourceColumn`) are orphaned where the table has an `orphanColumn`, else removed. Runs in the caller's transaction.
+ */
+export function orphanSourceRefs(db: Db, tables: readonly PathTable[], owner: string, source: string): void {
+  for (const t of tables.map(checked)) {
+    if (!t.sourceColumn) continue;
+    if (t.orphanColumn) {
+      db.prepare(`UPDATE ${t.table} SET ${t.orphanColumn} = @now WHERE ${t.ownerColumn} = @owner AND ${t.sourceColumn} = @source
+        AND ${t.orphanColumn} IS NULL`).run({ owner, source, now: new Date().toISOString() });
+    } else {
+      db.prepare(`DELETE FROM ${t.table} WHERE ${t.ownerColumn} = @owner AND ${t.sourceColumn} = @source`).run({ owner, source });
+    }
+  }
+}
+
 export function deletePathRefs(db: Db, tables: readonly PathTable[], owner: string, path: string): void {
   for (const t of tables.map(checked)) {
     if (t.orphanColumn) {

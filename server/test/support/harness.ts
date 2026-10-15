@@ -8,6 +8,7 @@ import { openDb, type Db } from '../../src/db.ts';
 import { cookieNames } from '../../src/auth/cookies.ts';
 import { dbPath } from '../../src/paths.ts';
 import type { PathTable, TrashTable } from '../../src/storage/pathRefs.ts';
+import type { Clock, Provider } from '../../src/cloud/oauth.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
 /** `routes` holds the live route options of every registered route (read `config.public` after `ready`). */
@@ -22,8 +23,9 @@ export async function startTestApp(
   /** Path-dependent tables for the cascade, e.g. ones a test creates in `prepare`; default: the app's own list. */
   /** Likewise for tables whose rows hang off a trash row (`trashTables`, purged with it). */
   /** `connections`: the members' cloud connections as fake backends (search merge tests). */
+  /** `providers`: cloud providers to connect, e.g. `fakeProvider.provider()` (support/fakeProvider.ts); `clock`: a fake clock. */
   dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void;
-    connections?: Connections },
+    connections?: Connections; providers?: readonly Provider[]; clock?: Clock },
 ): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'files-app-'));
   // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
@@ -50,7 +52,9 @@ export async function startTestApp(
   const app = await buildApp({ config, db, extend, logStream, onRoute: (r) => { routes.push(r); },
     ...(dbOpts?.pathTables ? { pathTables: dbOpts.pathTables } : {}),
     ...(dbOpts?.trashTables ? { trashTables: dbOpts.trashTables } : {}),
-    ...(dbOpts?.connections ? { connections: dbOpts.connections } : {}) });
+    ...(dbOpts?.connections ? { connections: dbOpts.connections } : {}),
+    ...(dbOpts?.providers ? { providers: dbOpts.providers } : {}),
+    ...(dbOpts?.clock ? { clock: dbOpts.clock } : {}) });
   await app.ready();
   return {
     app, config, db, dataDir, idp, routes,

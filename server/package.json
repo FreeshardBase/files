@@ -5,6 +5,7 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "build": "node build.mjs",
     "dev": "tsx watch src/dev.ts",
     "reindex": "tsx src/reindex.ts"
