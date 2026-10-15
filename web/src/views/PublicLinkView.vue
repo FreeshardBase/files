@@ -214,6 +214,14 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
                     :href="href(e.path)"
                     :aria-label="t('link.page.downloadLabel', { name: e.name })"
                   >{{ t('link.page.download') }}</a>
+                  <a
+                    v-if="opensInline(e.mime)"
+                    class="button"
+                    :href="href(e.path, true)"
+                    :aria-label="t('link.page.previewLabel', { name: e.name })"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >{{ t('link.page.preview') }}</a>
                 </template>
               </li>
             </ul>
