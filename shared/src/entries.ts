@@ -61,6 +61,21 @@ export type TrashList = z.infer<typeof TrashListSchema>;
 export const RestoreRequest = z.object({ id: TrashId, onCollision: CollisionPolicy });
 export type RestoreRequest = z.infer<typeof RestoreRequest>;
 
+/** One item the member recently wrote (uploaded, copied, moved, renamed or restored), at its current path. */
+export const RecentItemSchema = z.object({
+  /** Today always `home`; cloud sources add their provider's recent files later (#149–#151). */
+  source: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().startsWith('/'),
+  type: z.enum(['file', 'directory']),
+  changedAt: z.iso.datetime(),
+});
+export type RecentItem = z.infer<typeof RecentItemSchema>;
+
+/** `GET /api/v1/recent`: the caller's own items, newest first. */
+export const RecentListSchema = z.object({ items: z.array(RecentItemSchema) });
+export type RecentList = z.infer<typeof RecentListSchema>;
+
 /** Body of `trash/delete`: delete these items permanently. */
 export const PurgeRequest = z.object({ ids: z.array(TrashId).min(1).max(1000) });
 export type PurgeRequest = z.infer<typeof PurgeRequest>;

@@ -18,6 +18,7 @@ import { registerTrashRoutes } from './routes/trash.ts';
 import { scheduleTrashExpiry } from './storage/trash.ts';
 import { registerUploadRoutes } from './routes/uploads.ts';
 import { scheduleUploadExpiry } from './storage/uploads.ts';
+import { registerRecentRoutes } from './routes/recent.ts';
 
 declare module 'fastify' {
   interface FastifyContextConfig { public?: boolean }
@@ -74,6 +75,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerSourceRoutes(app);
   await registerTrashRoutes(app);
   await registerUploadRoutes(app);
+  await registerRecentRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

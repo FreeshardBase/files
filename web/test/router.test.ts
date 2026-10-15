@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { routes } from '../src/router.ts';
 import FolderView from '../src/views/FolderView.vue';
 import TrashView from '../src/views/TrashView.vue';
+import RecentView from '../src/views/RecentView.vue';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
 
@@ -25,6 +26,13 @@ describe('router', () => {
     await r.push('/trash');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(TrashView);
     await r.push('/home/trash');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
+  });
+  it('routes /recent to the recent view, and a folder named "recent" stays a folder', async () => {
+    const r = mk();
+    await r.push('/recent');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(RecentView);
+    await r.push('/home/recent');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
   });
   it('treats /home as the root folder', async () => {

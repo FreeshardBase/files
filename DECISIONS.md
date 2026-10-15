@@ -161,3 +161,15 @@ SPA. `web/src/api/tus.ts` is our own small tus client: 8 MiB `PATCH` chunks, so 
 Folders. "Upload folder" is a second picker (`webkitdirectory`). Dropping files or folders from the desktop onto the folder view uploads them too, and dropped folders are walked through the entries API. Each file keeps its path below the chosen folder, and placement creates the folders. Empty folders are not recreated: the directory picker does not report them, and doing it only for drops would make the two ways differ.
 
 `PUT /api/v1/sources/:source/content` stays for API clients and scripts; the SPA no longer uses it.
+
+## 2026-10-15: the Recent view (#141)
+
+Question: what counts as a recent entry, how many are kept, how do entries follow moves and deletes, what does a row open, and where do cloud sources fit?
+
+An entry is the item a member placed through the app in their home: an upload (`PUT content` or a finished tus upload), the target of a copy, move or rename, and a restored item. `mkdir` is not a change to a file and is not recorded. A folder that is moved, copied or restored is one entry, not one per file inside it, so a large folder cannot push everything else out. Writing a path again moves its entry to the top instead of listing it twice. Each member keeps the newest 100 entries (`RECENT_CAP`), trimmed in the same statement batch as the insert; 100 fills several screens and keeps the table small. Rows are per member and the API answers only the caller's own; an activity feed of other members' actions is not in v1 (#22).
+
+The `recent` table (migration 005) is the first entry in `PATH_TABLES`, so the #137 cascade rewrites entries on a move (including those beneath a moved folder) and removes them on a delete or a replaced target, in the move's or delete's transaction. The entry itself is written inside the same transaction as the write (for `PUT content`, right after the rename, since that path has no transaction around the rename). `UNIQUE (user_id, path)` keeps one row per path. A row can still point at a path that was changed outside the app; a move onto a free target therefore first drops rows at that target, which can only be stale, instead of failing on the unique key. The listing does not stat every row; such a row opens its folder, which shows the truth.
+
+A row's "Open folder" link opens the folder that holds a file, or the folder itself for a folder entry. The empty state is its own sentence ("Nothing here yet …"), never the folder view's "This folder is empty" (#127).
+
+Cloud sources: the item carries `source` (always `home` today). #149–#151 add each provider's recent files to the same list where the provider offers them, live from the provider, not stored in `recent`.

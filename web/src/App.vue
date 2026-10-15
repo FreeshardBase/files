@@ -42,6 +42,16 @@ onMounted(async () => {
           {{ $t('nav.home') }}
         </RouterLink>
         <RouterLink
+          to="/recent"
+          active-class="active"
+        >
+          <span
+            class="icon icon-recent"
+            aria-hidden="true"
+          />
+          {{ $t('nav.recent') }}
+        </RouterLink>
+        <RouterLink
           to="/trash"
           active-class="active"
         >

@@ -12,6 +12,7 @@ import { RangeNotSatisfiable, type ByteRange, type StorageBackend, type WriteOpt
 import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
 import { deletePathRefs, deleteTrashRefs, movePathRefs, type PathTable, type TrashTable } from './pathRefs.ts';
+import { recordRecent } from './recent.ts';
 
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
@@ -218,7 +219,7 @@ export class LocalBackend implements StorageBackend {
     if (policy === 'replace' && nf.startsWith(nt + '/')) throw new AppError('TARGET_INSIDE_SOURCE');
     const parent = await lstat(dirname(dst)).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
     if (!parent.isDirectory()) throw new AppError('NOT_A_DIRECTORY');
-    return { nf, nt, src, dst };
+    return { nf, nt, src, dst, type: st.isDirectory() ? 'directory' as const : 'file' as const };
   }
 
   // Inside the transaction: the absolute path the item may take. "replace" sends the existing item to the trash;
@@ -260,7 +261,11 @@ export class LocalBackend implements StorageBackend {
       fs.rename(e.src, target);
       const rel = join(dirname(e.nt), basename(target));
       const { db, userId, pathTables } = this.index;
+      // The target is free here (or was trashed with its rows), so rows still pointing there are stale: changed outside
+      // the app. They give way, else they would collide with the rows the move brings along.
+      deletePathRefs(db, pathTables, userId, rel);
       movePathRefs(db, pathTables, userId, e.nf, rel);
+      recordRecent(db, userId, rel, e.type);
       return rel;
     });
     for (const d of new Set([dirname(e.src), dirname(e.dst), trash])) await syncDir(d);
@@ -278,7 +283,9 @@ export class LocalBackend implements StorageBackend {
       const placed = this.atomically((fs) => {
         const target = this.claim(fs, trash, e.dst, e.nt, policy, replacedSize);
         fs.rename(stage, target);
-        return join(dirname(e.nt), basename(target));
+        const rel = join(dirname(e.nt), basename(target));
+        recordRecent(this.index.db, this.index.userId, rel, e.type);
+        return rel;
       });
       for (const d of new Set([dirname(e.dst), trash])) await syncDir(d);
       return await this.statImpl(placed);
@@ -358,7 +365,9 @@ export class LocalBackend implements StorageBackend {
       const target = this.claim(fs, trash, dst, nt, policy, replacedSize);
       fs.rename(src, target);
       this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
-      return join(dirname(nt), basename(target));
+      const rel = join(dirname(nt), basename(target));
+      recordRecent(this.index.db, this.index.userId, rel, row.type);
+      return rel;
     });
     for (const d of new Set([dirname(dst), trash])) await syncDir(d);
     return this.statImpl(placed);
@@ -589,6 +598,7 @@ export class LocalBackend implements StorageBackend {
       if (policy === 'replace') { fs.rename(staged, target); final = target; }
       else final = fs.linkInto(staged, policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i)));
       db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(row.id, userId);
+      recordRecent(db, userId, join(dirname(nt), basename(final)), 'file');
       return final;
     });
     for (const d of new Set([dirname(target), dirname(staged)])) await syncDir(d);
@@ -702,8 +712,10 @@ export class LocalBackend implements StorageBackend {
       const finalPath = await this.place(tmp, target, opts.onCollision);
       // The rename/link lives in the directory entry; without this a crash can lose the file after we answered 201.
       await syncDir(dir);
-      const rel = normalizeUserPath(p);
-      return this.statImpl(join(dirname(rel), basename(finalPath)));
+      const rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
+      const { db, userId } = this.index;
+      db.transaction(() => recordRecent(db, userId, rel, 'file')).immediate();
+      return this.statImpl(rel);
     } catch (e) {
       await unlink(tmp).catch((u) => { if (!isErr(u, 'ENOENT')) throw u; }); // handled: tmp may not exist yet
       throw e;

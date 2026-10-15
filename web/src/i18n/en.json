@@ -8,7 +8,21 @@
     "home": "My storage",
     "breadcrumbRoot": "My storage",
     "sources": "Places",
+    "recent": "Recent",
     "trash": "Trash"
+  },
+  "recent": {
+    "title": "Recent",
+    "empty": "Nothing here yet. Files you upload, copy, move, rename or restore will show up here.",
+    "columns": {
+      "name": "Name",
+      "location": "Location",
+      "changed": "Changed",
+      "actions": "Actions"
+    },
+    "openFolder": "Open folder",
+    "openFolderLabel": "Open the folder of {name}",
+    "openLabel": "Open {name}"
   },
   "folder": {
     "empty": "This folder is empty.",
