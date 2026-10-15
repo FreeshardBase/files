@@ -166,6 +166,21 @@
     "OFFSET_MISMATCH": "The upload got out of step with the server. Please try again.",
     "UPLOAD_LOCKED": "This upload is busy right now. Please try again in a moment."
   },
+  "preview": {
+    "previous": "Previous",
+    "next": "Next",
+    "position": "{n} of {total}",
+    "close": "Close",
+    "download": "Download",
+    "loading": "Loading …",
+    "failed": "The preview could not be loaded. You can still download the file.",
+    "unsupported": "This file type can’t be shown here. Download the file to open it.",
+    "truncated": "Showing the first {shown} of {size}. Download the file to see all of it.",
+    "markdownImage": "Image: {alt}",
+    "pdfPage": "Page {n} of {total}",
+    "pdfPrevious": "Previous page",
+    "pdfNext": "Next page"
+  },
   "a11y": {
     "fileList": "Files in {folder}",
     "breadcrumbs": "Path"

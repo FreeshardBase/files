@@ -28,7 +28,9 @@ A file is identified by `{source, path}`. Only `home` (the member's own shard st
 
 All data-root locations (`files.db`, `homes/<userId>`) are derived in `server/src/paths.ts`.
 
-Content is served inline only for an allowlist (images except SVG, video, audio, PDF, `text/plain`) with `Content-Security-Policy: sandbox`; everything else is an attachment.
+Content is served inline only for an allowlist (images except SVG, video, audio, PDF, `text/plain`) with `Content-Security-Policy: sandbox`; everything else is an attachment. The MIME type comes from the extension only (`storage/mime.ts`), never from the bytes.
+
+The preview overlay (#142) loads files through that same content route. Images, video and audio point their element at it. PDFs are drawn by pdf.js on a canvas, because the browser's own viewer refuses a sandboxed document. Text and Markdown are fetched with a Range request capped at 512 KiB. Markdown is parsed by markdown-it with raw HTML off, and `web/src/markdown.ts` builds Vue nodes from an allowlist of elements, so no HTML string ever reaches the DOM and no image is loaded. The SPA picks the viewer from the listed `mime` (`web/src/preview.ts`), and the server's allowlist stays the guard.
 
 A ZIP download is built while it is sent. It walks only the backend's own `list` and `read`, so it holds exactly what a listing shows: no symlinks, no `.files/`, no temp files. Entries are stored, every file is ZIP64 with a data descriptor, and names are relative and UTF-8. Nothing is buffered or written to disk except the central directory. An error after the first byte aborts the response instead of ending a short archive.
 
@@ -105,7 +107,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `storage/recent.ts` | `recordRecent` (called inside every home write's transaction, capped per member) and `recentItems`. |
 | `storage/pathRefs.ts` | `PATH_TABLES` and the move/delete cascade for rows that point at home paths; `TRASH_TABLES` purged with a trash row. |
 | `storage/resolveInRoot.ts` | The only place user paths become filesystem paths. |
-| `storage/mime.ts` | Extension to MIME lookup. |
+| `storage/mime.ts` | Extension to MIME lookup (no sniffing); the inline allowlist and the SPA's preview choice both read it. |
 | `storage/uploadSweep.ts` | Startup sweep that removes orphaned `.<16hex>.upload` temp files and interrupted copies in `.files/tmp/` from every home. |
 
 ### `web/src`
@@ -121,7 +123,7 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `stores/trash.ts` | Pinia store for `/api/v1/trash`. |
 | `components/ConfirmDialog.vue` | Confirmation before an irreversible action; Cancel has the focus, Esc cancels. |
 | `format.ts` | `Intl`-based size and date formatting. |
-| `env.d.ts` | Type shim for `.vue` imports. |
+| `env.d.ts` | Type shims for `.vue` and Vite `?url` imports. |
 | `api/client.ts` | Handwritten fetch wrapper: CSRF header, error codes as `ApiFailure`, redirect to login on 401 (not while `loginError=1`); `rawRequest` for answers in headers, `sendXhr` for upload progress. |
 | `api/tus.ts` | `ResumableUpload`: tus client with 8 MiB chunks, `HEAD` before every retry, pause, discard, and resume after a reload through localStorage. |
 | `stores/uploads.ts` | Pinia store for the upload queue: one item at a time, collision question, pause/resume/cancel/retry, per-pick summary for the status line. |
@@ -130,7 +132,12 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 | `stores/session.ts` | Pinia store for `/api/v1/me`. |
 | `stores/folder.ts` | Pinia store for the current folder and its source: list, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
 | `views/FolderView.vue` | The folder page: breadcrumbs, upload (pick or desktop drop, into the uploads store), selection bar, list, states; one collision loop for move and copy. |
-| `components/FileList.vue` | File table with roving tabindex, arrow keys, selection (Space, Ctrl/Shift+click), F2, Delete, Ctrl+C/X/V, row action menus and drag & drop onto folders. |
+| `components/FileList.vue` | File table with roving tabindex, arrow keys, selection (Space, Ctrl/Shift+click), F2, Delete, Ctrl+C/X/V, row action menus and drag & drop onto folders. Enter or a click on a file's name opens the preview; the link itself still downloads (new tab, save link as). |
+| `components/PreviewDialog.vue` | The preview overlay on `<AppDialog>`: one file of the folder at a time, ←/→ and Previous/Next, Download, Esc/Close; reports the file shown last so its row gets the focus back. |
+| `components/PdfView.vue` | pdf.js on a canvas, one page at a time, worker from the app's origin, loaded only when a PDF is opened. |
+| `components/MarkdownView.vue` | Renders a Markdown source through `markdown.ts`. |
+| `markdown.ts` | markdown-it tokens to Vue nodes: allowlisted elements, raw HTML as text, http(s)/mailto links only (new tab, no referrer), images as their alt text. |
+| `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, and `fetchText` (Range-capped text fetch). |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
 | `dnd.ts` | Drag & drop payload of list items (own MIME type); desktop drops of files and folders (entries walked recursively). |

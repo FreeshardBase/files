@@ -11,6 +11,7 @@ import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
+import PreviewDialog from '../components/PreviewDialog.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 
@@ -40,8 +41,17 @@ const selectedEntries = computed(() => folder.entries.filter((e) => selected.val
 const folderName = computed(() => path.value === '/' ? t('nav.home') : path.value.split('/').pop()!);
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+// The preview steps through the folder's files in list order.
+const files = computed(() => folder.entries.filter((e) => e.type === 'file'));
+const preview = ref<{ files: Entry[]; start: number } | null>(null);
 function open(e: Entry) {
   if (e.type === 'directory') void router.push(folderRoute(source.value, e.path));
+  else preview.value = { files: files.value, start: files.value.findIndex((f) => f.path === e.path) };
+}
+async function closePreview(path: string) {
+  preview.value = null;
+  await nextTick(); // after AppDialog restored focus to where the preview was opened
+  list.value?.focusPath(path);
 }
 
 // The open collision question; answering it resolves the promise the batch loop waits on.
@@ -291,6 +301,13 @@ function onDrop(paths: string[], dir: string) {
       :is-folder="renaming.type === 'directory'"
       @submit="rename"
       @cancel="renaming = null"
+    />
+    <PreviewDialog
+      v-if="preview"
+      :files="preview.files"
+      :start="preview.start"
+      :source="source"
+      @close="closePreview"
     />
     <p
       class="status"

@@ -33,13 +33,24 @@ describe('FileList', () => {
     expect(w.emitted('open')![0]).toEqual([entries[0]]);
     w.unmount();
   });
-  it('Enter on a file row triggers its download link instead of opening', async () => {
+  it('Enter on a file row opens it (the preview) instead of downloading', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
     await w.findAll('tbody tr')[1]!.trigger('keydown', { key: 'Enter' });
-    expect(click).toHaveBeenCalledTimes(1);
-    expect(w.emitted('open')).toBeUndefined();
+    expect(click).not.toHaveBeenCalled();
+    expect(w.emitted('open')![0]).toEqual([entries[1]]);
     click.mockRestore();
+  });
+  it('a plain click on a file name opens it and keeps the browser from downloading; a modified click is left to the link', async () => {
+    const w = mount(FileList, { props: { entries, folderName: 'x' }, global: { plugins: [i18n] } });
+    const plain = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    w.find('a').element.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(true);
+    expect(w.emitted('open')![0]).toEqual([entries[1]]);
+    const ctrl = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+    w.find('a').element.dispatchEvent(ctrl);
+    expect(ctrl.defaultPrevented).toBe(false);
+    expect(w.emitted('open')).toHaveLength(1);
   });
 });
 

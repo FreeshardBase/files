@@ -33,8 +33,13 @@ const menuFor = async (page: Page, name: string) => {
   return page.getByRole('menu');
 };
 const focusedRowName = (page: Page) => page.evaluate(() => document.activeElement?.closest('tr')?.querySelector('.name')?.textContent?.trim());
+// A click on the name opens the preview; its Download button downloads, Esc closes it again.
 async function download(page: Page, name: string): Promise<string> {
-  const [d] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name, exact: true }).click()]);
+  await page.getByRole('link', { name, exact: true }).click();
+  const preview = page.getByRole('dialog', { name, exact: true });
+  const [d] = await Promise.all([page.waitForEvent('download'), preview.getByRole('link', { name: /^(Herunterladen|Download)$/ }).click()]);
+  await page.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
   return readFileSync(await d.path()).toString();
 }
 async function openFolder(page: Page, name: string) {
