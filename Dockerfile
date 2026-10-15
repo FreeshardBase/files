@@ -20,7 +20,8 @@ RUN pnpm install --frozen-lockfile --prod --filter @files/server... && pnpm stor
 COPY --from=build /src/server/dist server/dist
 COPY --from=build /src/server/migrations server/migrations
 COPY --from=build /src/web/dist web
-USER node
+# No USER: the server starts as root only to chown a root-owned /data bind mount, then drops to node (uid 1000)
+# before anything else runs (server/src/dataDir.ts).
 EXPOSE 3005
 HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:'+process.env.FILES_PORT+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 CMD ["node", "server/dist/main.js"]

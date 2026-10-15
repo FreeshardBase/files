@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,6 +61,57 @@ describe('process startup', () => {
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/FILES_OIDC_ROLE_CLAIM.*FILES_OIDC_ADMIN_VALUE.*both or neither/);
     });
+
+  // The container drops to uid 1000 before this check; a data dir it cannot write must stop startup with a clear message,
+  // not with an SQLite error on the first write. Root bypasses file modes, so these cases need a non-root test run.
+  const startIn = (dataDir: string) => spawnSync(process.execPath, ['--import', 'tsx', mainTs], {
+    env: {
+      PATH: process.env.PATH, NODE_ENV: 'production',
+      FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: dataDir,
+      FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'k'.repeat(32),
+      FILES_OIDC_ISSUER: 'https://idp.example.com', FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
+    },
+    encoding: 'utf8', timeout: 20000,
+  });
+
+  it.skipIf(process.getuid?.() === 0)('exits 1 and names the data dir when it is not writable', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-ro-'));
+    chmodSync(dataDir, 0o555);
+    try {
+      const r = startIn(dataDir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`Data directory ${dataDir} is not writable by uid ${process.getuid!()}: ${dataDir}`);
+    } finally {
+      chmodSync(dataDir, 0o755);
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.getuid?.() === 0)('exits 1 and names files.db when an existing database is not writable', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-rodb-'));
+    writeFileSync(join(dataDir, 'files.db'), '');
+    chmodSync(join(dataDir, 'files.db'), 0o444);
+    try {
+      const r = startIn(dataDir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`not writable by uid ${process.getuid!()}: ${join(dataDir, 'files.db')}`);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.getuid?.() === 0)('exits 1 and names the homes dir when it is not writable', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-rohomes-'));
+    mkdirSync(join(dataDir, 'homes'), { mode: 0o555 });
+    try {
+      const r = startIn(dataDir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`not writable by uid ${process.getuid!()}: ${join(dataDir, 'homes')}`);
+    } finally {
+      chmodSync(join(dataDir, 'homes'), 0o755);
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
 
   // Boots the way the shard's app template configures it: no admin role claim, because shard_core sends none yet.
   it('boots with a 32-character shard secret and shuts down cleanly with exit 0 on SIGTERM', async () => {

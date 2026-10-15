@@ -2,6 +2,7 @@ import { loadConfig, ConfigError, type Config } from './config.ts';
 import { openDb } from './db.ts';
 import { buildApp } from './app.ts';
 import { dbPath } from './paths.ts';
+import { assertDataDirWritable, DataDirError, dropPrivileges, prepareDataDir, RUNTIME_USER } from './dataDir.ts';
 
 process.on('unhandledRejection', (err) => { console.error('unhandledRejection', err); process.exit(1); });
 process.on('uncaughtException', (err) => { console.error('uncaughtException', err); process.exit(1); });
@@ -10,6 +11,16 @@ let config: Config;
 try { config = loadConfig(process.env); }
 catch (err) {
   if (err instanceof ConfigError) { console.error(err.message); process.exit(1); }
+  throw err;
+}
+// The image starts as root only so it can hand a root-owned bind mount to the runtime user; nothing else runs as root.
+if (process.getuid!() === 0) {
+  prepareDataDir(config.dataDir, RUNTIME_USER);
+  dropPrivileges(RUNTIME_USER);
+}
+try { assertDataDirWritable(config.dataDir); }
+catch (err) {
+  if (err instanceof DataDirError) { console.error(err.message); process.exit(1); }
   throw err;
 }
 const db = openDb(dbPath(config.dataDir));

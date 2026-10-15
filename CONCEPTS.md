@@ -64,13 +64,14 @@ SPA URLs are `/<source>/<folder path…>`; today only `/home/…` is routed and 
 
 | File | Purpose |
 | :--- | :--- |
-| `main.ts` | Process entry: crash handlers, config load, DB open, listen, graceful shutdown. |
+| `main.ts` | Process entry: crash handlers, config load, data-dir ownership and privilege drop, DB open, listen, graceful shutdown. |
+| `dataDir.ts` | Started as root: chowns the data dir itself (never its contents) and drops to uid 1000. Then checks the dir, `files.db` and `homes/` are writable, or exits 1. |
 | `dev.ts` | Dev entry: starts the fake IdP on :4000, sets dev env, imports `main.ts`. |
 | `app.ts` | `buildApp`: Fastify with logging, helmet, cookies, guard, routes, public static assets and SPA fallback. |
 | `config.ts` | Zod-validated config from `FILES_*` env; throws `ConfigError`, no defaults for secrets. |
 | `db.ts` | Opens SQLite (WAL) and applies `server/migrations/NNN_name.sql` in order. |
 | `errors.ts` | `AppError` and the one error handler that maps errors to status and code (framework 4xx by the code that owns the status). |
-| `paths.ts` | The single data-root module: `dbPath`, `homeRoot`. |
+| `paths.ts` | The single data-root module: `dbPath`, `homesDir`, `homeRoot`. |
 | `users.ts` | Upserts users from OIDC claims (`iss`, `sub`) and looks them up by internal id. |
 | `auth/cookies.ts` | Chooses `__Host-` or plain cookie names from the public URL scheme. |
 | `auth/guard.ts` | Deny-by-default hook, session loading, CSRF checks, `requireUser`. |

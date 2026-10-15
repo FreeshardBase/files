@@ -10,7 +10,7 @@ pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile); picks free ports itself
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
-Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped.
+Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped. The image has no `USER`: `main.ts` starts as root, chowns `/data` itself (never recursively, `server/src/dataDir.ts`) and drops to `node` (uid 1000) before opening anything. Do not add `USER node` to the image or `user: 0:0` to the app template.
 
 ## Invariants (reviewer rejects violations)
 - Every user path goes through `server/src/storage/resolveInRoot.ts`. No `path.join` on user input anywhere else.

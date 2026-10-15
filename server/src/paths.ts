@@ -5,4 +5,6 @@ import { join } from 'node:path';
 
 export const dbPath = (dataDir: string): string => join(dataDir, 'files.db');
 
-export const homeRoot = (dataDir: string, userId: string): string => join(dataDir, 'homes', userId);
+export const homesDir = (dataDir: string): string => join(dataDir, 'homes');
+
+export const homeRoot = (dataDir: string, userId: string): string => join(homesDir(dataDir), userId);
