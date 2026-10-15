@@ -54,6 +54,14 @@ The guide has no recipe for links or a page for visitors. In the share dialog, "
 
 The guide has no recipe for favourites (#155). The star is a line star on the icon grid: outlined in `--ink-muted` in a borderless icon button next to the row's menu button (a 44 px touch target on phone width, where the row is checkbox, name, star, menu), and filled in the teal line colour once the item is a favourite, never amber, because amber stays the one forward action. The details drawer has the same star as a plain outline toggle before "Share …". "Favourites" sits in the sidebar before Recent with the outlined star. Its view reuses the Recent table (name, location, "Open" and "Remove" as plain outlines); a favourite whose source is gone says "Unavailable" in small `--danger` text under its location and has no "Open".
 
+## App icon, offline banner and share target
+
+The guide has no app icon. The PWA icon (`web/public/icons/`) is the app's own line folder glyph (the `icon-folder` path, 1.5 px stroke on the 24 px grid, scaled) in `--line` on the paper ground `--bg`, with a hairline `--border` edge and the sheet radius; the maskable variant is full-bleed paper with the glyph inside the safe zone. No amber, since the icon is no forward action. The theme colour is `--surface` (light) and the dark surface (dark), so the installed app's title bar matches the header.
+
+Offline, a one-line banner sits under the header: a line "cloud crossed out" icon and muted small text on the surface tone with a hairline underneath, no fill and no danger tone, because offline is a state, not an error; the data area below still shows the "No connection" alert with "Try again".
+
+"Save shared files" uses the migration wizard's column: a muted intro, the shared files as a hairline list with sizes in the mono face, the folder picker, the chosen target as a sentence, then "Save here" as the one forward action (`.button.primary`) and "Discard" as a plain outline (the files are only in this browser and can be shared again).
+
 ## Deviations
 
 None beyond this: the file list is a table (`FileList.vue`, a real `<table>`), because name, size and modified date are columns the user compares. The guide has no list recipe.

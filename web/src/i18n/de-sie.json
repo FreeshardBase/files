@@ -2,7 +2,17 @@
   "app": {
     "name": "Dateien",
     "retry": "Erneut versuchen",
-    "signInAgain": "Erneut anmelden"
+    "signInAgain": "Erneut anmelden",
+    "offline": "Sie sind offline. Dateien und Ordner laden wieder, sobald die Verbindung zurück ist."
+  },
+  "shareTarget": {
+    "title": "Geteilte Dateien speichern",
+    "intro": "Wählen Sie den Ordner in Mein Speicher für die geteilte Datei. | Wählen Sie den Ordner in Mein Speicher für die {count} geteilten Dateien.",
+    "picker": "Zielordner",
+    "target": "Speichert in: {folder}",
+    "save": "Hier speichern",
+    "discard": "Verwerfen",
+    "missing": "Hier ist nichts zu speichern. Entweder sind die Dateien schon gespeichert, oder das Teilen hat Dateien nicht erreicht: Öffnen Sie Dateien einmal und teilen Sie dann noch einmal."
   },
   "nav": {
     "home": "Mein Speicher",
