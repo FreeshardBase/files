@@ -566,3 +566,11 @@ Why:
 - **Tier 2:** Every item there is costly to build and to run on a small shard.
 - **Branding:** Calendar wants it too, so it belongs to the shard and not to each app.
 - **Dual-pane and tabs:** They are settings that are off by default, so the default UI stays simple.
+
+## 2026-10-16: Drive uploads: the Range of a 308, and empty files (#204)
+
+Question: Drive's 308 names the bytes it kept, which can be fewer than were sent. How does the backend resend, and how does a 0-byte file go up when `bytes */0` is Drive's status query?
+
+Decision: every session `PUT` starts at the last byte Drive confirmed. The bytes it did not keep move to the front of the next chunk, so chunks keep their 256 KiB multiple and at most two chunk buffers are held. A 308 without progress, with an unreadable `Range`, or confirming more than was sent fails the upload and cancels the session. It never loops. An empty file goes up as one `uploadType=multipart` request, which is `POST` for a new file and `PATCH` for a new revision, and no session is opened for it. The fake Drive now persists only part of a chunk when a test asks (`persistOnly`), never completes a session on a status query, and accepts multipart uploads.
+
+Why: Drive's resumable-upload guide says to resend from the reported Range. A multipart upload is a documented way to create a file with metadata and any content, including none, and it avoids the open question of whether a status query completes a session. Failing on a stuck session is better than resending without end, and the member can retry the upload.

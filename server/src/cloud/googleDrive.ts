@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { posix } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -343,7 +344,8 @@ export class GoogleDriveBackend implements StorageBackend {
   }
 
   /**
-   * A Drive resumable session: the body goes up in chunks of `chunkBytes`, one chunk in memory at a time. "Replace"
+   * A Drive resumable session: the body goes up in chunks of `chunkBytes`, at most two chunks in memory (an empty
+   * file: one multipart request). "Replace"
    * uploads a new revision of the same file; a body that is longer or shorter than declared cancels the session.
    */
   async write(path: string, body: Readable, opts: WriteOptions): Promise<Entry> {
@@ -366,8 +368,8 @@ export class GoogleDriveBackend implements StorageBackend {
       else update = existing.id;
     }
     const raw = existing && update ? existing.name : name;
-    const session = await this.openSession(update, raw, parentId, opts.size);
-    const f = await this.sendSession(session, body, opts.size);
+    const f = opts.size === 0 ? await this.uploadEmpty(update, raw, parentId, body)
+      : await this.sendSession(await this.openSession(update, raw, parentId, opts.size), body, opts.size);
     this.forget(p);
     const listed = await this.listedName(parentId, f);
     return this.entry(f, posix.join(dir, listed), listed);
@@ -389,35 +391,74 @@ export class GoogleDriveBackend implements StorageBackend {
     return session;
   }
 
+  /**
+   * An empty file in one multipart request (#204): a session has no byte range to send for it, and `bytes *\/0` is
+   * Drive's status query, which reports progress rather than completing the upload.
+   */
+  private async uploadEmpty(update: string | undefined, name: string, parentId: string, body: Readable): Promise<DriveFile> {
+    for await (const c of body) if ((c as Buffer).length > 0) throw new AppError('SIZE_MISMATCH');
+    const boundary = randomBytes(16).toString('hex');
+    const meta = JSON.stringify(update ? {} : { name, parents: [parentId] });
+    const res = await this.client.fetch(this.url(this.ep.upload, update ? `/files/${encodeURIComponent(update)}` : '/files',
+      { uploadType: 'multipart', fields: FIELDS }), {
+      method: update ? 'PATCH' : 'POST', redirect: 'manual',
+      headers: { 'content-type': `multipart/related; boundary=${boundary}` },
+      body: `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`
+        + `--${boundary}\r\ncontent-type: ${lookupMime(name)}\r\n\r\n\r\n--${boundary}--\r\n`,
+    });
+    if (!res.ok) await failure(res, 'upload');
+    return DriveFile.parse(await res.json());
+  }
+
   private async sendSession(session: URL, body: Readable, size: number): Promise<DriveFile> {
-    let sent = 0;
-    const put = async (chunk: Buffer, last: boolean) => {
-      const range = chunk.length === 0 ? `bytes */${size}` : `bytes ${sent}-${sent + chunk.length - 1}/${size}`;
-      const res = await fetch(session, { method: 'PUT', headers: { 'content-range': range }, body: chunk, redirect: 'manual' });
-      sent += chunk.length;
-      if (!last) {
-        if (res.status !== 308) { if (res.ok) await discard(res); else await failure(res, 'upload'); throw new Error(`Google Drive finished an upload early (${res.status})`); }
-        await discard(res);
-        return undefined;
+    let persisted = 0; // the bytes Drive has confirmed; every PUT starts here
+    // Sends `chunk` from `persisted` on. Drive answers the last byte with the file; before that a 308 whose Range names
+    // what it kept, which can be less than was sent (#204). No progress fails rather than resending forever.
+    const put = async (chunk: Buffer): Promise<DriveFile | undefined> => {
+      const end = persisted + chunk.length;
+      const res = await fetch(session, { method: 'PUT', headers: { 'content-range': `bytes ${persisted}-${end - 1}/${size}` },
+        body: chunk, redirect: 'manual' });
+      if (res.status !== 308) {
+        if (!res.ok) await failure(res, 'upload');
+        if (end !== size) { await discard(res); throw new Error(`Google Drive finished an upload early (${res.status})`); }
+        return DriveFile.parse(await res.json());
       }
-      if (!res.ok) await failure(res, 'upload');
-      return DriveFile.parse(await res.json());
+      await discard(res);
+      const range = res.headers.get('range');
+      const m = range === null ? undefined : /^bytes=0-(\d+)$/.exec(range);
+      if (range !== null && !m) throw new Error(`Google Drive answered an unreadable upload Range: ${range}`);
+      const kept = m ? Number(m[1]) + 1 : 0;
+      if (kept <= persisted || kept > end || kept === size) {
+        throw new Error(`Google Drive confirmed ${kept} bytes after bytes ${persisted}-${end - 1}/${size}`);
+      }
+      persisted = kept;
+      return undefined;
     };
     try {
-      const fresh = () => Buffer.allocUnsafe(Math.min(this.chunkBytes, size - sent));
+      const fresh = () => Buffer.allocUnsafe(Math.min(this.chunkBytes, size - persisted));
       let buf = fresh(); let fill = 0;
+      // Sends the buffer; the bytes Drive did not keep move to the front of the next one, so at most two chunks are held.
+      const flush = async (): Promise<DriveFile | undefined> => {
+        const from = persisted;
+        const f = await put(buf.subarray(0, fill));
+        if (f) return f;
+        const next = fresh();
+        fill = buf.copy(next, 0, persisted - from, fill);
+        buf = next;
+        return undefined;
+      };
       for await (const c of body) {
         let data = c as Buffer;
-        if (sent + fill + data.length > size) throw new AppError('SIZE_MISMATCH');
+        if (persisted + fill + data.length > size) throw new AppError('SIZE_MISMATCH');
         while (data.length > 0) {
           const take = Math.min(buf.length - fill, data.length);
           data.copy(buf, fill, 0, take);
           fill += take; data = data.subarray(take);
-          if (fill === buf.length && sent + fill < size) { await put(buf, false); buf = fresh(); fill = 0; }
+          if (fill === buf.length && persisted + fill < size) await flush();
         }
       }
-      if (sent + fill !== size) throw new AppError('SIZE_MISMATCH');
-      return (await put(buf.subarray(0, fill), true))!;
+      if (persisted + fill !== size) throw new AppError('SIZE_MISMATCH');
+      for (;;) { const f = await flush(); if (f) return f; }
     } catch (err) {
       await this.cancel(session);
       throw err;
