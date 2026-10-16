@@ -262,7 +262,10 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   tabindex="-1"
                   draggable="false"
                   @click="onFileClick($event, e)"
-                >{{ e.name }}</a>
+                ><span
+                  class="name-text"
+                  :title="e.name"
+                >{{ e.name }}</span></a>
                 <button
                   v-else
                   type="button"
@@ -270,7 +273,10 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   tabindex="-1"
                   @click="emit('open', e)"
                 >
-                  {{ e.name }}
+                  <span
+                    class="name-text"
+                    :title="e.name"
+                  >{{ e.name }}</span>
                 </button>
               </div>
             </td>

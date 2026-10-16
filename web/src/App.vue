@@ -193,11 +193,15 @@ onMounted(async () => {
             />
             <span class="nav-connection-text">
               <span class="nav-connection-provider">{{ c.providerName }}</span>
-              {{ c.account }}
+              <span
+                class="nav-connection-account"
+                :title="c.account"
+              > {{ c.account }}</span>
               <span
                 v-if="c.library"
                 class="nav-connection-library"
-              >{{ c.library }}</span>
+                :title="c.library"
+              > {{ c.library }}</span>
               <span
                 v-if="c.status !== 'ok'"
                 class="nav-connection-status"

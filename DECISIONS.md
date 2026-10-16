@@ -774,3 +774,17 @@ Decision:
 - **Words.** A place is "Ort"/"place" in every error. A thing in a folder is an "Element"; "Eintrag" stays only in the keyboard shortcuts, where it means a list row. Storage without a quota or a provider limit reads "unbegrenzt". German Du errors say "Versuch es (später) noch einmal." without "Bitte"; the Sie file keeps its uniform "Bitte versuchen Sie es erneut." The issue's remaining copy fixes are taken as written.
 
 Why: the review proposed these words and the issue asks to follow it. One verb per meaning lets a member tell an internal share from a public link, and one quoted name keeps "Dateien" the app apart from "Dateien" the files. `web/test/terminology.test.ts` pins the rules (where "teilen" and "Eintrag" may appear, no "Files" in German) so new strings follow them.
+
+## 2026-10-16: Responsive tables and name truncation (#237)
+
+Question: the issue asks for one middle breakpoint at ≤900 px for the folder list and the trash, `overflow-wrap: normal` with a two-line clamp on names, a 16rem ellipsis on locations and a one-row quota form, and leaves open how the gallery truncates. Measured, a trash row with a long name and a long location needs about 890 px of page for its five columns and two buttons beside a 12rem name, more than the 628 px a 901 px window leaves beside the sidebar and nearly the 960 px page column. Which breakpoints, which wrapping rule and which gallery cut?
+
+Decision:
+- **Breakpoints.** The folder list stacks at ≤900 px as asked. Every list on `.trash-list` (trash, recent, favourites, shared, members, cloud accounts, app passwords, storage) stacks at ≤1200 px. The table form above that is unchanged in its columns.
+- **Location column.** A one-line clamp (`-webkit-line-clamp: 1` with `overflow-wrap: anywhere`) instead of `white-space: nowrap`: it shows the same ellipsis but lets the column give way between 6rem and 16rem, where a `nowrap` text holds the column at its full width and pushed a desktop trash row 75 px past the page.
+- **Name wrapping.** `overflow-wrap: break-word` rather than `normal`: ordinary names still break only between words, and a single word longer than the line breaks instead of being clipped without a trace.
+- **Touch target.** The 44 px of a phone row's name is padding around the text (`(44px - 1.5em) / 2`) with the existing −10 px margin, so a one-line row keeps its height and a two-line name grows its box. The issue's alternatives (padding on the `td`, a margin for single lines only) would grow every row or need a measurement in script.
+- **Gallery.** Cut in the middle: the tail is the extension (up to 8 characters after the last dot, never a leading dot) plus the 4 characters before it; the head takes the ellipsis. Two-line names would break the gallery's equal tile height, which its windowing relies on.
+- **Members.** The invalid-amount error moved out of the form so the controls can stay on one row (`nowrap`); on the phone the form may wrap.
+
+Why: the issue's single 900 px breakpoint fixes the folder list but leaves the wider lists overflowing between 901 and about 1160 px, which is the defect L2 describes, so their breakpoint follows the measurement. The other choices are the narrowest change that keeps one-line rows as they were (no phone row grows) and keeps every name readable. `e2e/responsive-names.spec.ts` checks each at 412, 834, 1100 and 1280 px in both themes; the desktop screenshot baselines of the folder, trash, recent and shared views were renewed for the wider name column.

@@ -40,7 +40,7 @@ The guide has no viewer recipe. The preview is an `<AppDialog>` with `wide`: the
 
 ## Thumbnails and gallery
 
-The guide has no media grid. A list row shows a 28 px thumbnail with a 4 px radius in place of the file icon. The gallery is a grid of tiles at least 160 px wide (104 px on phone width): each tile is surface tone with a hairline border and the tile radius, a square image cut to fill (`object-fit: cover`) on `--bg`, and the name in one line under a hairline. A file without a thumbnail, and a folder, show their line icon at 40 px in the same square. Hover turns the hairline teal (`--line`); there is no shadow and no zoom. A selected tile (#229) takes the list's selection tint (`--data` at 9 %) and the teal hairline. Its checkbox (top left) and menu button (top right) sit on small surface chips with a hairline over the thumbnail; they appear on hover, on focus and on a selected tile, and always on a touch screen (`hover: none`), where they are 44 px targets. The "List / Gallery" toggle is the guide's segmented control (see below).
+The guide has no media grid. A list row shows a 28 px thumbnail with a 4 px radius in place of the file icon. The gallery is a grid of tiles at least 160 px wide (104 px on phone width): each tile is surface tone with a hairline border and the tile radius, a square image cut to fill (`object-fit: cover`) on `--bg`, and the name in one line under a hairline, cut in the middle so the end and the extension stay ("Sonnenuntergang am…ilie.png", see "Responsive lists and names"). A file without a thumbnail, and a folder, show their line icon at 40 px in the same square. Hover turns the hairline teal (`--line`); there is no shadow and no zoom. A selected tile (#229) takes the list's selection tint (`--data` at 9 %) and the teal hairline. Its checkbox (top left) and menu button (top right) sit on small surface chips with a hairline over the thumbnail; they appear on hover, on focus and on a selected tile, and always on a touch screen (`hover: none`), where they are 44 px targets. The "List / Gallery" toggle is the guide's segmented control (see below).
 
 ## Search
 
@@ -110,6 +110,18 @@ These follow the guide's scale and Calendar's grid (#239).
 - **Upload panel.** It is a sheet within the column (its padding inside its width), under the folder's toolbar; see "Upload panel and drop zone".
 - **Selection bar.** While a selection exists, the bar takes the place of the toolbar's actions, right-aligned like them, and opens with the count ("2 selected", small, muted). The list below never moves. On the desktop the toolbar holding the bar is sticky at the top while the list scrolls (#224); on phone width the bar stays the sheet fixed at the bottom.
 - **List sheet.** The file list's table is a sheet with the 14 px sheet radius. Its borders are separate (row hairlines on the cells), since a collapsed table drops the radius; the corner cells round their own ground to match.
+
+## Responsive lists and names
+
+These close the table and truncation review (#237). The guide's data table (PDF p.15) has no narrow form; Files folds it into rows.
+
+- **Stacked rows.** The folder list takes the phone's rows up to 900 px: no header row, checkbox, name, star and menu on the first line, size and date under the name (the sort menu stands in for the headers). The lists with buttons in their rows (trash, recent, favourites, shared, members, cloud accounts, app passwords, storage) need about 890 px of page for their columns, so they stack up to 1200 px: the name, then the location, then the figures, then the buttons under the name's text at their own width. On the phone the buttons share the row, as before.
+- **Names.** A name column keeps at least 12rem. A name breaks between words only (a single word longer than the line still breaks) and stops after two lines with an ellipsis; the full name is its `title`. On the phone the name's 44 px touch target is padding around the text, so a two-line name pushes its size line down instead of covering it.
+- **One-line values.** A location ("Original location", "Location") is one line with an ellipsis, up to 16rem wide and down to 6rem when the name needs the room; an e-mail on the members page and a cloud account in the sidebar are one line with an ellipsis too. Each carries its full value as `title`. Table headers never wrap.
+- **Sidebar connection.** The provider is the main line in ink; the account is the muted 11 px line under it, then the library and a status that is not "ok".
+- **Members.** Amount (6em), unit and the buttons stay one row; an invalid amount's error sits under the row. On stacked rows the form folds under the name and figures and may wrap on the phone.
+- **Upload panel.** The name column keeps at least 8rem; on the phone a failure's reason takes its own row under the name.
+- **Gallery.** A tile's name is cut in the middle: the head takes the ellipsis, the tail keeps the extension and the four characters before it (`nameParts` in `web/src/format.ts`), so names that differ at the end ("Urlaub 01.png", "Urlaub 02.png") stay apart. The tile's accessible name is the whole name.
 
 ## Contrast, checkboxes and the usage bar
 

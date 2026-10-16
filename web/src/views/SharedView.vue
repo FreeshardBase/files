@@ -106,7 +106,10 @@ async function remove(item: IncomingShare) {
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              {{ item.name }}
+              <span
+                class="name-text"
+                :title="item.name"
+              >{{ item.name }}</span>
             </div>
           </td>
           <td class="origin">

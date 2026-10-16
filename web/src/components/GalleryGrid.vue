@@ -9,6 +9,7 @@
 import { nextTick, onBeforeUpdate, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import type { Entry } from '@files/shared';
 import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { nameParts } from '../format.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
@@ -124,6 +125,7 @@ defineExpose({
           <button
             type="button"
             class="gallery-tile"
+            :aria-label="e.name"
             :data-type="e.type"
             :tabindex="i === active ? 0 : -1"
             @focus="active = i"
@@ -153,7 +155,10 @@ defineExpose({
               :class="e.type === 'directory' ? 'icon-folder' : 'icon-file'"
               aria-hidden="true"
             /></span>
-            <span class="gallery-name">{{ e.name }}</span>
+            <span
+              class="gallery-name"
+              :title="e.name"
+            ><span class="gallery-name-head">{{ nameParts(e.name)[0] }}</span><span class="gallery-name-tail">{{ nameParts(e.name)[1] }}</span></span>
           </button>
           <!-- Beside the tile, not inside it: a button holds no other controls. The label is the 44 px touch target. -->
           <label

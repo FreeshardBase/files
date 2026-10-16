@@ -77,11 +77,17 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              {{ item.name }}
+              <span
+                class="name-text"
+                :title="item.name"
+              >{{ item.name }}</span>
             </div>
           </td>
           <td class="origin">
-            {{ folderLabel(parentOf(item.path)) }}
+            <span
+              class="origin-text"
+              :title="folderLabel(parentOf(item.path))"
+            >{{ folderLabel(parentOf(item.path)) }}</span>
           </td>
           <td class="num date">
             {{ formatDate(item.changedAt, intlLocale(locale)) }}
