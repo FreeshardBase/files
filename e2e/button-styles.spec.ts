@@ -77,7 +77,7 @@ test('a link styled as a button is an outline button in a list row, like the but
     const open = row(page, 'ledger.csv').locator('a.button').first();
     await expect(open).toBeVisible();
     expect(await style(open, 'border-top-width')).toBe('1px');
-    await settled(open, 'border-top-color').toBe(await resolved(page, 'var(--border-cool)'));
+    await settled(open, 'border-top-color').toBe(await resolved(page, 'var(--border-control)')); // #243
     expect(parseFloat(await style(open, 'padding-left'))).toBeGreaterThan(0);
 
     await page.goto('/favourites');
@@ -85,7 +85,7 @@ test('a link styled as a button is an outline button in a list row, like the but
     const openLink = favRow.locator('a.button');
     const remove = favRow.locator('button.button');
     await expect(openLink).toBeVisible();
-    await settled(remove, 'border-top-color').toBe(await resolved(page, 'var(--border-cool)'));
+    await settled(remove, 'border-top-color').toBe(await resolved(page, 'var(--border-control)'));
     for (const prop of ['border-top-width', 'border-top-color', 'padding-left', 'color']) {
       await settled(openLink, prop).toBe(await style(remove, prop));
     }

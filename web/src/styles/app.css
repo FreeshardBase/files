@@ -21,6 +21,28 @@ body {
    under 4.5:1 for small text on the paper and surface tones (3.9 and 3.2). Both are darkened along their own hue until
    they reach it; the dark theme's values already pass and stay. */
 :root:not([data-theme="dark"]):not(.theme-dark) { --ink-muted: #5a6b70; --accent: #9f5c16; }
+/* Control boundaries (#243, DESIGN.md "Deviations"): `--border-cool` is 1.6–1.8:1 on paper and surface, under the 3:1
+   that WCAG 1.4.11 asks of a field's or a button's edge. Fields, selects, outline buttons and checkboxes take
+   `--border-control` (3.1–3.6:1 on both grounds in both themes); sheets and separators keep their hairlines. The check
+   glyph is the surface tone, so it reads on the teal fill of either theme. */
+:root {
+  --border-control: #788e95;
+  --check-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23fffefb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+[data-theme="dark"], .theme-dark {
+  --border-control: #7a6c55;
+  --check-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23211d16' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Checkboxes are the guide's box (#243, PDF p.9): 18 px, radius 5, a 1.5 px outline that fills teal with a check when
+   checked. Still the native input, so keyboard and screen-reader behaviour stay native; only the drawing is ours, which
+   replaces the grey filled square the browser draws under `color-scheme: dark`. */
+input[type='checkbox'] {
+  appearance: none; box-sizing: border-box; flex: none; width: 18px; height: 18px; margin: 0;
+  border: var(--border-w-glyph) solid var(--border-control); border-radius: 5px;
+  background: transparent no-repeat center / 14px 14px; cursor: pointer;
+}
+input[type='checkbox']:checked { border-color: var(--data); background-color: var(--data); background-image: var(--check-glyph); }
+input[type='checkbox']:disabled { opacity: 0.5; cursor: default; }
 
 /* Focus ring: teal hairline outline, never amber, never a fill (design guide, keyboard navigation). */
 :focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
@@ -162,7 +184,7 @@ a:where(:hover) { text-decoration: underline; }
   display: inline-flex; align-items: center; gap: var(--space-2);
   font: 400 var(--fs-small)/1 var(--font-ui);
   box-sizing: border-box; min-height: 36px; padding: 0 var(--space-4); border-radius: var(--radius-control);
-  border: var(--border-w) solid var(--border-cool);
+  border: var(--border-w) solid var(--border-control);
   color: var(--ink); background: transparent; cursor: pointer;
   position: relative; /* anchors the visually hidden file input */
   text-decoration: none; /* a download is a link styled as a button */
@@ -178,15 +200,15 @@ a:where(:hover) { text-decoration: underline; }
 .button:not(:disabled, [aria-disabled='true']):active { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 /* The ring for the keyboard only (#238); a label that wraps a hidden file input shows the ring of its input. */
 .button:focus-visible, .button:has(:focus-visible) { outline: 2px solid var(--line); outline-offset: 2px; }
-/* A field is as high as a button (#238). */
-.fs-input { box-sizing: border-box; height: 36px; }
+/* A field is as high as a button (#238); its edge is a control boundary (#243). */
+.fs-input { box-sizing: border-box; height: 36px; border-color: var(--border-control); }
 
 /* ---- AppDialog: a sheet on a flat scrim (no shadow); see DESIGN.md ---- */
 .app-dialog-scrim {
   position: fixed; inset: 0; z-index: 10;
   display: flex; align-items: center; justify-content: center;
   padding: var(--space-4); overflow-y: auto; /* the page lock is AppDialog's root overflow, not overscroll-behavior */
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
 }
 .app-dialog {
   width: 100%; max-width: 440px; margin: auto;
@@ -198,7 +220,6 @@ a:where(:hover) { text-decoration: underline; }
 .app-dialog-title { margin: 0 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .app-dialog-text { margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
 .app-dialog-check { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); font-size: var(--fs-small); }
-.app-dialog-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
 .app-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 @media (max-width: 600px) {
   .app-dialog-scrim { align-items: flex-end; padding: var(--space-2); }
@@ -396,7 +417,7 @@ a:where(:hover) { text-decoration: underline; }
 .file-list tbody tr.drop-target, .breadcrumbs a.drop-target { outline: 1.5px dashed var(--line); outline-offset: -3px; }
 .breadcrumbs a.drop-target { outline-offset: 2px; border-radius: 4px; }
 .file-list .select, .file-list .menu-cell { width: 1%; padding-left: var(--space-3); padding-right: var(--space-3); }
-.file-list .select input { width: 18px; height: 18px; margin: 0; vertical-align: middle; accent-color: var(--data); cursor: pointer; }
+.file-list .select input { vertical-align: middle; }
 
 /* Thumbnails (#144): a small square in the row's icon slot; in the gallery a tile of the surface tone with a hairline. */
 .row-thumb { flex: none; width: 28px; height: 28px; margin: -4px 0; object-fit: cover; border-radius: 4px; background: var(--bg); }
@@ -446,7 +467,6 @@ a:where(:hover) { text-decoration: underline; }
   left: var(--space-2); display: flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; box-sizing: border-box; cursor: pointer;
 }
-.gallery-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); cursor: pointer; }
 .gallery-menu { right: var(--space-2); }
 .gallery > li:hover :is(.gallery-check, .gallery-menu), .gallery > li:focus-within :is(.gallery-check, .gallery-menu),
 .gallery > li.selected :is(.gallery-check, .gallery-menu) { visibility: visible; }
@@ -518,8 +538,13 @@ a:where(:hover) { text-decoration: underline; }
 .storage-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .storage-figures { margin: var(--space-1) 0 var(--space-2); font-variant-numeric: tabular-nums; }
 .storage-error { margin: var(--space-1) 0 0; color: var(--danger); }
-.usage-bar { height: 6px; max-width: 480px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
+/* The track is `--border-cool` (#243): `--border` all but vanished on the dark ground. Any usage fills at least 2 px, and
+   the percentage sits beside the bar in the mono face (PDF p.20). */
+.usage { display: flex; align-items: center; gap: var(--space-3); max-width: 480px; }
+.usage-bar { flex: 1 1 auto; height: 6px; background: var(--border-cool); border-radius: var(--radius-pill); overflow: hidden; }
 .usage-bar > span { display: block; height: 100%; background: var(--data); }
+.usage-bar > span[data-used='true'] { min-width: 2px; }
+.usage-percent { flex: none; color: var(--ink-muted); }
 .usage-bar[data-high='true'] > span { background: var(--danger); }
 .storage-breakdown { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; }
 .storage-breakdown dt { font: 600 var(--fs-label)/1.4 var(--font-ui); text-transform: uppercase; letter-spacing: var(--ls-label); color: var(--ink-muted); }
