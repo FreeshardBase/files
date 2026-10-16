@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Entry, PublicLink } from '@files/shared';
 import type { ConnectedBackend, StorageBackend } from '../src/storage/backend.ts';
+import { isExpired } from '../src/storage/publicLinks.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 // #147: public links. `testuser` owns the items and the links; visitors have no session at all. Regression tests for
@@ -28,13 +29,16 @@ const cloud: StorageBackend = {
 };
 const connections = async (user: { id: string }): Promise<ConnectedBackend[]> =>
   user.id === ownerId && linked ? [{ id: 'cloud', backend: cloud }] : [];
+// Everything the app logs (request lines included), to check that tokens never reach it.
+const logLines: string[] = [];
+const logStream = new Writable({ write(chunk, _enc, cb) { logLines.push(String(chunk)); cb(); } });
 
 beforeAll(async () => {
   // A built SPA shell, so the share page itself (/s/<token>) is served like in production.
   dist = mkdtempSync(join(tmpdir(), 'files-web-'));
   writeFileSync(join(dist, 'index.html'), '<!doctype html><title>SPA-SHELL</title><div id="app"></div>');
   process.env.FILES_WEB_DIST = dist;
-  t = await startTestApp({ FILES_MAX_UPLOAD_BYTES: String(1024 ** 2) }, undefined, undefined, { connections });
+  t = await startTestApp({ FILES_MAX_UPLOAD_BYTES: String(1024 ** 2), FILES_LOG_LEVEL: 'info' }, undefined, logStream, { connections });
   owner = await login(t, 'testuser'); other = await login(t, 'member');
   ownerId = (await t.app.inject({ url: '/api/v1/me', headers: { cookie: owner.cookie } })).json().id;
 });
@@ -192,6 +196,28 @@ describe('expiry (#104)', () => {
     }
     expect((await unlock(l.token, 'x')).json()).toEqual({ code: 'LINK_EXPIRED' });
   });
+
+  // #256: `parseExpiry` validates on write, so only a corrupted or hand-edited row gets here; it must not mean "never".
+  it('an expiry that cannot be read counts as expired (fails closed)', () => {
+    expect(isExpired({ expires_at: 'garbage' })).toBe(true);
+    expect(isExpired({ expires_at: '' })).toBe(true);
+    expect(isExpired({ expires_at: '2099-01-01T00:00:00.000Z' })).toBe(false);
+    expect(isExpired({ expires_at: null })).toBe(false);
+  });
+});
+
+describe('logging (#256)', () => {
+  it('a visit writes the path to the log with the token masked', async () => {
+    const dir = await folder({ 'a.txt': 'alpha' });
+    const l = await link(`${dir}/a.txt`);
+    logLines.length = 0;
+    expect((await visit(l.token, 'info')).statusCode).toBe(200);
+    expect((await visit(l.token, 'content?path=%2F')).statusCode).toBe(200);
+    const log = logLines.join('');
+    expect(log).toContain('"/s/<token>/info"'); // the request was logged, so the absence below is not vacuous
+    expect(log).toContain('"/s/<token>/content"');
+    expect(log).not.toContain(l.token);
+  });
 });
 
 describe('password (#104)', () => {
@@ -297,6 +323,22 @@ describe('password (#104)', () => {
     // Removing the password opens the link.
     await ok(t.app.inject({ method: 'PATCH', url: `/api/v1/links/${a.id}`, headers: mutating(owner), payload: { password: null } }));
     expect((await visit(a.token, 'content')).body).toBe('alpha');
+  });
+
+  // #256: the server checks the expiry inside the signed cookie; the browser's Max-Age alone would let a copied one live on.
+  it('the unlock cookie expires on the server after 60 minutes', async () => {
+    const dir = await folder({ 'a.txt': 'alpha' });
+    const l = await link(`${dir}/a.txt`, { password: 'correct horse' });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    const cookie = unlockCookie(await unlock(l.token, 'correct horse', '192.0.2.150'));
+    vi.setSystemTime(start + 59 * 60_000);
+    expect((await visit(l.token, 'content', { cookie })).body).toBe('alpha');
+    vi.setSystemTime(start + 61 * 60_000);
+    const r = await visit(l.token, 'content', { cookie });
+    expect(r.statusCode).toBe(403);
+    expect(r.json()).toEqual({ code: 'PASSWORD_REQUIRED' });
+    expect((await visit(l.token, 'info', { cookie })).json()).toMatchObject({ locked: true });
   });
 });
 

@@ -193,6 +193,95 @@ describe('transfer jobs between sources', () => {
     expect(t.db.prepare('SELECT count(*) FROM transfer_jobs').pluck().get()).toBe(before);
   });
 
+  // #256: a transfer writes into its target and, as a move, deletes from its source; both need `edit` on a share.
+  describe('a share as source or target', () => {
+    // A fresh folder in testuser's home with one file, shared with `member` at `access`; answers its source id.
+    async function shared(access: 'read' | 'edit'): Promise<{ dir: string; source: string }> {
+      const dir = fresh(t, a, 'shared');
+      writeFileSync(join(home(t, a), dir, 'theirs.txt'), 'owner bytes');
+      const r = await as(t, a, 'POST', '/api/v1/shares', { source: 'home', path: dir, grantee: b.id, access });
+      expect(r.statusCode, r.body).toBeLessThan(300);
+      return { dir, source: `share:${r.json().id as string}` };
+    }
+    const jobs = () => t.db.prepare('SELECT count(*) FROM transfer_jobs').pluck().get();
+
+    it('a copy into a read share answers 403 before a job exists and writes nothing', async () => {
+      const { dir, source } = await shared('read');
+      mkdirSync(join(home(t, b), '/mine'), { recursive: true });
+      writeFileSync(join(home(t, b), '/mine/intruder.txt'), 'member bytes');
+      const before = jobs();
+      const r = await as(t, b, 'POST', '/api/v1/transfers', { mode: 'copy', from: 'home', to: source, dir: '/',
+        items: [{ path: '/mine/intruder.txt', onCollision: 'fail' }] });
+      expect(r.statusCode, r.body).toBe(403);
+      expect(r.json()).toEqual({ code: 'FORBIDDEN' });
+      expect(jobs()).toBe(before);
+      expect(filesUnder(join(home(t, a), dir))).toEqual(['theirs.txt']);
+    });
+
+    it('a move out of a read share answers 403 before a job exists and leaves the source in place', async () => {
+      const { dir, source } = await shared('read');
+      const before = jobs();
+      const r = await as(t, b, 'POST', '/api/v1/transfers', { mode: 'move', from: source, to: 'home', dir: '/',
+        items: [{ path: '/theirs.txt', onCollision: 'keep-both' }] });
+      expect(r.statusCode, r.body).toBe(403);
+      expect(r.json()).toEqual({ code: 'FORBIDDEN' });
+      expect(jobs()).toBe(before);
+      expect(readFileSync(join(home(t, a), dir, 'theirs.txt'), 'utf8')).toBe('owner bytes');
+      // A copy out of a read share is reading, which `read` allows.
+      const copy = await start(t, b, { from: source, to: 'home', dir: fresh(t, b, 'copied'), paths: ['/theirs.txt'] });
+      expect(await settled(t, b, copy.id)).toMatchObject({ status: 'completed', done: 1 });
+    });
+
+    it('a share downgraded to read while the job runs fails the remaining items with FORBIDDEN and writes none of them', async () => {
+      const { dir, source } = await shared('edit');
+      const m = new MemBackend();
+      owned.get(b.id)!.push({ id: 'memb', backend: m });
+      const paths = ['/1.txt', '/2.txt', '/3.txt'];
+      for (const p of paths) m.put(p, `bytes of ${p}`);
+      m.stall('/1.txt'); m.stall('/2.txt');
+      const job = await start(t, b, { from: 'conn:memb', to: source, dir: '/', paths });
+      // Both concurrent items are mid-stream (their sources resolved while the share still allowed edit); 3 waits.
+      await until(async () => m.reads.size, (n) => n === 2, 'two items reading');
+      const down = await as(t, a, 'POST', '/api/v1/shares', { source: 'home', path: dir, grantee: b.id, access: 'read' });
+      expect(down.statusCode, down.body).toBeLessThan(300);
+      m.release('/1.txt'); m.release('/2.txt');
+      const done = await settled(t, b, job.id);
+      // Items 1 and 2 may finish or fail; only that 3 never ran with the old rights is pinned here.
+      expect(done.failed).toContainEqual({ path: '/3.txt', code: 'FORBIDDEN' });
+      expect(done.failed.every((f) => f.code === 'FORBIDDEN'), JSON.stringify(done.failed)).toBe(true);
+      expect(m.reads.get('/3.txt') ?? 0).toBe(0);
+      expect(existsSync(join(home(t, a), dir, '3.txt'))).toBe(false);
+      expect(filesUnder(join(home(t, a), dir)).filter((f) => f.endsWith('.upload'))).toEqual([]);
+    });
+
+    it('a move out of a share downgraded to read while the job runs fails the remaining items and deletes none of them', async () => {
+      // A folder of testuser's cloud connection (its reads can be held), shared with `member` at edit.
+      const { m, source: conn } = mem();
+      const paths = ['/1.txt', '/2.txt', '/3.txt'];
+      for (const p of paths) m.put(`/Shared${p}`, `bytes of ${p}`);
+      m.stall('/Shared/1.txt'); m.stall('/Shared/2.txt');
+      const share = async (access: 'read' | 'edit') => {
+        const r = await as(t, a, 'POST', '/api/v1/shares', { source: conn, path: '/Shared', grantee: b.id, access });
+        expect(r.statusCode, r.body).toBeLessThan(300);
+        return `share:${r.json().id as string}`;
+      };
+      const source = await share('edit');
+      const dir = fresh(t, b, 'moved');
+      const job = await start(t, b, { mode: 'move', from: source, to: 'home', dir, paths });
+      await until(async () => m.reads.size, (n) => n === 2, 'two items reading');
+      await share('read');
+      m.release('/Shared/1.txt'); m.release('/Shared/2.txt');
+      const done = await settled(t, b, job.id);
+      // Items 1 and 2 may finish or fail; only that 3 never ran with the old rights is pinned here.
+      expect(done.failed).toContainEqual({ path: '/3.txt', code: 'FORBIDDEN' });
+      expect(done.failed.every((f) => f.code === 'FORBIDDEN'), JSON.stringify(done.failed)).toBe(true);
+      expect(m.reads.get('/Shared/3.txt') ?? 0).toBe(0);
+      expect(m.files.get('/Shared/3.txt')?.toString()).toBe('bytes of /3.txt');
+      expect(m.deleted).not.toContain('/Shared/3.txt');
+      expect(existsSync(join(home(t, b), dir, '3.txt'))).toBe(false);
+    });
+  });
+
   it('SSE progress reaches only the job owner', async () => {
     await t.app.listen({ port: 0, host: '127.0.0.1' });
     const base = `http://127.0.0.1:${(t.app.server.address() as AddressInfo).port}`;
