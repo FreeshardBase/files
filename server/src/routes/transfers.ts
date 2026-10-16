@@ -6,6 +6,8 @@ import { requireUser } from '../auth/guard.ts';
 const IdP = z.object({ id: TransferId });
 /** A comment line now and then keeps proxies from closing an idle event stream. */
 const KEEPALIVE_MS = 25_000;
+/** Open event streams per member (#280): a few tabs and devices; one more ends that member's oldest. */
+const MAX_STREAMS_PER_MEMBER = 8;
 
 /**
  * `/api/v1/transfers` (#152): the caller's transfer jobs between sources. Every lookup is by id and owner, so another
@@ -14,6 +16,8 @@ const KEEPALIVE_MS = 25_000;
 export async function registerTransferRoutes(app: FastifyInstance): Promise<void> {
   const engine = () => app.deps.transfers;
   const streams = new Set<() => void>();
+  // Each member's open streams, oldest first (a Set keeps insertion order).
+  const byMember = new Map<string, Set<() => void>>();
   // Open event streams would hold the server open; they end before it closes.
   app.addHook('preClose', async () => { for (const end of [...streams]) end(); });
 
@@ -32,6 +36,7 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
   // caller's current jobs, so a client that connects late has the full picture.
   app.get('/api/v1/transfers/events', async (req, reply) => {
     const { user } = requireUser(req);
+    const mine = byMember.get(user.id) ?? new Set<() => void>();
     reply.hijack();
     const raw = reply.raw;
     raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store',
@@ -44,10 +49,17 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     keepalive.unref();
     const end = () => {
       if (!streams.delete(end)) return;
+      mine.delete(end);
+      if (!mine.size && byMember.get(user.id) === mine) byMember.delete(user.id);
       clearInterval(keepalive); unsubscribe(); raw.end();
     };
+    // A member never holds more than the cap: the oldest stream ends (its EventSource reconnects if still wanted).
+    for (const oldest of mine) { if (mine.size < MAX_STREAMS_PER_MEMBER) break; oldest(); }
     streams.add(end);
+    byMember.set(user.id, mine);
+    mine.add(end);
     req.raw.on('close', end);
+    if (req.raw.socket.destroyed) end(); // the client left before the listener was there
   });
 
   app.get('/api/v1/transfers/:id', async (req) => {

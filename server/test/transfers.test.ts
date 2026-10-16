@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { request } from 'node:http';
 import { homeRoot } from '../src/paths.ts';
 import type { ConnectedBackend } from '../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
@@ -353,5 +354,71 @@ describe('resume after a restart', () => {
       await t2.close();
       rmSync(dataDir, { recursive: true, force: true });
     }
+  });
+});
+
+// #280: a member's event streams are capped, so one session cannot hold an unbounded number of sockets, timers and
+// listeners. Opening one more ends that member's oldest stream; other members are not affected.
+describe('transfer event streams per member', () => {
+  const CAP = 8;
+  // `a2` is the same member signed in on a second device: the cap counts the member, not the session.
+  let t: TestApp; let a: S; let a2: S; let b: S; let base: URL;
+  beforeAll(async () => {
+    t = await startTestApp();
+    a = await signIn(t, 'testuser');
+    a2 = await signIn(t, 'testuser');
+    b = await signIn(t, 'member');
+    await t.app.listen({ port: 0, host: '127.0.0.1' });
+    base = new URL(`http://127.0.0.1:${(t.app.server.address() as AddressInfo).port}`);
+  });
+  afterAll(async () => { await t.close(); });
+
+  type Stream = { status: number; ended: () => boolean; closed: Promise<void>; destroy: () => void };
+  const open = (s: S) => new Promise<Stream>((resolve, reject) => {
+    const req = request(new URL('/api/v1/transfers/events', base), { headers: { cookie: s.cookie } }, (res) => {
+      let ended = false;
+      const closed = new Promise<void>((done) => { res.on('end', () => { ended = true; done(); }); });
+      res.resume();
+      resolve({ status: res.statusCode!, ended: () => ended, closed, destroy: () => req.destroy() });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  // A wait that only gives a wrongly ended stream the time to show it; a correct server never needs it.
+  const settle = () => new Promise((r) => setTimeout(r, 150));
+  const connections = () => new Promise<number>((resolve, reject) => {
+    t.app.server.getConnections((e, n) => { if (e) reject(e); else resolve(n); });
+  });
+
+  it('one stream more than the cap ends the member\'s oldest, on any device; the others and other members\' stay open', async () => {
+    const mine: Stream[] = [];
+    for (let i = 0; i < CAP; i++) mine.push(await open(i < CAP / 2 ? a : a2));
+    expect(mine.map((s) => s.status)).toEqual(Array(CAP).fill(200));
+    await settle();
+    expect(mine[0]!.ended()).toBe(false);
+    const extra = await open(a2);
+    expect(extra.status).toBe(200);
+    await mine[0]!.closed; // without the cap this never resolves and the test times out
+    // Another member is counted on their own: two streams of theirs end none of the first member's, nor each other.
+    const theirs = [await open(b), await open(b)];
+    expect(theirs.map((s) => s.status)).toEqual([200, 200]);
+    await settle();
+    expect(mine.slice(1).map((s) => s.ended())).toEqual(Array(CAP - 1).fill(false));
+    expect(extra.ended()).toBe(false);
+    expect(theirs.map((s) => s.ended())).toEqual([false, false]);
+    for (const s of [...mine, extra, ...theirs]) s.destroy();
+  });
+
+  it('a stream the client closed frees its place', async () => {
+    await until(connections, (n) => n === 0, 'the previous test\'s streams to close');
+    const first = await open(b);
+    const gone = await open(b);
+    gone.destroy();
+    await until(connections, (n) => n === 1, 'the closed stream to reach the server');
+    const rest: Stream[] = [];
+    for (let i = 0; i < CAP - 1; i++) rest.push(await open(b));
+    await settle();
+    expect(first.ended()).toBe(false);
+    for (const s of [first, ...rest]) s.destroy();
   });
 });

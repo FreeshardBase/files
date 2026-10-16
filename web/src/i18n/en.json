@@ -21,7 +21,11 @@
     "target": "Saves to: {folder}",
     "save": "Save here",
     "discard": "Discard",
-    "missing": "Nothing to save here. Either the files were already saved, or the share did not reach “Files”: open “Files” once, then share again."
+    "missing": "Nothing to save here. Either the files were already saved, or the share did not reach “Files”: open “Files” once, then share again.",
+    "outside": "These files came from outside “Files”: another app or a website can send them. Check each name and size (the type is what the sender states); nothing is saved until you choose “Save here”.",
+    "meta": "{type} · {size}",
+    "unknownType": "unknown type",
+    "refused": "This share came from a website, not from your device’s share menu, so “Files” did not accept it. Nothing was saved."
   },
   "nav": {
     "home": "My storage",
