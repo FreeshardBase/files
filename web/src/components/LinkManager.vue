@@ -277,20 +277,20 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
       >
         {{ error }}
       </p>
-      <div class="link-buttons">
-        <button
-          type="submit"
-          class="button primary"
-          :aria-disabled="busy"
-        >
-          {{ editing === 'new' ? t('link.create') : t('link.save') }}
-        </button>
+      <div class="app-dialog-actions link-form-actions">
         <button
           type="button"
           class="button"
           @click="close"
         >
           {{ t('link.cancel') }}
+        </button>
+        <button
+          type="submit"
+          class="button primary"
+          :aria-disabled="busy"
+        >
+          {{ editing === 'new' ? t('link.create') : t('link.save') }}
         </button>
       </div>
     </form>
@@ -302,14 +302,16 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
       >
         {{ error }}
       </p>
-      <button
-        ref="newButton"
-        type="button"
-        class="button"
-        @click="open('new')"
-      >
-        {{ t('link.new') }}
-      </button>
+      <div class="link-new">
+        <button
+          ref="newButton"
+          type="button"
+          class="button"
+          @click="open('new')"
+        >
+          {{ t('link.new') }}
+        </button>
+      </div>
     </template>
     <p
       class="visually-hidden"

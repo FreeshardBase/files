@@ -239,7 +239,7 @@ async function revoke() {
             <td class="actions">
               <button
                 type="button"
-                class="button"
+                class="button danger"
                 :aria-label="$t('appPasswords.revokeLabel', { label: p.label })"
                 @click="revoking = p"
               >

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Asks before something that cannot be undone. "Cancel" takes the initial focus, and Esc cancels too.
+// Asks before something that cannot be undone. "Cancel" takes the initial focus, and Esc cancels too. Cancel sits
+// left, the destructive action right, as in the guide's confirm dialog (#238).
 import { useI18n } from 'vue-i18n';
 import AppDialog from './AppDialog.vue';
 
@@ -19,18 +20,18 @@ const { t } = useI18n();
     <template #actions>
       <button
         type="button"
-        class="button danger"
-        @click="emit('confirm')"
-      >
-        {{ confirmLabel }}
-      </button>
-      <button
-        type="button"
         class="button"
         data-autofocus
         @click="emit('cancel')"
       >
         {{ t('trash.cancel') }}
+      </button>
+      <button
+        type="button"
+        class="button danger"
+        @click="emit('confirm')"
+      >
+        {{ confirmLabel }}
       </button>
     </template>
   </AppDialog>
