@@ -763,3 +763,14 @@ Decision:
 - **Shared values.** DESIGN.md "Deviations" lists the values proposed for the guide bundle (`tokens.json` v0.2): `--border-control`, the light `--ink-muted` and `--accent`, and the scrim. `tokens.css` stays a copy of the bundle; Calendar takes the values from the bundle, not from this change.
 
 Why: the measured values are what WCAG asks (1.4.11 for boundaries, 1.4.3 for the amber label); the issue's own numbers were estimates. Styling the checkbox on the native input keeps its keyboard and screen-reader behaviour and costs no script, while the dark theme's grey square went against the guide. Editing the bundle or Calendar is outside this repository's scope, so the change records the proposal instead.
+
+## 2026-10-16: Terminology and Du/Sie consistency (#246)
+
+Question: German mixed "teilen" and "freigeben" for sharing with members, "Files" and "Dateien" for the app, and "Quelle", "Speicherort" and "Ort" for a place. Which words win, and does English change too?
+
+Decision:
+- **Sharing.** Sharing with members is "Freigabe"/"freigeben" in both German forms: the item action, the share dialog's title and button, "Für mich freigegeben" and its columns, the share list, the unlink warning and the orphaned-share error. A public link is "Link teilen". "teilen" stays only where it means the operating system's share sheet (`shareTarget.*`) and on the visitor's public-link page (`link.page.*`). English keeps "Share" for both; it has no such split.
+- **App name.** German calls the app „Dateien“ (`app.name`), quoted wherever a sentence names it (members, share target, signed out); English keeps “Files”, quoted the same way. Place names in a sentence are quoted as well („Mein Speicher“, “My storage”).
+- **Words.** A place is "Ort"/"place" in every error. A thing in a folder is an "Element"; "Eintrag" stays only in the keyboard shortcuts, where it means a list row. Storage without a quota or a provider limit reads "unbegrenzt". German Du errors say "Versuch es (später) noch einmal." without "Bitte"; the Sie file keeps its uniform "Bitte versuchen Sie es erneut." The issue's remaining copy fixes are taken as written.
+
+Why: the review proposed these words and the issue asks to follow it. One verb per meaning lets a member tell an internal share from a public link, and one quoted name keeps "Dateien" the app apart from "Dateien" the files. `web/test/terminology.test.ts` pins the rules (where "teilen" and "Eintrag" may appear, no "Files" in German) so new strings follow them.

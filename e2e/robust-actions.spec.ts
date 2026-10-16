@@ -72,7 +72,7 @@ test('a rename the server refuses keeps the dialog open with a rename message; a
   await field.fill('b.txt');
   await page.keyboard.press('Enter');
   await expect(field).toHaveAccessibleDescription(
-    /Umbenennen hat nicht geklappt: Ein Eintrag mit diesem Namen existiert bereits\.|Renaming didn't work: An item with this name already exists\./);
+    /Umbenennen hat nicht geklappt: Hier gibt es schon ein Element mit diesem Namen\.|Renaming didn't work: An item with this name already exists\./);
   await expect(field).toHaveValue('b.txt');
   await expect(field).toBeFocused();
   await expect(page.getByText(/0 von 1 verschoben|0 of 1 moved/)).toHaveCount(0);

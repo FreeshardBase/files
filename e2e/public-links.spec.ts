@@ -8,7 +8,7 @@ const tag = (info: TestInfo) => `${info.project.name}-${info.repeatEachIndex}-${
 const crumbs = (page: Page) => page.getByRole('navigation', { name: /Pfad|Path/ });
 const row = (page: Page, name: string): Locator =>
   page.locator('tbody tr', { has: page.locator('.name').getByText(name, { exact: true }) });
-const shareDialog = (page: Page) => page.getByRole('dialog', { name: /teilen|Share/ });
+const shareDialog = (page: Page) => page.getByRole('dialog', { name: /freigeben|Share/ });
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const menuButton = (page: Page, name: string) =>
   row(page, name).getByRole('button', { name: new RegExp(`(Aktionen für|Actions for) ${escape(name)}`) });
@@ -31,7 +31,7 @@ async function setup(page: Page, dir: string, files: Record<string, string>) {
 
 async function openShareDialog(page: Page, name: string) {
   await menuButton(page, name).click();
-  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).click();
   const d = shareDialog(page);
   await expect(d).toBeVisible();
   return d;

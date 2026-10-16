@@ -245,13 +245,13 @@ test('the share dialog aligns every action row right: Share beside the access ch
     const dir = await folderWithFile(page, info, 'b6', scheme);
     await openFolder(page, dir);
     await menuButton(page, 'ledger.csv').click();
-    await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
-    const dialog = page.getByRole('dialog', { name: /teilen|Share/ });
+    await page.getByRole('menu').getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).click();
+    const dialog = page.getByRole('dialog', { name: /freigeben|Share/ });
     await expect(dialog).toBeVisible();
 
     // Share ends the access row at its right edge, below the member field and as high as it.
     const field = dialog.getByRole('combobox');
-    const share = dialog.getByRole('button', { name: /^(Teilen|Share)$/ });
+    const share = dialog.getByRole('button', { name: /^(Freigeben|Share)$/ });
     const form = await box(dialog.locator('form.share-form'));
     const [f, s] = [await box(field), await box(share)];
     const radio = await box(dialog.getByRole('radio').last());

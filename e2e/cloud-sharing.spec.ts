@@ -16,7 +16,7 @@ const row = (page: Page, name: string): Locator =>
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const menuButton = (page: Page, name: string) =>
   row(page, name).getByRole('button', { name: new RegExp(`(Aktionen für|Actions for) ${escape(name)}`) });
-const shareDialog = (page: Page) => page.getByRole('dialog', { name: /teilen|Share/ });
+const shareDialog = (page: Page) => page.getByRole('dialog', { name: /freigeben|Share/ });
 /** Requests a browser sends to one of the fake providers' APIs or content hosts. */
 const PROVIDER = /\/(drive|upload\/drive)\/v3\/|drive-(thumb|blob)|\/dropbox\//;
 
@@ -67,7 +67,7 @@ async function connected(page: Page, provider: RegExp, files: Record<string, str
 
 async function openShareDialog(page: Page, name: string) {
   await menuButton(page, name).click();
-  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).click();
   const d = shareDialog(page);
   await expect(d).toBeVisible();
   return d;
@@ -77,7 +77,7 @@ async function shareWithMember(page: Page, name: string, access: 'read' | 'edit'
   await d.getByRole('combobox', { name: /Mitglied|Member/ }).fill('Test Mem');
   await d.getByRole('option', { name: 'Test Member' }).click();
   if (access === 'edit') await d.getByRole('radio', { name: /bearbeiten|edit/ }).check();
-  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).click();
+  await d.getByRole('button', { name: /^(Freigeben|Share)$/ }).click();
   await expect(d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ }))
     .toContainText(access === 'edit' ? /Darf bearbeiten|Can edit/ : /Darf ansehen|Can view/);
   await page.keyboard.press('Escape');
@@ -86,7 +86,7 @@ async function shareWithMember(page: Page, name: string, access: 'read' | 'edit'
 async function sharedWithMe(member: Page, name: string): Promise<Locator> {
   await member.goto('/');
   await openPlaces(member);
-  await nav(member).getByRole('link', { name: /Mit mir geteilt|Shared with me/ }).click();
+  await nav(member).getByRole('link', { name: /Für mich freigegeben|Shared with me/ }).click();
   await expect(member).toHaveURL(/\/shared$/);
   const r = member.locator('tbody tr', { has: member.getByText(name, { exact: true }) });
   await expect(r).toContainText('Test User');

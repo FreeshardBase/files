@@ -67,7 +67,7 @@ test('the name is checked; a taken name says so and keeps the dialog open; Esc c
 
   await input.fill('Ordner');
   await page.keyboard.press('Enter');
-  await expect(d).toContainText(/existiert bereits|already exists/);
+  await expect(d).toContainText(/gibt es schon ein Element|already exists/);
   await expect(input).toHaveAttribute('aria-invalid', 'true');
   await expect(input).toBeFocused();
   await page.keyboard.press('Escape');
