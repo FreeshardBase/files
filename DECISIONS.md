@@ -719,3 +719,16 @@ Decision:
 Why: a fixed toast is what the guide and Calendar's `.toast` show. Keeping it below dialogs means it never covers a question. A success that fades and an error that stays is what the issue asks for. Errors without an outcome already have their alert box, and a second copy in a toast would only repeat it (YAGNI). The focus targets are mostly full-width rows, where the guide itself drops the scale. Scaling buttons and tiles would make them overlap in the toolbar and the gallery.
 
 Left open: the other views' status lines and the alert boxes keep their current form; making them toasts or the guide's alert banner (p.17) is a separate change.
+
+## 2026-10-16: Button styles and hierarchy (#238)
+
+Question: the issue fixes most points itself, but leaves three open. Where does "Share" go so that it is right-aligned without breaking the dialog's keyboard order? Is the button 36 px exactly or at least 36 px? What becomes of the `:focus-within` ring that the "Upload" label needs for its hidden file input?
+
+Decision:
+- **Share dialog.** The member field stays first, with the initial focus. "Share" moves to the right end of the access-radio row, not next to the field as the issue suggests. The keyboard order stays member, access, Share (pinned by `e2e/shares.spec.ts`), and the forward action is right-aligned, last in its row.
+- **Height.** `.button` has `min-height: 36px` and horizontal padding only. A one-line button is exactly 36 px. `.fs-input` is `height: 36px` with `box-sizing: border-box`, because a field never wraps. The 44 px phone minimum stays.
+- **Focus ring.** `.button:focus-visible, .button:has(:focus-visible)`. The label shows the ring when its input has keyboard focus, and no ring after a click. No `:focus-within` remains.
+- **Links.** Bare links are teal and get an underline on hover. The hover rule is wrapped in `:where()`, so every class that styles its own links (buttons, the sidebar, breadcrumbs, row names) keeps winning. Links in rendered Markdown stay underlined.
+- **Hover on a dimmed button.** A `disabled` or `aria-disabled="true"` button gets no hover or press tint.
+
+Why: with "Share" next to the field, Tab would reach it before the access level. That level is part of what gets shared. Moving the radios above the field would make the member pick them with Shift+Tab, against the reading order. Next to the radios, "Share" still fixes what the issue is about: one alignment for every action row. A fixed `height` would clip a label that wraps on a phone (German labels are long). A minimum height gives the same 36 px everywhere else. `:has(:focus-visible)` covers the one place `:focus-within` was needed, without the ring after a mouse click that the issue reports.

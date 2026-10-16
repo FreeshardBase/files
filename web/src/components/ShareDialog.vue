@@ -3,6 +3,8 @@
 // by name, focus stays in the field, the active option is aria-activedescendant), the access level as two radios,
 // "Share", and the list of who has access with "Remove access" per member. Esc in the open picker list closes only
 // the list; otherwise it closes the dialog. Public links of the item are managed below (LinkManager, #147).
+// "Share" sits at the right end of the access row (#238), so the forward action is right-aligned and Tab still runs
+// member, access, Share.
 // The list overlays the form, so closing it on focusout never moves the control being clicked (#223). Focus opens it
 // with every member (a shard has few), and a name typed in full that only one member matches picks that member.
 import { computed, onMounted, ref, useId } from 'vue';
@@ -121,57 +123,59 @@ async function revoke(s: Share) {
       class="app-dialog-form share-form"
       @submit.prevent="submit"
     >
-      <div
-        ref="root"
-        class="app-dialog-field share-picker"
-        @focusout="onFocusOut"
-      >
+      <div class="app-dialog-field share-picker">
         <label
           class="fs-label"
           :for="pickerId"
         >{{ t('share.member') }}</label>
-        <div class="share-combo">
-          <input
-            :id="pickerId"
-            ref="picker"
-            v-model="text"
-            class="fs-input"
-            type="text"
-            role="combobox"
-            aria-autocomplete="list"
-            :aria-controls="listId"
-            :aria-expanded="showList"
-            :aria-activedescendant="showList && active >= 0 ? optionId(active) : undefined"
-            :aria-invalid="error !== ''"
-            :aria-describedby="error ? errorId : undefined"
-            :placeholder="t('share.memberPlaceholder')"
-            autocomplete="off"
-            spellcheck="false"
-            data-autofocus
-            @input="onInput"
-            @keydown="onKey"
-            @focus="open = !chosen"
+        <div class="share-field">
+          <div
+            ref="root"
+            class="share-combo"
+            @focusout="onFocusOut"
           >
-          <ul
-            v-show="showList"
-            :id="listId"
-            role="listbox"
-            class="share-options"
-            :aria-label="t('share.options')"
-          >
-            <li
-              v-for="(m, i) in matches"
-              :id="optionId(i)"
-              :key="m.id"
-              role="option"
-              class="share-option"
-              :aria-selected="i === active"
-              @mousedown.prevent
-              @click="pick(m)"
+            <input
+              :id="pickerId"
+              ref="picker"
+              v-model="text"
+              class="fs-input"
+              type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              :aria-controls="listId"
+              :aria-expanded="showList"
+              :aria-activedescendant="showList && active >= 0 ? optionId(active) : undefined"
+              :aria-invalid="error !== ''"
+              :aria-describedby="error ? errorId : undefined"
+              :placeholder="t('share.memberPlaceholder')"
+              autocomplete="off"
+              spellcheck="false"
+              data-autofocus
+              @input="onInput"
+              @keydown="onKey"
+              @focus="open = !chosen"
             >
-              {{ m.displayName }}
-            </li>
-          </ul>
+            <ul
+              v-show="showList"
+              :id="listId"
+              role="listbox"
+              class="share-options"
+              :aria-label="t('share.options')"
+            >
+              <li
+                v-for="(m, i) in matches"
+                :id="optionId(i)"
+                :key="m.id"
+                role="option"
+                class="share-option"
+                :aria-selected="i === active"
+                @mousedown.prevent
+                @click="pick(m)"
+              >
+                {{ m.displayName }}
+              </li>
+            </ul>
+          </div>
         </div>
         <p
           v-if="noMatch"
@@ -186,31 +190,33 @@ async function revoke(s: Share) {
           {{ t('share.noMembers') }}
         </p>
       </div>
-      <fieldset class="share-access">
-        <legend class="fs-label">
-          {{ t('share.access') }}
-        </legend>
-        <label
-          v-for="a in (['read', 'edit'] as const)"
-          :key="a"
-          class="share-radio"
-        >
-          <input
-            v-model="access"
-            type="radio"
-            name="share-access"
-            :value="a"
+      <div class="share-send">
+        <fieldset class="share-access">
+          <legend class="fs-label">
+            {{ t('share.access') }}
+          </legend>
+          <label
+            v-for="a in (['read', 'edit'] as const)"
+            :key="a"
+            class="share-radio"
           >
-          {{ t(`share.${a}`) }}
-        </label>
-      </fieldset>
-      <button
-        type="submit"
-        class="button primary share-submit"
-        :aria-disabled="busy"
-      >
-        {{ t('share.submit') }}
-      </button>
+            <input
+              v-model="access"
+              type="radio"
+              name="share-access"
+              :value="a"
+            >
+            {{ t(`share.${a}`) }}
+          </label>
+        </fieldset>
+        <button
+          type="submit"
+          class="button primary share-submit"
+          :aria-disabled="busy"
+        >
+          {{ t('share.submit') }}
+        </button>
+      </div>
       <p
         v-if="error"
         :id="errorId"

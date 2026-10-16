@@ -158,7 +158,7 @@ test('every icon-only control has an accessible name, and Tab shows a visible fo
           const st = getComputedStyle(x);
           return (st.outlineStyle !== 'none' && parseFloat(st.outlineWidth) >= 1) || st.boxShadow !== 'none';
         };
-        // A visually hidden input shows its ring on the label it sits in (`.button:focus-within`).
+        // A visually hidden input shows its ring on the label it sits in (`.button:has(:focus-visible)`).
         const ok = ringed(el) || (el.classList.contains('visually-hidden') && ringed(el.parentElement));
         return { key: `${el.tagName} ${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40)}`, id: el.outerHTML.slice(0, 160), ok };
       });
