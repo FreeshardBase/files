@@ -337,6 +337,21 @@ body {
   color: var(--ink); text-decoration: none; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
 }
 .file-list a:hover, .file-list .link:hover { color: var(--line); text-decoration: underline; }
+/* Sortable headers (#226): the label is the button; the sorted column is teal with an arrow, like the current view. */
+.file-list .sort-button {
+  font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0;
+  padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-1);
+}
+.file-list .sort-button:hover, .file-list th[aria-sort] .sort-button { color: var(--line); }
+.file-list th[aria-sort='ascending'] .sort-button::after { content: '↑'; }
+.file-list th[aria-sort='descending'] .sort-button::after { content: '↓'; }
+/* The sort menu stands in for the headers where there are none: in the gallery, and on a phone (the head is hidden). */
+.sort-menu { width: auto; }
+.sort-menu.with-headers, .file-list .sort-label { display: none; }
+@media (max-width: 600px) {
+  .sort-menu.with-headers, .file-list .sort-label { display: inline-block; }
+  .file-list .sort-button { display: none; }
+}
 
 /* Selection and drop target: a teal tint by tone, never a fill in the accent colour; drop target adds a dashed hairline. */
 .file-list tbody tr.selected { background: color-mix(in srgb, var(--data) 9%, transparent); }

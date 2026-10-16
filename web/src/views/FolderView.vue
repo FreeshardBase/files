@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import type { CollisionPolicy, Entry, ErrorCode } from '@files/shared';
+import { SORT_KEYS, type CollisionPolicy, type Entry, type ErrorCode, type Sort, type SortKey } from '@files/shared';
 import { join, useFolderStore } from '../stores/folder.ts';
 import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
@@ -20,14 +20,18 @@ import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
 import { useFavouritesStore } from '../stores/favourites.ts';
+import { useSortStore } from '../stores/sort.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
+import { sortEntries } from '../sort.ts';
+import { intlLocale } from '../format.ts';
 
-const route = useRoute(); const router = useRouter(); const { t } = useI18n();
+const route = useRoute(); const router = useRouter(); const { t, locale } = useI18n();
 const folder = useFolderStore();
 const uploads = useUploadsStore();
 const connections = useConnectionsStore();
 const transfers = useTransfersStore();
 const favourites = useFavouritesStore();
+const sortStore = useSortStore();
 const status = ref('');
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
@@ -56,6 +60,26 @@ watch(() => folder.entries, (entries) => {
   selected.value = selected.value.filter((p) => there.has(p));
 });
 const selectedEntries = computed(() => folder.entries.filter((e) => selected.value.includes(e.path)));
+// The member's sort (#226), applied here to the whole listing (the store loads every page first), for every source.
+// Everything that walks the items in order (list, gallery, preview, focus) uses this order.
+const sort = computed<Sort>(() => ({ key: sortStore.key, dir: sortStore.dir }));
+const entries = computed(() => sortEntries(folder.entries, sort.value, intlLocale(locale.value)));
+const SORT_OPTIONS = SORT_KEYS.flatMap((key) => (['asc', 'desc'] as const).map((dir) => `${key}-${dir}`));
+// Saved first and applied once the server confirms; a refusal keeps the order and says why.
+async function setSort(s: Sort) {
+  failures.value = null;
+  try { await sortStore.save(s); }
+  catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    failures.value = { heading: t('sort.failed'), items: [t(`errors.${e.code}`)] };
+  }
+}
+// A header click sorts by its column; on the sorted column it turns the direction around.
+const sortBy = (key: SortKey) => setSort({ key, dir: sort.value.key === key && sort.value.dir === 'asc' ? 'desc' : 'asc' });
+function onSortMenu(e: Event) {
+  const [key, dir] = (e.target as HTMLSelectElement).value.split('-') as [SortKey, Sort['dir']];
+  void setSort({ key, dir });
+}
 // The selection bar's height (#224): on the phone the bar is fixed at the bottom, and the folder keeps that much room
 // below the list so the bar never covers the last row.
 const selectionBar = ref<HTMLElement>();
@@ -105,7 +129,7 @@ async function shareFromDetails() {
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 // The preview steps through the folder's files in list order.
-const files = computed(() => folder.entries.filter((e) => e.type === 'file'));
+const files = computed(() => entries.value.filter((e) => e.type === 'file'));
 const preview = ref<{ files: Entry[]; start: number } | null>(null);
 function open(e: Entry) {
   if (e.type === 'directory') void router.push(folderRoute(source.value, e.path));
@@ -154,7 +178,7 @@ watch(() => folder.loading, async (loading) => {
   if (document.activeElement !== content.value && document.activeElement !== document.body) return; // moved on meanwhile
   const dir = folder.path === '/' ? '/' : folder.path + '/';
   const child = from.source === folder.source && from.path.startsWith(dir) ? join(folder.path, from.path.slice(dir.length).split('/')[0]!) : null;
-  const target = folder.error ? undefined : folder.entries.find((e) => e.path === child) ?? folder.entries[0];
+  const target = folder.error ? undefined : entries.value.find((e) => e.path === child) ?? entries.value[0];
   if (target) (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(target.path);
   else content.value?.focus();
 });
@@ -440,6 +464,21 @@ function onDrop(paths: string[], dir: string) {
         @drop="onDrop"
       />
       <div class="toolbar-actions">
+        <select
+          class="fs-input sort-menu"
+          :class="{ 'with-headers': view === 'list' }"
+          :aria-label="$t('sort.label')"
+          :value="`${sort.key}-${sort.dir}`"
+          @change="onSortMenu"
+        >
+          <option
+            v-for="o in SORT_OPTIONS"
+            :key="o"
+            :value="o"
+          >
+            {{ $t(`sort.${o}`) }}
+          </option>
+        </select>
         <div
           class="view-toggle"
           role="group"
@@ -633,7 +672,7 @@ function onDrop(paths: string[], dir: string) {
         <GalleryGrid
           v-else-if="view === 'gallery'"
           ref="gallery"
-          :entries="folder.entries"
+          :entries="entries"
           :folder-name="folderName"
           :source="source"
           @open="open"
@@ -642,7 +681,8 @@ function onDrop(paths: string[], dir: string) {
           v-else
           ref="list"
           v-model:selected="selected"
-          :entries="folder.entries"
+          :entries="entries"
+          :sort="sort"
           :folder-name="folderName"
           :source="source"
           :editable="editable"
@@ -652,6 +692,7 @@ function onDrop(paths: string[], dir: string) {
           @action="onAction"
           @paste="paste"
           @drop="onDrop"
+          @sort="sortBy"
         />
       </div>
     </div>

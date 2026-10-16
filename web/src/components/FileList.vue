@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Entry } from '@files/shared';
+import { DEFAULT_SORT, SORT_KEYS, type Entry, type Sort, type SortKey } from '@files/shared';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
@@ -12,11 +12,14 @@ export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'renam
 // `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
 // offered, the change keys do nothing and rows are not dragged. `shareable`: the items are the caller's own (#146).
 // `starred`: the paths of this source that are favourites (#155); every row has the star toggle.
+// `sort`: the order `entries` are in (#226); the column headers are buttons that emit `sort` with their key. On a phone
+// the header row is hidden and the folder's sort menu is the control; the header keeps a plain label for screen readers.
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
-  editable?: boolean; shareable?: boolean; starred?: string[] }>(),
-{ source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [] });
+  editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort }>(),
+{ source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }) });
 const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
+  sort: [SortKey];
 }>();
 const { locale, t } = useI18n();
 const active = ref(0);
@@ -158,20 +161,19 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
         >
           <span class="visually-hidden">{{ $t('actions.selectColumn') }}</span>
         </th><th
+          v-for="k in SORT_KEYS"
+          :key="k"
           scope="col"
           role="columnheader"
+          :aria-sort="sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined"
         >
-          {{ $t('folder.columns.name') }}
-        </th><th
-          scope="col"
-          role="columnheader"
-        >
-          {{ $t('folder.columns.size') }}
-        </th><th
-          scope="col"
-          role="columnheader"
-        >
-          {{ $t('folder.columns.modified') }}
+          <button
+            type="button"
+            class="sort-button"
+            @click="emit('sort', k)"
+          >
+            {{ $t(`folder.columns.${k}`) }}
+          </button><span class="sort-label">{{ $t(`folder.columns.${k}`) }}</span>
         </th><th
           scope="col"
           role="columnheader"
