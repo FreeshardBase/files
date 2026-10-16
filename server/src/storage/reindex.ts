@@ -16,7 +16,7 @@ export async function rebuildNameIndexes(deps: { config: Config; db: Db }, userI
   for (const userId of ids) {
     if (db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId) === undefined) throw new Error(`no member with id ${userId}`);
     const home = new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables: PATH_TABLES, trashTables: TRASH_TABLES,
-      versions: config.versions });
+      versions: config.versions, etagKey: config.etagKey });
     out.push({ userId, items: await home.rebuildNameIndex() });
   }
   return out;

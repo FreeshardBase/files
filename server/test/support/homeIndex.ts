@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../../src/db.ts';
@@ -14,5 +14,6 @@ export function testIndex(pathTables: readonly PathTable[] = [], trashTables: re
   const now = new Date().toISOString();
   db.prepare(`INSERT INTO users (id, iss, sub, display_name, email, role, created_at, last_login)
     VALUES (?, 'https://idp.example.com', 'testuser', 'Test User', 'testuser@example.com', 'member', ?, ?)`).run(userId, now, now);
-  return { db, userId, pathTables, trashTables, versions: { maxCount: 10, maxBytes: 1024 ** 3 }, close() { db.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { db, userId, pathTables, trashTables, versions: { maxCount: 10, maxBytes: 1024 ** 3 },
+    etagKey: randomBytes(32), close() { db.close(); rmSync(dir, { recursive: true, force: true }); } };
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { homeRoot } from '../src/paths.ts';
@@ -46,6 +46,24 @@ async function sharedFolder(access: 'read' | 'edit') {
   return { dir, id, source: `share:${id}` };
 }
 const ownerFile = (p: string) => join(homeRoot(t.config.dataDir, ownerId), p);
+
+describe('ETag for a grantee (#279)', () => {
+  it('reveals neither the inode nor the mtime of the owner\'s file, and still guards an edit with If-Match', async () => {
+    const s = await sharedFolder('edit');
+    const dl = await get(s.source, 'content', '/note.txt', grantee);
+    expect(dl.body).toBe('hello from the owner');
+    const etag = String(dl.headers.etag);
+    const st = lstatSync(ownerFile(`${s.dir}/note.txt`));
+    expect(etag).not.toContain(st.ino.toString(16));
+    expect(etag).not.toContain(Math.floor(st.mtimeMs).toString(16));
+    const putIfMatch = (tag: string, text: string) => t.app.inject({ method: 'PUT',
+      url: `${src(s.source)}/content?path=${encodeURIComponent('/note.txt')}&onCollision=replace`,
+      headers: { ...mutating(grantee), 'content-type': 'application/octet-stream', 'if-match': tag }, payload: Buffer.from(text) });
+    expect((await putIfMatch(etag, 'edited')).statusCode).toBe(201);
+    expect((await putIfMatch(etag, 'lost update')).statusCode).toBe(412);
+    expect(readFileSync(ownerFile(`${s.dir}/note.txt`), 'utf8')).toBe('edited');
+  });
+});
 
 describe('read share', () => {
   it('the grantee can list and download; write, mkdir, rename and delete answer 403 and change nothing', async () => {

@@ -553,7 +553,8 @@
     "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original.",
     "NOT_SUPPORTED": "Dieser Ort bietet das nicht an.",
     "APP_PASSWORD_LIMIT": "Sie können höchstens {max} App-Passwörter haben. Widerrufen Sie zuerst eines, das Sie nicht mehr brauchen.",
-    "LOCK_LIMIT": "Ihre WebDAV-Programme halten {max} Sperren, mehr geht nicht. Entsperren Sie zuerst Dateien, die Sie nicht mehr bearbeiten."
+    "LOCK_LIMIT": "Ihre WebDAV-Programme halten {max} Sperren, mehr geht nicht. Entsperren Sie zuerst Dateien, die Sie nicht mehr bearbeiten.",
+    "LINK_UNAVAILABLE": "Dieser Link lässt sich gerade nicht öffnen. Bitte versuchen Sie es später erneut."
   },
   "versions": {
     "title": "Versionen",

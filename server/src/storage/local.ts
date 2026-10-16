@@ -1,7 +1,7 @@
 import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync, type Stats } from 'node:fs';
 import { copyFile, link, lstat, mkdir, open, readdir, rm, truncate, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
@@ -71,9 +71,10 @@ export async function treeSize(abs: string, skip?: ReadonlySet<string>): Promise
 const MAX_NAME_BYTES = 255;
 const MAX_LIMIT = 1000;
 const isErr = (e: unknown, code: string) => (e as NodeJS.ErrnoException).code === code;
-// Inode in the tag: a replace with identical size and mtime still changes it.
-const etagOf = (st: { ino: number; size: number; mtimeMs: number }) =>
-  `"${st.ino.toString(16)}-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+// Inode in the tag: a replace with identical size and mtime still changes it. Keyed, so a grantee or a link's visitor
+// cannot recover the owner's inode from it (#279).
+const etagOf = (key: Buffer, st: { ino: number; size: number; mtimeMs: number }) =>
+  `"${createHmac('sha256', key).update(`${st.ino}|${st.size}|${Math.floor(st.mtimeMs)}`).digest('base64url').slice(0, 27)}"`;
 
 // Translate low-level errno into API errors; anything else passes through unchanged.
 export function mapFsError(e: unknown): unknown {
@@ -124,7 +125,7 @@ async function syncDir(dir: string): Promise<void> {
  * `versions`: how many versions of one file are kept, and how many bytes they may hold together (#154).
  */
 export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-  thumbs?: ThumbnailCache; versions: { maxCount: number; maxBytes: number } };
+  thumbs?: ThumbnailCache; versions: { maxCount: number; maxBytes: number }; etagKey: Buffer };
 
 // Renames done inside a database transaction; undone in reverse order when anything after them fails.
 class FsSteps {
@@ -350,7 +351,7 @@ export class LocalBackend implements StorageBackend {
     const st = await lstat(a).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
     if (st.isDirectory()) throw new AppError('IS_A_DIRECTORY');
     if (!st.isFile()) throw new AppError('NOT_FOUND');
-    return thumbs.get({ userId, path: normalizeUserPath(p), abs: a, etag: etagOf(st), mime: lookupMime(basename(a)) }, size);
+    return thumbs.get({ userId, path: normalizeUserPath(p), abs: a, etag: etagOf(this.index.etagKey, st), mime: lookupMime(basename(a)) }, size);
   }
 
   // After a write, move or delete has landed: the thumbnails of the paths it touched (and beneath them) go. A stale one
@@ -945,7 +946,7 @@ export class LocalBackend implements StorageBackend {
         throw new RangeNotSatisfiable(st.size);
       }
       const stream = fh.createReadStream({ autoClose: true, ...(range ? { start: range.start, end: range.end } : {}) });
-      return { entry: this.entry(p, st), stream, etag: etagOf(st), ...(range ? { range } : {}) };
+      return { entry: this.entry(p, st), stream, etag: etagOf(this.index.etagKey, st), ...(range ? { range } : {}) };
     } catch (e) {
       await fh.close();
       throw e;
@@ -973,7 +974,7 @@ export class LocalBackend implements StorageBackend {
     if (st && opts.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
     // Checked before the body is read (fail fast) and again just before the rename (narrows the lost-update window).
     const checkIfMatch = (s: Awaited<ReturnType<typeof current>>) => {
-      if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
+      if (opts.ifMatch !== undefined && (!s?.isFile() || etagOf(this.index.etagKey, s) !== opts.ifMatch)) throw new AppError('PRECONDITION_FAILED');
     };
     checkIfMatch(st);
     const tmp = join(dir, `.${randomBytes(8).toString('hex')}.upload`);
