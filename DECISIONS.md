@@ -638,3 +638,13 @@ Question: the member list sat in the normal flow and closed on focusout, so a cl
 Decision: the list is a popup under the field that overlays the form, so closing it never moves a control. Focusing the field opens it with every member while nothing is picked; typing filters it. A name typed in full that exactly one member matches picks that member and closes the list, so the controls below are clear for the next click. An unknown name keeps its note ("No member matches …") until the name changes, also after the field loses the focus; "Share" then still answers "Choose a member from the list."
 
 Why: a shard has a handful of members, so the whole list is short and is the quickest way to discover them; a search-first picker would only make sense for a large directory (YAGNI). Overlaying is how the header search popup already works. Picking an exact, unique name on input matches what `submit` already accepted, and it stops the open list from covering the access radios. The note keeps its place in the flow because it appears while typing, never as a result of a click.
+
+## 2026-10-16: Selection bar and item menus in long folders (#224)
+
+Question: the selection bar sat in the page flow above the list, so after selecting a row far down it was out of sight, and an item menu near the bottom of the viewport opened below the fold. Where does the bar go on each width, how does it stay off the last row, and when does a menu open upward?
+
+Decision: on the desktop the bar is sticky at the top of the viewport (on the page background, so rows scroll under it) and returns to its place above the list when scrolled back up. On the phone it is a sheet fixed at the bottom of the screen (surface tone, hairline on top, safe-area inset); FolderView measures its height with a `ResizeObserver` and the folder keeps that much padding below the list, so the last row can always be scrolled clear of it. An item menu measures itself when it opens and opens upward when it does not fit below its button and there is more room above; otherwise it opens downward as before. The menu stays above the bar (z-index), since it is transient.
+
+Why: the issue names sticky on the desktop and fixed at the bottom on the phone, where the bottom edge is in thumb reach. A measured padding keeps the bar's wrapping (one to five buttons, three locales) from ever covering a row without guessing a height. Flipping by the room on each side is the smallest rule that keeps a menu in view; the menu is placed each time it opens and does not follow later scrolling, since a menu is open only for one choice (YAGNI).
+
+Left open: a row just above the phone's bar opens its menu downward over the bar when that is where the room is; the menu then covers the bar until it closes.

@@ -8,16 +8,26 @@ export type MenuItem = { id: string; label: string };
 const props = defineProps<{ label: string; items: MenuItem[] }>();
 const emit = defineEmits<{ select: [string]; closed: [] }>();
 const open = ref(false);
+const up = ref(false);
 const root = ref<HTMLElement>();
+const menu = ref<HTMLElement>();
 const entries = ref<HTMLElement[]>([]);
 
 function onOutside(e: Event) {
   if (root.value && e.target instanceof Node && !root.value.contains(e.target)) close(false);
 }
+// The menu opens below its button unless it would run past the viewport there and there is more room above (#224).
+function place() {
+  const button = root.value!.getBoundingClientRect();
+  const below = window.innerHeight - button.bottom;
+  up.value = menu.value!.offsetHeight > below && button.top > below;
+}
 async function show() {
+  up.value = false;
   open.value = true;
   document.addEventListener('pointerdown', onOutside, true);
   await nextTick();
+  place();
   entries.value[0]?.focus();
 }
 function close(refocus: boolean) {
@@ -65,7 +75,9 @@ defineExpose({ show });
     </button>
     <ul
       v-if="open"
+      ref="menu"
       class="menu"
+      :class="{ 'menu-up': up }"
       role="menu"
       :aria-label="label"
       @keydown="onKey"
