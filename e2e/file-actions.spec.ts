@@ -169,7 +169,7 @@ test('keyboard only: select, cut, open the folder, paste; the row menu opens wit
   await setup(page, dir, { 'k.txt': 'keys' }, ['Ziel']);
   await page.locator('body').click({ position: { x: 1, y: 1 } });
   let presses = 0;
-  while (await page.evaluate(() => document.activeElement?.getAttribute('role')) !== 'row' && presses++ < 20) await page.keyboard.press('Tab');
+  while (await page.evaluate(() => document.activeElement?.getAttribute('role')) !== 'row' && presses++ < 30) await page.keyboard.press('Tab');
   expect(await focusedRowName(page)).toBe('Ziel');
   await page.keyboard.press('ArrowDown');
   expect(await focusedRowName(page)).toBe('k.txt');
@@ -191,7 +191,7 @@ test('keyboard only: select, cut, open the folder, paste; the row menu opens wit
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText('Ziel');
   const paste = page.getByRole('button', { name: /Hierher verschieben \(1\)|Move here \(1\)/ });
-  for (let i = 0; i < 20 && !(await paste.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+  for (let i = 0; i < 30 && !(await paste.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
   await expect(paste).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(status(page)).toContainText(/1 von 1 verschoben|1 of 1 moved/);

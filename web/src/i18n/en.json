@@ -233,7 +233,10 @@
     "newFolder": "New folder",
     "newFolderPrompt": "What should the folder be called?",
     "create": "Create",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "newFolderLabel": "Name",
+    "invalid": "A name can't be empty, contain “/” or be “.” or “..”.",
+    "created": "Created folder {name}"
   },
   "upload": {
     "button": "Upload",
@@ -636,6 +639,7 @@
       "cut": "Ctrl + X",
       "copy": "Ctrl + C",
       "paste": "Ctrl + V",
+      "newFolder": "Shift + N",
       "menu": "Shift + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
@@ -653,6 +657,7 @@
       "cut": "Mark for moving",
       "copy": "Mark for copying",
       "paste": "Move or copy the marked items here",
+      "newFolder": "New folder",
       "menu": "Open the item menu",
       "close": "Close the dialog or menu",
       "history": "Back or forward in the folder history, also with the mouse’s side buttons",

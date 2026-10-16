@@ -231,7 +231,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `api/paths.ts` | `sourceApi(source)` for API URLs, `downloadHref` (one file as itself, else a ZIP) and `folderRoute(source, path)` for SPA URLs. |
 | `stores/session.ts` | Pinia store for `/api/v1/me`. |
 | `stores/folder.ts` | Pinia store for the current folder and its source: list, mkdir, move/copy, trash, the move/copy clipboard, race-free loading. |
-| `views/FolderView.vue` | The folder page: breadcrumbs, list/gallery toggle (kept in localStorage), upload (pick or desktop drop, into the uploads store), selection bar, list or gallery, states; one collision loop for move and copy; a paste from another source asks for taken names and starts a transfer job (#152); `?select=<path>` selects and focuses that item once the folder is listed. |
+| `views/FolderView.vue` | The folder page: breadcrumbs, list/gallery toggle (kept in localStorage), upload (pick or desktop drop, into the uploads store), "New folder" (button and Shift+N wherever upload is offered; the new folder is selected and focused, #221), selection bar, list or gallery, states; one collision loop for move and copy; a paste from another source asks for taken names and starts a transfer job (#152); `?select=<path>` selects and focuses that item once the folder is listed. |
 | `components/FileList.vue` | File table with roving tabindex, arrow keys and Home/End, a long-press that opens the row menu on touch (#160), selection (Space, Ctrl/Shift+click), F2, Delete, Ctrl+C/X/V, a star toggle per row (#155), row action menus and drag & drop onto folders. Enter or a click on a file's name opens the preview; the link itself still downloads (new tab, save link as). |
 | `components/PreviewDialog.vue` | The preview overlay on `<AppDialog>`: one file of the folder at a time, ←/→ and Previous/Next, Download, Esc/Close; reports the file shown last so its row gets the focus back. |
 | `components/GalleryGrid.vue` | The gallery view: a tile per entry with its thumbnail or line icon; a folder tile opens the folder, a file tile the preview overlay (the lightbox). One Tab stop with roving tabindex: arrows (up and down by a row of tiles), Home/End (#160). |
@@ -242,6 +242,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, `hasThumbnail`/`thumbnailHref`, and `fetchText` (Range-capped text fetch). |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
+| `components/NewFolderDialog.vue` | Name of a new folder (#221); a server refusal (a taken name) shows in the dialog, which stays open. |
 | `dnd.ts` | Drag & drop payload of list items (own MIME type); desktop drops of files and folders (entries walked recursively). |
 | `components/Breadcrumbs.vue` | Path navigation; every crumb is a drop target. |
 | `components/UploadButton.vue` | File picker and folder picker emitting chosen files with their relative path; exposes the file input as the focus target for dialogs it causes. |

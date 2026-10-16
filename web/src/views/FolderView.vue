@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import type { CollisionPolicy, Entry, ErrorCode } from '@files/shared';
@@ -13,6 +13,7 @@ import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
+import NewFolderDialog from '../components/NewFolderDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
@@ -231,6 +232,41 @@ async function trash(entries: Entry[]) {
   }
 }
 
+// "New folder" (#221), wherever the caller may upload. A refusal (a taken name) stays in the dialog; the new folder is
+// selected and focused, which scrolls it into view.
+const creating = ref<{ error: string | null; busy: boolean } | null>(null);
+async function createFolder(name: string) {
+  const c = creating.value!;
+  c.error = null; c.busy = true;
+  const at = { source: folder.source, dir: folder.path };
+  let created: Entry;
+  try {
+    created = await folder.mkdir(name);
+  } catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    c.error = t(`errors.${e.code}`); c.busy = false;
+    return;
+  }
+  creating.value = null;
+  failures.value = null;
+  status.value = t('folder.created', { name: created.name });
+  if (at.source !== folder.source || at.dir !== folder.path) return;
+  selected.value = [created.path];
+  await nextTick(); // after AppDialog restored focus to where the dialog was opened
+  (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(created.path);
+}
+// Shift+N opens it, except while typing or while another dialog is open (as "?" does in App.vue).
+function onKey(e: KeyboardEvent) {
+  if (e.key !== 'N' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat || !canUpload.value || creating.value) return;
+  const at = e.target instanceof HTMLElement ? e.target : null;
+  if (at?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (document.querySelector('[aria-modal="true"]')) return;
+  e.preventDefault();
+  creating.value = { error: null, busy: false };
+}
+onMounted(() => window.addEventListener('keydown', onKey));
+onUnmounted(() => window.removeEventListener('keydown', onKey));
+
 const renaming = ref<Entry | null>(null);
 async function rename(name: string) {
   const e = renaming.value!;
@@ -362,6 +398,14 @@ function onDrop(paths: string[], dir: string) {
             {{ $t(`view.${v}`) }}
           </button>
         </div>
+        <button
+          v-if="canUpload"
+          type="button"
+          class="button"
+          @click="creating = { error: null, busy: false }"
+        >
+          {{ $t('folder.newFolder') }}
+        </button>
         <UploadButton
           v-if="canUpload"
           ref="uploadButton"
@@ -445,6 +489,13 @@ function onDrop(paths: string[], dir: string) {
       :is-folder="renaming.type === 'directory'"
       @submit="rename"
       @cancel="renaming = null"
+    />
+    <NewFolderDialog
+      v-if="creating"
+      :error="creating.error"
+      :busy="creating.busy"
+      @submit="createFolder"
+      @cancel="creating = null"
     />
     <ShareDialog
       v-if="sharing"
