@@ -58,7 +58,7 @@ async function resolveShare(deps: FastifyInstance['deps'], user: User, id: strin
   const row = grantedShare(deps.db, id, user.id);
   if (!row) throw new AppError('SOURCE_NOT_FOUND');
   if (row.orphaned_at !== null) throw new AppError('SHARE_ORPHANED');
-  return { backend: new ShareBackend(await ownerSource(deps, row), row.path), access: row.access };
+  return { backend: new ShareBackend(await ownerSource(deps, row), row.path, row.type), access: row.access };
 }
 
 /** The caller's own home. Used by `resolveSource` and by the trash routes, which exist only for the home. */

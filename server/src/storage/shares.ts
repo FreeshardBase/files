@@ -83,7 +83,7 @@ export class ShareBackend implements StorageBackend {
   readonly readRevision?: StorageBackend['readRevision'];
   readonly restoreRevision?: StorageBackend['restoreRevision'];
 
-  constructor(private inner: StorageBackend, private root: string) {
+  constructor(private inner: StorageBackend, private root: string, private type: 'file' | 'directory') {
     const { revisions, readRevision, restoreRevision } = inner;
     if (revisions) this.revisions = (p) => revisions.call(inner, this.at(p));
     if (readRevision) this.readRevision = async (p, id) => { const r = await readRevision.call(inner, this.at(p), id); return { ...r, entry: this.back(r.entry) }; };
@@ -115,7 +115,12 @@ export class ShareBackend implements StorageBackend {
     const r = await this.inner.read(this.at(p), range);
     return { ...r, entry: this.back(r.entry) };
   }
-  async write(p: string, body: Readable, opts: WriteOptions) { return this.back(await this.inner.write(this.at(p), body, opts)); }
+  // At `/` only a shared file may be written, and only as itself (#252): "keep both" would pick a free name beside it,
+  // in the owner's folder outside the share, and a cloud source would replace a shared folder with a file.
+  async write(p: string, body: Readable, opts: WriteOptions) {
+    if (normalizeUserPath(p) === '/' && (this.type === 'directory' || opts.onCollision === 'keep-both')) throw new AppError('FORBIDDEN');
+    return this.back(await this.inner.write(this.at(p), body, opts));
+  }
   async mkdir(p: string) { return this.back(await this.inner.mkdir(this.beneath(p))); }
   async move(from: string, to: string, onCollision: CollisionPolicy) {
     return this.back(await this.inner.move(this.beneath(from), this.beneath(to), onCollision));

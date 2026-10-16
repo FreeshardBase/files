@@ -134,7 +134,9 @@ async function names(first: Page, more: (cursor: string) => Promise<Page>): Prom
     if (!r.json().next) return all.sort();
   }
 }
-const shareNames = async (s: string, path: string) => names(await get(grantee, s, 'list', path),
+const ownerNames = async (kind: Kind, path: string) => names(await get(owner, conn[kind], 'list', path),
+  (c) => t.app.inject({ url: `${src(conn[kind])}/list?${q(path)}&cursor=${encodeURIComponent(c)}`, headers: { cookie: owner.cookie } }));
+const shareNames = async(s: string, path: string) => names(await get(grantee, s, 'list', path),
   (c) => t.app.inject({ url: `${src(s)}/list?${q(path)}&cursor=${encodeURIComponent(c)}`, headers: { cookie: grantee.cookie } }));
 const linkNames = async (token: string, path: string) => names(await visit(token, `list?${q(path)}`),
   (c) => visit(token, `list?${q(path)}&cursor=${encodeURIComponent(c)}`));
@@ -206,6 +208,22 @@ describe.each(KINDS)('internal share on %s', (kind) => {
     expect(storedFolder(kind, dir)).toBe(true);
   });
 
+  it('edit folder: a write at `/` is 403 with every policy and leaves the shared folder in place (#252)', async () => {
+    const dir = await seedFolder(kind);
+    const s = await share(kind, dir, 'edit');
+    for (const root of ['/', '//']) {
+      for (const policy of ['replace', 'keep-both', 'fail']) {
+        const w = await put(grantee, s, root, 'planted by the grantee', policy);
+        expect(w.statusCode, `${root} ${policy}: ${w.body}`).toBe(403);
+        expect(w.json().code).toBe('FORBIDDEN');
+        fromShard(w);
+      }
+    }
+    expect(storedFolder(kind, dir)).toBe(true);
+    expect(stored(kind, `${dir}/note.txt`)).toBe('hello from the owner');
+    expect(await ownerNames(kind, '/')).not.toContain(`${dir.slice(1)} (1)`);
+  });
+
   it('read file: the grantee downloads the file at `/`; overwriting is 403', async () => {
     const path = await seedFile(kind);
     const s = await share(kind, path, 'read');
@@ -229,6 +247,22 @@ describe.each(KINDS)('internal share on %s', (kind) => {
     expect((await op(grantee, s, 'move', { from: '/', to: '/elsewhere.txt', onCollision: 'fail' })).statusCode).toBe(403);
     expect((await op(grantee, s, 'delete', { paths: ['/'] })).statusCode).toBe(403);
     expect(stored(kind, path)).toBe('changed by the grantee');
+  });
+
+  it('edit file: `/` with keep-both or fail plants nothing beside the file in the owner\'s store (#252)', async () => {
+    const path = await seedFile(kind);
+    const s = await share(kind, path, 'edit');
+    const before = await ownerNames(kind, '/');
+    for (const root of ['/', '//']) {
+      const kb = await put(grantee, s, root, 'planted by the grantee', 'keep-both');
+      expect(kb.statusCode, `${root}: ${kb.body}`).toBe(403);
+      expect(kb.json().code).toBe('FORBIDDEN');
+      fromShard(kb);
+    }
+    const fail = await put(grantee, s, '/', 'planted by the grantee', 'fail');
+    expect(fail.statusCode, fail.body).toBe(409);
+    expect(await ownerNames(kind, '/')).toEqual(before);
+    expect(stored(kind, path)).toBe('just this one');
   });
 });
 

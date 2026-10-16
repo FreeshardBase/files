@@ -77,7 +77,7 @@ export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
     return row;
   }
   // The visitor's view: `/` is the linked item, every path lies beneath it (the same confinement as an internal share).
-  const backendOf = async (row: LinkRow) => new ShareBackend(await ownerSource(app.deps, row), row.path);
+  const backendOf = async (row: LinkRow) => new ShareBackend(await ownerSource(app.deps, row), row.path, row.type);
 
   const unlockValue = (row: LinkRow, until: number) => `${row.id}.${passwordStamp(row)}.${until}`;
   function unlocked(req: FastifyRequest, row: LinkRow): boolean {
