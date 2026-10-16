@@ -248,6 +248,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `components/MarkdownView.vue` | Renders a Markdown source through `markdown.ts`. |
 | `markdown.ts` | markdown-it tokens to Vue nodes: allowlisted elements, raw HTML as text, http(s)/mailto links only (new tab, no referrer), images as their alt text. |
 | `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, `hasThumbnail`/`thumbnailHref`, and `fetchText` (Range-capped text fetch). |
+| `fileKind.ts` | `fileKind` (#242): an entry's MIME type as a word for the details drawer ("PDF document", "Image (PNG)", "File (.ext)"). |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. Opens upward when there is no room below (#224), and to the right of its button when there is no room to the left (#229). |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
 | `components/NewFolderDialog.vue` | Name of a new folder (#221); a server refusal (a taken name) shows in the dialog, which stays open. |

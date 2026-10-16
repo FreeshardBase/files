@@ -272,6 +272,12 @@
     "failedHeading": "Nicht hochgeladen:",
     "failedItem": "{name}: {reason}",
     "panelTitle": "Uploads",
+    "panelHead": "Uploads · {done} von {total} · {state}",
+    "overall": {
+      "running": "läuft",
+      "paused": "pausiert",
+      "finished": "abgeschlossen"
+    },
     "dropHint": "Leg Dateien oder Ordner hier ab, um sie nach {folder} hochzuladen.",
     "state": {
       "queued": "Wartet",
@@ -279,15 +285,11 @@
       "paused": "Pausiert",
       "done": "Hochgeladen",
       "skipped": "Übersprungen",
-      "failed": "Fehlgeschlagen: {reason}",
+      "failed": "Fehlgeschlagen",
       "cancelled": "Abgebrochen"
     },
     "failedSummary": "Ein Upload ist fehlgeschlagen. | {count} Uploads sind fehlgeschlagen.",
     "retryAll": "Alle erneut versuchen",
-    "retry": "Erneut versuchen",
-    "pause": "Pausieren",
-    "resume": "Fortsetzen",
-    "cancel": "Abbrechen",
     "clear": "Erledigte entfernen",
     "progressLabel": "Fortschritt beim Hochladen von {name}",
     "pauseLabel": "Hochladen von {name} pausieren",
@@ -473,10 +475,27 @@
     }
   },
   "details": {
-    "title": "Details zu „{name}“",
+    "label": "Details",
     "type": "Art",
-    "folder": "Ordner",
-    "file": "Datei",
+    "kind": {
+      "folder": "Ordner",
+      "file": "Datei",
+      "pdf": "PDF-Dokument",
+      "zip": "ZIP-Archiv",
+      "text": "Textdatei",
+      "markdown": "Markdown-Dokument",
+      "csv": "CSV-Tabelle",
+      "html": "Webseite (HTML)",
+      "json": "JSON-Datei",
+      "xml": "XML-Datei",
+      "word": "Word-Dokument",
+      "spreadsheet": "Excel-Tabelle",
+      "presentation": "PowerPoint-Präsentation",
+      "image": "Bild ({format})",
+      "video": "Video ({format})",
+      "audio": "Audiodatei ({format})",
+      "other": "Datei (.{ext})"
+    },
     "size": "Größe",
     "modified": "Geändert",
     "location": "Ort",
@@ -540,7 +559,6 @@
     "loading": "Versionen werden geladen …",
     "none": "Noch keine früheren Versionen. Sobald du die Datei ersetzt, bleibt der vorherige Inhalt hier erhalten.",
     "current": "Aktuell",
-    "download": "Herunterladen",
     "restore": "Wiederherstellen",
     "downloadLabel": "Version vom {date} herunterladen",
     "restoreLabel": "Version vom {date} wiederherstellen",
@@ -550,7 +568,7 @@
     "close": "Meldung schließen"
   },
   "view": {
-    "label":"Ansicht",
+    "label": "Ansicht",
     "list": "Liste",
     "gallery": "Galerie"
   },

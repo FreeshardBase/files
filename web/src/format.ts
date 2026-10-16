@@ -7,6 +7,10 @@ export function formatSize(bytes: number, locale: string): string {
 export function formatDate(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 }
+/** With seconds, where times a minute apart must stay apart (a file's versions, #242). */
+export function formatDateSeconds(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(iso));
+}
 // A name cut in the middle (#237): the head takes the ellipsis, the tail stays whole, so a tile keeps the extension and
 // the end of the name, where names in one folder tend to differ ("Urlaub 01.png", "Urlaub 02.png"). The tail is the
 // extension (up to 8 characters after the last dot, never a leading dot) plus the 4 characters before it.

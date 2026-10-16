@@ -5,11 +5,17 @@ import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 // `wide`: a sheet for content (the preview) instead of a question; full screen on a phone.
 // `drawer`: a sheet at the right edge, full height (the details drawer); a bottom sheet on a phone.
-const props = defineProps<{ title: string; returnFocus?: HTMLElement | null; wide?: boolean; drawer?: boolean }>();
+// `closeLabel`: a head row with the title and an X icon button of that name over a hairline (#242). The focus then
+// starts on the title, which stops after two lines and carries its whole text as `title`. `label` is an uppercase
+// label over the title and part of the dialog's name.
+const props = defineProps<{
+  title: string; returnFocus?: HTMLElement | null; wide?: boolean; drawer?: boolean; label?: string; closeLabel?: string;
+}>();
 const emit = defineEmits<{ close: [] }>();
 const host = ref<HTMLElement>();
 const box = ref<HTMLElement>();
 const titleId = useId();
+const labelId = useId();
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const focusables = () => Array.from(box.value?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
@@ -66,11 +72,46 @@ onBeforeUnmount(() => {
         :class="{ 'app-dialog-wide': wide, 'app-dialog-drawer': drawer }"
         role="dialog"
         aria-modal="true"
-        :aria-labelledby="titleId"
+        :aria-labelledby="label ? `${labelId} ${titleId}` : titleId"
         tabindex="-1"
         @keydown="onKeydown"
       >
+        <div
+          v-if="closeLabel"
+          class="app-dialog-head"
+        >
+          <div class="app-dialog-heading">
+            <p
+              v-if="label"
+              :id="labelId"
+              class="fs-label"
+            >
+              {{ label }}
+            </p>
+            <h2
+              :id="titleId"
+              class="app-dialog-title"
+              :title="title"
+              tabindex="-1"
+              data-autofocus
+            >
+              {{ title }}
+            </h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button row-icon-button app-dialog-close"
+            :aria-label="closeLabel"
+            @click="emit('close')"
+          >
+            <span
+              class="icon icon-close"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
         <h2
+          v-else
           :id="titleId"
           class="app-dialog-title"
         >

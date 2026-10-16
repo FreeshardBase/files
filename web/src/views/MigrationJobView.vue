@@ -31,8 +31,9 @@ const account = computed(() => {
   const c = job.value ? connections.bySource(job.value.from) : undefined;
   return c ? t('nav.connection', { provider: c.providerName, account: c.account }) : t('migrate.theCloud');
 });
+// Never rounded up (#242): a running job reads 99 % at most.
 const percent = (j: TransferJob) => (j.status !== 'running' || j.total === 0 ? 100
-  : Math.min(100, Math.round(((j.done + j.failed.length + j.cancelled) / j.total) * 100)));
+  : Math.min(99, Math.floor(((j.done + j.failed.length + j.cancelled) / j.total) * 100)));
 // A migration counts files, like its scan; until every folder is listed its total is not known yet (#227).
 const state = (j: TransferJob) => (j.status === 'running'
   ? j.kind === 'migration'

@@ -13,8 +13,9 @@ const transfers = useTransfersStore();
 const connections = useConnectionsStore();
 const { t, locale } = useI18n();
 
+// Never rounded up (#242): a running job reads 99 % at most.
 const percent = (j: TransferJob) => (j.status !== 'running' || j.total === 0 ? 100
-  : Math.min(100, Math.round(((j.done + j.failed.length + j.cancelled) / j.total) * 100)));
+  : Math.min(99, Math.floor(((j.done + j.failed.length + j.cancelled) / j.total) * 100)));
 const sourceName = (source: string) => {
   if (source === 'home') return t('nav.home');
   const c = connections.bySource(source);

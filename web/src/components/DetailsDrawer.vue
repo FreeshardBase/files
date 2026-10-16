@@ -1,25 +1,29 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
 // member's own home and own cloud connections it lists the members the item is shared with and offers "Share …" (#208);
-// in a share it shows the caller's own access. A file's versions follow (#154); the item can be starred (#155). Esc or "Close" closes it; focus returns
-// to the row.
+// in a share it shows the caller's own access. A file's versions follow (#154); the item can be starred (#155). Esc or the
+// head's X closes it; focus returns to the row. Kind and location are words, never a MIME type or a path (#242).
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, Entry, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
+import { fileKind } from '../fileKind.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
 import { useFavouritesStore } from '../stores/favourites.ts';
 
-const props = defineProps<{ source: string; entry: Entry; access: Access; returnFocus?: HTMLElement | null }>();
+// `rootLabel`: the name of the source's root as the breadcrumbs show it ("My storage", a share, a cloud account).
+const props = defineProps<{ source: string; entry: Entry; access: Access; rootLabel: string; returnFocus?: HTMLElement | null }>();
 const emit = defineEmits<{ close: []; share: []; restored: [entry: Entry] }>();
 const { t, locale } = useI18n();
 const own = !props.source.startsWith('share:');
 const shares = ref<Share[] | null>(null);
 const error = ref('');
 const whoId = useId();
-const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
+const kind = computed(() => fileKind(props.entry));
+// "My storage › Projects": the root's name, then each folder above the item.
+const location = computed(() => [props.rootLabel, ...props.entry.path.split('/').slice(1, -1)].join(' › '));
 // The item's star (#155), the same toggle as in its row.
 const favourites = useFavouritesStore();
 const favourite = computed(() => favourites.find(props.source, props.entry.path) !== undefined);
@@ -45,14 +49,16 @@ onMounted(async () => {
 
 <template>
   <AppDialog
-    :title="t('details.title', { name: entry.name })"
+    :title="entry.name"
+    :label="t('details.label')"
+    :close-label="t('share.close')"
     :return-focus="returnFocus"
     drawer
     @close="emit('close')"
   >
     <dl class="details-facts">
       <dt>{{ t('details.type') }}</dt>
-      <dd>{{ entry.type === 'directory' ? t('details.folder') : (entry.mime ?? t('details.file')) }}</dd>
+      <dd>{{ t(`details.kind.${kind.key}`, kind.params ?? {}) }}</dd>
       <template v-if="entry.type === 'file'">
         <dt>{{ t('details.size') }}</dt>
         <dd class="value-mono">
@@ -66,7 +72,7 @@ onMounted(async () => {
         </dd>
       </template>
       <dt>{{ t('details.location') }}</dt>
-      <dd>{{ parentOf(entry.path) }}</dd>
+      <dd>{{ location }}</dd>
     </dl>
     <h3
       :id="whoId"
@@ -136,13 +142,6 @@ onMounted(async () => {
         @click="emit('share')"
       >
         {{ t('details.share') }}
-      </button>
-      <button
-        type="button"
-        class="button"
-        @click="emit('close')"
-      >
-        {{ t('share.close') }}
       </button>
     </template>
   </AppDialog>

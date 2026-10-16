@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // The versions of one file in the details drawer (#154): newest first, with date and size. The home's versions can be
 // downloaded; with `edit`, every version that is not the file itself can be restored (the content it replaces is kept
-// as a version, so a restore never loses anything). A source that keeps no versions leaves the section out.
+// as a version, so a restore never loses anything). A source that keeps no versions leaves the section out. Times show
+// seconds, so versions saved within one minute stay apart; the download is an icon button (#242).
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry, Version, VersionList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
-import { formatDate, formatSize, intlLocale } from '../format.ts';
+import { formatDateSeconds, formatSize, intlLocale } from '../format.ts';
 
 const props = defineProps<{ source: string; entry: Entry }>();
 const emit = defineEmits<{ restored: [entry: Entry] }>();
@@ -18,7 +19,7 @@ const message = ref('');
 const busy = ref(false);
 const headingId = useId();
 const newestFirst = computed(() => [...(list.value?.versions ?? [])].reverse());
-const when = (v: Version) => formatDate(v.modified, intlLocale(locale.value));
+const when = (v: Version) => formatDateSeconds(v.modified, intlLocale(locale.value));
 const href = (v: Version) => `/api/v1/versions/content?${new URLSearchParams({ source: props.source, path: props.entry.path, id: v.id })}`;
 
 async function load() {
@@ -99,11 +100,14 @@ onMounted(load);
         >
           <a
             v-if="list.download"
-            class="button"
+            class="icon-button row-icon-button"
             :href="href(v)"
             download
             :aria-label="t('versions.downloadLabel', { date: when(v) })"
-          >{{ t('versions.download') }}</a>
+          ><span
+            class="icon icon-download"
+            aria-hidden="true"
+          /></a>
           <button
             v-if="list.restore"
             type="button"
