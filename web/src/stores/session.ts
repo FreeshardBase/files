@@ -4,6 +4,7 @@ import { api, ApiFailure, setCsrf, signOutOfServer } from '../api/client.ts';
 import { SIGNED_OUT_PATH } from '../api/paths.ts';
 import { clearShares } from '../shareInbox.ts';
 import { useSettingsStore } from './settings.ts';
+import { useSortStore } from './sort.ts';
 
 export const useSessionStore = defineStore('session', {
   state: () => ({ me: null as Me | null, error: null as ApiFailure | null, signOutError: null as ApiFailure | null }),
@@ -14,6 +15,7 @@ export const useSessionStore = defineStore('session', {
         const me = await api.get<Me>('/api/v1/me');
         setCsrf(me.csrfToken);
         useSettingsStore().apply(me.settings); // the member's language and theme, on every device (#159)
+        useSortStore().apply(me.sort); // and their folder sort (#226)
         this.me = me;
       } catch (e) {
         if (!(e instanceof ApiFailure)) throw e;

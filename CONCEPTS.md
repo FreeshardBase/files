@@ -102,7 +102,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `transfers.ts` | `CreateTransferRequest` and `TransferJob` (#152). |
 | `storage.ts` | The storage overview and member quotas (#156): `SetQuotaRequest`, `MemberId`, `HomeUsage`, `StorageOverview`, `MemberUsage`. |
 | `appPasswords.ts` | App passwords (#157): `CreateAppPasswordRequest`, `AppPassword`, the list and create answers, `MAX_APP_PASSWORDS`. |
-| `settings.ts` | A member's settings (#159): `LOCALES`, `THEMES`, `Settings` (`locale` null = not chosen), `DEFAULT_SETTINGS`. |
+| `settings.ts` | A member's settings (#159): `LOCALES`, `THEMES`, `Settings` (`locale` null = not chosen), `DEFAULT_SETTINGS`; the folder sort (#226): `SORT_KEYS`, `Sort`, `DEFAULT_SORT`. |
 
 ### `server/src`
 
@@ -121,8 +121,8 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `auth/guard.ts` | Deny-by-default hook, session loading, CSRF checks, `requireUser`, `requireAdmin` (the role from the OIDC claim, else `FORBIDDEN`); for `appPassword` routes (WebDAV) HTTP Basic with an app password instead, and `requireDavUser`. |
 | `auth/appPasswords.ts` | App passwords (#157): generation, argon2id hash and lookup prefix, list, create (limit), revoke, `authenticateAppPassword` (one row by prefix, verified passwords remembered for five minutes per row). |
 | `routes/appPasswords.ts` | `/api/v1/app-passwords`: list, create (the password shown once), revoke. |
-| `settings.ts` | A member's language and theme (#159): `settingsOf` (the defaults without a row), `saveSettings` (one upsert). |
-| `routes/settings.ts` | `/api/v1/settings`: the caller's own settings, `GET` and `PUT` (replaces both fields). `/api/v1/me` carries them too. |
+| `settings.ts` | A member's language and theme (#159): `settingsOf` (the defaults without a row), `saveSettings` (one upsert); their folder sort (#226) in the same row: `sortOf`, `saveSort`. |
+| `routes/settings.ts` | `/api/v1/settings`: the caller's own settings, `GET` and `PUT` (replaces both fields); `/api/v1/settings/sort`: the folder sort, `GET` and `PUT`. `/api/v1/me` carries both. |
 | `dav/routes.ts` | WebDAV class 1 and 2 on the caller's home (#157): OPTIONS, GET, HEAD, PUT, DELETE (to the trash), PROPFIND (depth 0/1), PROPPATCH, MKCOL, COPY, MOVE (`Overwrite`), LOCK, UNLOCK; `If` and lock-token checks. |
 | `dav/paths.ts` | Request paths, Destination and `If` tags to home paths (segment-wise decoding, no URL resolution), hrefs. |
 | `dav/locks.ts` | `LockStore`: in-memory write locks per member, protection and conflict rules, timeouts. |
@@ -183,6 +183,8 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `main.ts` | SPA entry: Pinia, router, i18n, `<html lang>` sync, the theme; registers the service worker in the built app. |
 | `theme.ts` | The theme (#159): `data-theme` on `<html>` from the setting; "system" follows the device's `prefers-color-scheme`, live. The device's last known setting paints the first frame. |
 | `stores/settings.ts` | Pinia store of the member's language and theme: `apply` (from `/api/v1/me` or a save), `save` (applies only what the server confirmed). |
+| `stores/sort.ts` | Pinia store of the member's folder sort (#226), like the settings store: `apply` (from `/api/v1/me` or a save), `save`. |
+| `sort.ts` | `sortEntries` (#226): folders first, then by name, size or modified, ascending or descending; names by `Intl.Collator` (numeric, base, ignoring punctuation), ties by name. The folder view sorts the whole listing with it for every source. |
 | `components/PreferencesSection.vue` | The settings page's language and theme radios (#159): saved on change, one save after another; a refusal shows in the alert line and the radios return to the stored choice. |
 | `../public/sw.js` | The service worker (#158): caches the app shell (index.html, the bundle it references, manifest, icons; one build at a time), answers app pages network first with the cached shell offline, never the API; takes the share target's POST into the share inbox and redirects to `/share-target/<id>`. |
 | `../public/manifest.webmanifest` | The web app manifest: name, `start_url` `/home`, standalone, icons (`public/icons/`), the `share_target` (POST, multipart, `files`). |

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ERROR_CODES } from './errors.ts';
-import { SettingsSchema } from './settings.ts';
+import { SettingsSchema, SortSchema } from './settings.ts';
 
 export const EntrySchema = z.object({
   name: z.string().min(1),
@@ -45,6 +45,8 @@ export const MeSchema = z.object({
   role: z.enum(['admin', 'member']), csrfToken: z.string(),
   /** The member's language and theme (#159): the shell applies them with its first request. */
   settings: SettingsSchema,
+  /** The member's folder sort (#226). */
+  sort: SortSchema,
 });
 export type Me = z.infer<typeof MeSchema>;
 

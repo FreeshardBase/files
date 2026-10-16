@@ -19,3 +19,13 @@ export const SettingsSchema = z.strictObject({ locale: LocaleSchema.nullable(), 
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export const DEFAULT_SETTINGS: Settings = { locale: null, theme: 'system' };
+
+// The folder sort (#226): one choice per member for every folder of every source, stored beside language and theme but
+// written on its own (`PUT /api/v1/settings/sort`), so a sort click and a settings save never overwrite each other.
+export const SORT_KEYS = ['name', 'size', 'modified'] as const;
+export const SortKeySchema = z.enum(SORT_KEYS);
+export type SortKey = z.infer<typeof SortKeySchema>;
+export const SortSchema = z.strictObject({ key: SortKeySchema, dir: z.enum(['asc', 'desc']) });
+export type Sort = z.infer<typeof SortSchema>;
+
+export const DEFAULT_SORT: Sort = { key: 'name', dir: 'asc' };

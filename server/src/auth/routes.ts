@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { challengeFor, createOidc, randomNonce, randomState, randomVerifier } from './oidc.ts';
 import { createLoginAttempt, createSession, deleteSession, takeLoginAttempt, SESSION_TTL_MS, LOGIN_TTL_MS } from './sessions.ts';
 import { upsertUserFromClaims } from '../users.ts';
-import { settingsOf } from '../settings.ts';
+import { settingsOf, sortOf } from '../settings.ts';
 import { cookieNames } from './cookies.ts';
 import { requireUser } from './guard.ts';
 
@@ -82,6 +82,6 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/v1/me', async (req) => {
     const { user, session } = requireUser(req);
-    return { ...user, csrfToken: session.csrfToken, settings: settingsOf(db, user.id) };
+    return { ...user, csrfToken: session.csrfToken, settings: settingsOf(db, user.id), sort: sortOf(db, user.id) };
   });
 }

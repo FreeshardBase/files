@@ -84,6 +84,9 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await putSettings(page, { locale: null, theme: 'system' });
+  // The dead-UI check clicks the sortable column headers (#226); the next test starts from the default sort.
+  const r = await page.request.put('/api/v1/settings/sort', { data: { key: 'name', dir: 'asc' }, headers: await headers(page) });
+  expect(r.status(), await r.text()).toBe(200);
 });
 
 async function axe(page: Page, what: string) {

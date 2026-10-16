@@ -537,6 +537,16 @@
     "list": "List",
     "gallery": "Gallery"
   },
+  "sort": {
+    "label": "Sort by",
+    "name-asc": "Name, A to Z",
+    "name-desc": "Name, Z to A",
+    "size-asc": "Size, smallest first",
+    "size-desc": "Size, largest first",
+    "modified-asc": "Modified, oldest first",
+    "modified-desc": "Modified, newest first",
+    "failed": "The sort order could not be saved."
+  },
   "preview": {
     "previous": "Previous",
     "next": "Next",
