@@ -231,6 +231,20 @@ a:where(:hover) { text-decoration: underline; }
 }
 .app-dialog:focus { outline: none; }
 .app-dialog-title { margin: 0 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
+/* The head (#242, the details drawer): an uppercase label over the title, which stops after two lines, and the X at the
+   right edge, over a hairline, like Calendar's modal header. The focus starts on the title, without a ring. */
+.app-dialog-head {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  margin: 0 0 var(--space-4); padding-bottom: var(--space-3); border-bottom: var(--border-w) solid var(--border);
+}
+.app-dialog-heading { flex: 1 1 auto; min-width: 0; }
+.app-dialog-heading .fs-label { margin: 0 0 var(--space-2); }
+.app-dialog-head .app-dialog-title {
+  margin: 0; line-height: 1.3; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
+.app-dialog-head .app-dialog-title:focus { outline: none; }
+.app-dialog-close .icon { background: var(--ink-muted); }
 .app-dialog-text { margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
 .app-dialog-check { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); font-size: var(--fs-small); }
 .app-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
@@ -319,6 +333,10 @@ a:where(:hover) { text-decoration: underline; }
 .app-dialog-wide .app-dialog-title { overflow-wrap: anywhere; }
 .app-dialog-wide .app-dialog-actions { margin-top: var(--space-4); align-items: center; }
 .preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; }
+/* Images and video sit in a `--bg` well, not on the white sheet (#242). */
+.preview-body[data-kind='image'], .preview-body[data-kind='video'] {
+  justify-content: center; padding: var(--space-3); background: var(--bg); border-radius: var(--radius-tile);
+}
 .preview-media { display: block; max-width: 100%; max-height: 70dvh; object-fit: contain; border-radius: var(--radius-tile); }
 .preview-audio { width: 100%; margin: var(--space-5) 0; }
 .preview-note { align-self: stretch; margin: 0 0 var(--space-3); color: var(--ink-muted); font-size: var(--fs-small); }
@@ -572,6 +590,8 @@ a:where(:hover) { text-decoration: underline; }
 }
 .upload-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .upload-panel-head h2 { margin: 0; }
+/* "Uploads · 1 of 4 · running" (#242): a small heading, not the tiny label. */
+.upload-panel-title { font: 600 var(--fs-small)/1.3 var(--font-ui); color: var(--ink); }
 .upload-summary { margin: var(--space-3) 0 0; padding: var(--space-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius-tile); }
 .upload-summary p { margin: 0 0 var(--space-2); color: var(--danger); }
 .upload-summary ul { margin: 0 0 var(--space-3); padding-left: var(--space-5); font-size: var(--fs-small); overflow-wrap: anywhere; }
@@ -586,7 +606,15 @@ a:where(:hover) { text-decoration: underline; }
 .upload-state { font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); white-space: nowrap; }
 .upload-item[data-state='failed'] .upload-state { color: var(--danger); white-space: normal; }
 .upload-actions { display: flex; gap: var(--space-2); }
-.upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
+/* The track is `--border-cool` (#242 U5, as the usage bar's): `--border` all but vanished on the dark ground. */
+.upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border-cool); border-radius: var(--radius-pill); overflow: hidden; }
+/* A row's own actions (an upload's pause, resume, retry and cancel, a version's download) are 32 px icon buttons (#242). */
+.row-icon-button { width: 32px; height: 32px; padding: 0; box-sizing: border-box; }
+.upload-rows .upload-actions { gap: var(--space-1); }
+.upload-rows .upload-item .upload-name { grid-column: 1; grid-row: 1; }
+.upload-rows .upload-item .upload-state { grid-column: 2; grid-row: 1; }
+.upload-rows .upload-item .upload-actions { grid-column: 3; grid-row: 1; }
+.upload-rows .upload-item .upload-bar { grid-column: 1 / -1; grid-row: 2; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
 /* Storage overview (#156): one block per source, its figures over a usage gauge (red from 90 %), then the breakdown. */
@@ -674,6 +702,11 @@ a:where(:hover) { text-decoration: underline; }
   .upload-item[data-state='failed'] .upload-state { grid-column: 1 / -1; }
   .upload-actions { grid-column: 1 / -1; order: 3; }
   .upload-actions .button { flex: 1 1 auto; justify-content: center; }
+  /* An upload's icon buttons stay at the right edge of the name; the state sits under the name (#242). */
+  .upload-rows .upload-item .upload-name { grid-column: 1; grid-row: 1; }
+  .upload-rows .upload-item .upload-state { grid-column: 1; grid-row: 2; }
+  .upload-rows .upload-item .upload-actions { grid-column: 2; grid-row: 1 / span 2; order: 0; align-self: start; }
+  .upload-rows .upload-item .upload-bar { grid-row: 3; }
 }
 
 /* Item action menu (menu button pattern): a sheet-like popup, hairline border, no shadow. */
@@ -763,6 +796,19 @@ a:where(:hover) { text-decoration: underline; }
 .icon { flex: none; width: 20px; height: 20px; background: var(--line); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .icon-close {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+}
+/* An upload's row actions and a version's download (#242). */
+.icon-pause {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M9 6v12M15 6v12'/%3E%3C/svg%3E");
+}
+.icon-resume {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M8 5.5v13l10.5-6.5z'/%3E%3C/svg%3E");
+}
+.icon-retry {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4h-4'/%3E%3C/svg%3E");
+}
+.icon-download {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14'/%3E%3C/svg%3E");
 }
 .icon-view-list {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01'/%3E%3C/svg%3E");

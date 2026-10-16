@@ -26,7 +26,7 @@ async function openFolder(page: Page, dir: string) {
 async function openDetails(page: Page, name: string): Promise<Locator> {
   await row(page, name).getByRole('button', { name: /Aktionen für|Actions for/ }).click();
   await page.getByRole('menuitem', { name: /^Details$/ }).click();
-  const drawer = page.getByRole('dialog', { name: new RegExp(`Details (zu|of) .${name.replace(/[.]/g, '\\.')}.`) });
+  const drawer = page.getByRole('dialog', { name: `Details ${name}`, exact: true });
   await expect(drawer).toBeVisible();
   return drawer;
 }

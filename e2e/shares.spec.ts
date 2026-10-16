@@ -156,7 +156,7 @@ test('the share dialog works with the keyboard alone, and the member picker filt
     await page.keyboard.press('ArrowDown');
   }
   await page.keyboard.press('Enter');
-  const drawer = page.getByRole('dialog', { name: new RegExp(`Details (zu|of) .${dir}.`) });
+  const drawer = page.getByRole('dialog', { name: `Details ${dir}`, exact: true });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText(/Test Member.*(Darf ansehen|Can view)/);
   await page.keyboard.press('Escape');

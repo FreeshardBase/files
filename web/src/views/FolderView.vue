@@ -29,6 +29,7 @@ import { useSortStore } from '../stores/sort.ts';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 import { sortEntries } from '../sort.ts';
 import { intlLocale } from '../format.ts';
+import { previewKind } from '../preview.ts';
 
 const route = useRoute(); const router = useRouter(); const { t, locale } = useI18n();
 const folder = useFolderStore();
@@ -145,12 +146,15 @@ async function shareFromDetails() {
 }
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-// The preview steps through the folder's files in list order.
+// The preview steps through the folder's files in list order. An image opened in the gallery is a lightbox that steps
+// through the images only (#242).
 const files = computed(() => entries.value.filter((e) => e.type === 'file'));
+const isImage = (e: Entry) => previewKind(e.mime) === 'image';
 const preview = ref<{ files: Entry[]; start: number } | null>(null);
 function open(e: Entry) {
-  if (e.type === 'directory') void router.push(folderRoute(source.value, e.path));
-  else preview.value = { files: files.value, start: files.value.findIndex((f) => f.path === e.path) };
+  if (e.type === 'directory') { void router.push(folderRoute(source.value, e.path)); return; }
+  const set = view.value === 'gallery' && isImage(e) ? files.value.filter(isImage) : files.value;
+  preview.value = { files: set, start: set.findIndex((f) => f.path === e.path) };
 }
 async function closePreview(path: string) {
   preview.value = null;
@@ -645,6 +649,7 @@ function onDrop(paths: string[], dir: string) {
       :source="source"
       :entry="details"
       :access="folder.access"
+      :root-label="rootLabel"
       @close="details = null"
       @share="shareFromDetails"
       @restored="folder.open(folder.path, { refresh: true })"
