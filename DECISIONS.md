@@ -749,3 +749,17 @@ Decision:
 Why: left-alignment answers both G1 (one width, one edge) and G2 (no gap beside the sidebar at 1440 px, and a header that can line up with the column), with Calendar's look; a centred column would need the header to mirror a centred grid. A docked panel would cover list rows and their menu buttons in the bottom-right corner and collide with the toast that sits there (#241); under the toolbar it covers nothing and the title stays put. Swapping the bar into the toolbar row moves nothing; reserving its height would leave an empty band above every list. Every placeholder that holds a hint the member must read is gone; a prompt in a search field is the common pattern and repeats nothing (YAGNI).
 
 Left open: the transfer panel stays at the top of the main area (#234); the drop hint above the toolbar still pushes the title down while files are dragged over the folder.
+
+## 2026-10-16: Contrast and dark-mode parity (#243)
+
+Question: the issue proposes colour values and offers choices. Which control-border values, which light amber, styled or native checkboxes, and which scrim? The guide bundle and Calendar live outside this repository, so how is "both apps share it" met here?
+
+Decision:
+- **Control border.** A new `--border-control` in `app.css`: #788e95 light, #7a6c55 dark, for `.fs-input` (and the selects, which carry it), `.button` and checkboxes. The issue's #8fa3aa and #6b604c were measured at 2.4–3.0:1, short of the 3:1 they were meant to reach, so both were darkened along their own hue until they pass on paper and surface (3.1–3.6:1).
+- **Amber.** #9f5c16 stays. The suggested #a8641a is 4.2:1 on the paper, under AA for small text.
+- **Checkboxes.** Styled: the native input with `appearance: none`, drawn as the guide's box, outline `--border-control` (not `--border-cool`, which fails 3:1) and a teal fill with a surface-tone check. Radios stay native: they render as an outline circle in both themes, which the review did not flag.
+- **Usage bar.** Track `--border-cool`, 6 px; any usage fills at least 2 px; the rounded percentage beside it in mono, "< 1 %" below one per cent so a sliver never reads "0 %".
+- **Scrim.** `--bg` at 80 %, no filter.
+- **Shared values.** DESIGN.md "Deviations" lists the values proposed for the guide bundle (`tokens.json` v0.2): `--border-control`, the light `--ink-muted` and `--accent`, and the scrim. `tokens.css` stays a copy of the bundle; Calendar takes the values from the bundle, not from this change.
+
+Why: the measured values are what WCAG asks (1.4.11 for boundaries, 1.4.3 for the amber label); the issue's own numbers were estimates. Styling the checkbox on the native input keeps its keyboard and screen-reader behaviour and costs no script, while the dark theme's grey square went against the guide. Editing the bundle or Calendar is outside this repository's scope, so the change records the proposal instead.

@@ -114,6 +114,8 @@
     "noClouds": "You haven't connected a cloud account yet.",
     "cloudUsedNoLimit": "{used} used · no limit",
     "cloudUnknown": "Usage unknown: the provider gives no figures for this storage",
+    "percent": "{percent} %",
+    "percentBelowOne": "< 1 %",
     "cloudBar": "{name}: storage used",
     "largest": "Largest folders",
     "noFolders": "No folders with files yet.",
