@@ -13,6 +13,7 @@ import MembersView from './views/MembersView.vue';
 import SettingsView from './views/SettingsView.vue';
 import ShareTargetView from './views/ShareTargetView.vue';
 import SignedOutView from './views/SignedOutView.vue';
+import NotFoundView from './views/NotFoundView.vue';
 import { SIGNED_OUT_PATH } from './api/paths.ts';
 
 /** A public link's share page and the signed-out page: no session is loaded and no login is asked for there. */
@@ -45,7 +46,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/s/:token([A-Za-z0-9_-]{22})', component: PublicLinkView },
   // After sign-out (#222): outside the signed-in shell, and it never redirects to the login.
   { path: SIGNED_OUT_PATH, component: SignedOutView },
-  { path: '/:pathMatch(.*)*', redirect: '/home' },
+  // Any other address says it does not exist (#240), with the way to "My storage", instead of a silent redirect.
+  { path: '/:pathMatch(.*)*', component: NotFoundView },
 ];
 
 export const router = createRouter({ history: createWebHistory(), routes });

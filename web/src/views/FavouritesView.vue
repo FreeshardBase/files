@@ -9,6 +9,7 @@ import { useFavouritesStore } from '../stores/favourites.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
+import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t } = useI18n();
 const favourites = useFavouritesStore();
@@ -70,9 +71,7 @@ async function remove(f: Favourite) {
     >
       {{ failure }}
     </p>
-    <p v-if="!favourites.loaded">
-      {{ $t('folder.loading') }}
-    </p>
+    <RowSkeleton v-if="!favourites.loaded" />
     <p
       v-else-if="favourites.error"
       role="alert"

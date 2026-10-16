@@ -19,6 +19,8 @@ import NewFolderDialog from '../components/NewFolderDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
 import ActionToast, { type Toast } from '../components/ActionToast.vue';
+import StateAlert from '../components/StateAlert.vue';
+import RowSkeleton from '../components/RowSkeleton.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
@@ -126,7 +128,13 @@ const folderName = computed(() => path.value === '/' ? (source.value === 'home' 
 const editable = computed(() => folder.access === 'edit' && folder.source === source.value);
 const own = computed(() => source.value === 'home');
 const shareable = computed(() => !source.value.startsWith('share:'));
-const canUpload = computed(() => own.value || editable.value);
+// A folder that failed to open offers nothing to do in it (#240): its toolbar is gone and the alert says why.
+const canUpload = computed(() => (own.value || editable.value) && !folder.error);
+const atHome = computed(() => source.value === 'home' && path.value === '/');
+// Loading with nothing in place yet (first open, after an empty folder or an error): the row skeleton. Otherwise the
+// previous list stays in place, inert and dimmed, under the loading note (#228).
+const skeleton = computed(() => folder.loading && folder.entries.length === 0);
+const notFound = computed(() => folder.error?.code === 'NOT_FOUND' || folder.error?.code === 'SOURCE_NOT_FOUND');
 const sharing = ref<Entry | null>(null);
 const details = ref<Entry | null>(null);
 async function shareFromDetails() {
@@ -466,7 +474,10 @@ function onDrop(paths: string[], dir: string) {
     >
       {{ $t('upload.dropHint', { folder: folderName }) }}
     </p>
-    <div class="toolbar">
+    <div
+      v-if="!folder.error"
+      class="toolbar"
+    >
       <Breadcrumbs
         :source="source"
         :path="path"
@@ -672,24 +683,57 @@ function onDrop(paths: string[], dir: string) {
       :aria-busy="folder.loading"
     >
       <p
-        v-if="folder.loading"
+        v-if="folder.loading && !skeleton"
         class="folder-loading"
       >
         {{ $t('folder.loading') }}
       </p>
       <div
         class="folder-items"
-        :inert="folder.loading"
+        :inert="folder.loading && !skeleton"
       >
-        <p
+        <StateAlert
           v-if="folder.error"
-          role="alert"
+          :title="$t(notFound ? 'folder.notFound' : 'folder.failed')"
+          :text="$t(notFound ? 'folder.notFoundText' : `errors.${folder.error.code}`)"
         >
-          {{ $t(`errors.${folder.error.code}`) }}
-        </p>
-        <p v-else-if="folder.entries.length === 0 && !folder.loading">
-          {{ $t('folder.empty') }}
-        </p>
+          <RouterLink
+            v-if="notFound"
+            class="button primary"
+            to="/home"
+          >
+            {{ $t('nav.toHome') }}
+          </RouterLink>
+          <button
+            v-else
+            type="button"
+            class="button primary"
+            @click="folder.open(path, { source })"
+          >
+            {{ $t('app.retry') }}
+          </button>
+        </StateAlert>
+        <RowSkeleton v-else-if="skeleton" />
+        <div
+          v-else-if="folder.entries.length === 0 && !folder.loading"
+          class="empty-state"
+        >
+          <span
+            class="icon"
+            :class="atHome ? 'icon-upload' : 'icon-folder'"
+            aria-hidden="true"
+          />
+          <p>{{ $t(atHome ? 'folder.emptyHome' : 'folder.empty') }}</p>
+          <!-- The toolbar's file picker, so an upload from here is the same upload. -->
+          <button
+            v-if="canUpload"
+            type="button"
+            class="button primary"
+            @click="uploadButton?.input?.click()"
+          >
+            {{ $t('upload.button') }}
+          </button>
+        </div>
         <GalleryGrid
           v-else-if="view === 'gallery'"
           ref="gallery"

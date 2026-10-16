@@ -7,7 +7,12 @@
     "signOutFailed": "Das Abmelden hat nicht geklappt: {reason} Sie sind noch angemeldet.",
     "offline": "Sie sind offline. Dateien und Ordner laden wieder, sobald die Verbindung zurück ist.",
     "actionLost": "Ihre Sitzung war abgelaufen, Sie sind wieder angemeldet. Ihre letzte Aktion wurde nicht ausgeführt; bitte wiederholen Sie sie.",
-    "dismiss": "Schließen"
+    "dismiss": "Schließen",
+    "loadFailed": "„Dateien“ lässt sich nicht laden"
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "text": "Diese Adresse gibt es in „Dateien“ nicht."
   },
   "shareTarget": {
     "title": "Geteilte Dateien speichern",
@@ -21,6 +26,7 @@
   "nav": {
     "home": "Mein Speicher",
     "breadcrumbRoot": "Mein Speicher",
+    "toHome": "Zu „Mein Speicher“",
     "sources": "Orte",
     "recent": "Zuletzt geändert",
     "shared": "Für mich freigegeben",
@@ -239,6 +245,10 @@
   },
   "folder": {
     "empty": "Dieser Ordner ist leer.",
+    "emptyHome": "Noch nichts hier. Laden Sie Ihre ersten Dateien hoch.",
+    "notFound": "Ordner nicht gefunden",
+    "notFoundText": "Diesen Ordner gibt es nicht oder nicht mehr.",
+    "failed": "Ordner lässt sich nicht öffnen",
     "loading": "Wird geladen …",
     "columns": {
       "name": "Name",
@@ -458,7 +468,8 @@
       "up": "Einen Ordner nach oben",
       "contents": "Inhalt von {name}",
       "countNote": "Jeder Download und jede Vorschau zählt zum Limit dieses Links.",
-      "unavailable": "Dieser Link lässt sich nicht öffnen"
+      "unavailable": "Dieser Link lässt sich nicht öffnen",
+      "notFound": "Diesen Link gibt es nicht oder nicht mehr. Fragen Sie die Person, die ihn Ihnen geschickt hat."
     }
   },
   "details": {

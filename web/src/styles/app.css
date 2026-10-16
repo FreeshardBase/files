@@ -87,6 +87,9 @@ a:where(:hover) { text-decoration: underline; }
   color: var(--ink); text-decoration: none; font-size: var(--fs-small);
 }
 .nav-places { display: flex; flex-direction: column; gap: var(--space-1); }
+/* While /me loads (#240): one bar per place at the places' row height, in the hairline colour, no shimmer. */
+.nav-skeleton { display: flex; flex-direction: column; gap: var(--space-1); }
+.nav-skeleton .skeleton-bar { width: 70%; margin: 15px var(--space-3) 15px calc(var(--space-3) + 2px); }
 /* The places toggle exists for the phone only (#160). */
 .nav-toggle { display: none; }
 .app-nav a:hover { color: var(--line); }
@@ -288,7 +291,12 @@ a:where(:hover) { text-decoration: underline; }
 .link-page { max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 .link-kind { margin: 0 0 var(--space-1); font-size: var(--fs-label); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--ink-muted); }
 .link-name { margin-bottom: var(--space-4); overflow-wrap: anywhere; }
-.link-alert { padding: var(--space-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius-control); color: var(--danger); }
+/* A refusal on the visitor's page: the alert banner's box (#240); a bare refusal sentence keeps the danger colour. */
+.link-alert {
+  padding: var(--space-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--danger) 7%, transparent); color: var(--danger);
+}
+.link-alert.alert-banner { padding: var(--space-4); color: var(--ink); }
 .link-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
 .link-entries { margin-top: var(--space-3); }
 @media (max-width: 600px) {
@@ -368,6 +376,36 @@ a:where(:hover) { text-decoration: underline; }
   text-align: center; color: var(--ink-muted);
 }
 .folder-items[inert] { opacity: 0.4; }
+/* A list loading with nothing in place (#240): six rows at the list's row height with bars in the hairline colour, no
+   shimmer. The heights are the folder list's rows: 58 px in the table, 77.4 px stacked (name line over size line). */
+.row-skeleton { --skeleton-row: 58px; }
+.skeleton-row {
+  display: flex; align-items: center; gap: var(--space-3); box-sizing: border-box; height: var(--skeleton-row);
+  padding: 0 var(--space-4); border-bottom: var(--border-w) solid var(--border);
+}
+.skeleton-row:last-child { border-bottom: 0; }
+.skeleton-bar { display: block; flex: none; height: 10px; border-radius: var(--radius-pill); background: var(--border); animation: none; }
+.skeleton-icon { width: 20px; height: 20px; border-radius: var(--radius-glyph); }
+.skeleton-name { flex: 0 1 40%; }
+.skeleton-meta { width: 64px; margin-left: auto; }
+@media (max-width: 900px) { .row-skeleton { --skeleton-row: 77.4px; } }
+/* An empty folder (#240, PDF p.27): a 48 px line glyph, one muted sentence and the forward action, centred in the column. */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  padding: var(--space-7) var(--space-4); text-align: center; color: var(--ink-muted);
+}
+.empty-state .icon { width: 48px; height: 48px; }
+.empty-state p { margin: 0; }
+/* The guide's alert banner (PDF p.17, #240): a danger hairline on a 7 % danger tint, a bold title, one sentence and the
+   one way on. It stands in for a view's content that cannot be shown. */
+.alert-banner {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
+  border: var(--border-w) solid var(--danger); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--danger) 7%, transparent); color: var(--ink);
+}
+.alert-banner .alert-title { margin: 0; font-size: var(--fs-body); font-weight: 600; color: var(--danger); }
+.alert-banner .alert-text { margin: 0; }
+.alert-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 
 /* The current crumb is the folder's title (#239): h2, bold, in ink; the ancestors before it are small and teal. */
 .breadcrumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; font-size: var(--fs-small); }
@@ -734,6 +772,9 @@ a:where(:hover) { text-decoration: underline; }
 }
 .icon-folder {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+}
+.icon-upload {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4M7.5 8.5 12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/%3E%3C/svg%3E");
 }
 .icon-offline {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M7 18h10.5a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 7.3 9.6 4.2 4.2 0 0 0 7 18zM4 4l16 16'/%3E%3C/svg%3E");
