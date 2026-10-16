@@ -600,3 +600,13 @@ Decision: at `/`, `ShareBackend.write` accepts only a write to a file share with
 Why: the share layer is the one place that knows where the shared item ends and what it is, so one rule there covers every backend. "Replace" and "fail" on a file never pick another name. The SPA uploads into a share as folder plus file name and never writes `/` with "keep both" or to a folder share's `/`, so no working action is lost.
 
 Left open: when a cloud share's item has gone at the provider (renamed or deleted elsewhere), a write at `/` or beneath it still creates the old path anew, missing parent folders included (the item is not orphaned, because only home changes cascade). That is a separate defect and needs its own issue.
+
+## 2026-10-16: Bounds on WebDAV locks (#253)
+
+Question: every LOCK kept its client's `<D:owner>` in memory for up to a day, and that owner could be as large as the 1 MiB body cap. Shared locks on one item never conflict, so one app password could fill the heap within seconds. What bounds a member's locks, and how is a refused lock answered?
+
+Decision: a lock's serialized owner XML is at most 4 KiB, and a larger one is `VALIDATION` (400). A member holds at most 100 live locks. Expired locks do not count, and a refresh adds none. The 101st lock, on any item, is the new error `LOCK_LIMIT` (503). Both bounds are checked before a lock on an unmapped URL creates its empty file, so a refused LOCK leaves nothing behind. The one exception is parallel LOCKs on unmapped URLs racing for the last place: the store checks again when the lock is created, so the cap holds, but the losers have made their empty file by then. There is no cap across members.
+
+Why: Windows Explorer, Finder, davfs2 and LibreOffice send a name or a URL as the owner, far below 4 KiB, and a member's clients rarely hold more than a few locks at once. Real use does not reach either bound. Together they keep one member's owner XML at 400 KiB; with the lock paths, which only the header size limit bounds, a member's locks stay at a few MiB. Members are the shard's few accounts and an attacker cannot create one, so the per-member cap already bounds the total (YAGNI). 503 says "not now" without claiming a conflicting lock, which 423 would.
+
+Left open: someone holding a leaked app password can still use up that member's 100 locks for up to a day. Revoking the password does not end its locks; they only expire.

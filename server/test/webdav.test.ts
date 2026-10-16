@@ -482,4 +482,72 @@ describe('locks', () => {
     expect((await dav('UNLOCK', p, { headers: { 'lock-token': `<${token}>` }, password: memberPw })).statusCode).toBe(409);
     expect((await dav('UNLOCK', p, { headers: { 'lock-token': `<${token}>` } })).statusCode).toBe(204);
   });
+
+  // #253: every lock is kept in memory for up to a day, so neither its owner XML nor their number is unbounded.
+  it('refuses an owner larger than 4096 bytes and keeps no lock for it', async () => {
+    const withOwner = (text: string) => SHARED.replace('<D:owner>testuser</D:owner>', `<D:owner>${text}</D:owner>`);
+    const unlock = async (path: string, r: { headers: Record<string, unknown> }) =>
+      expect((await dav('UNLOCK', path, { headers: { 'lock-token': `<${tokenOf(r)}>` } })).statusCode).toBe(204);
+    // The stored owner is the element as serialized, reported back between depth and timeout; measure its wrapping.
+    const probe = `${fresh('lock')}.txt`;
+    await dav('PUT', probe, { payload: 'x' });
+    const small = await lock(probe, { body: withOwner('y') });
+    const wrapping = Buffer.byteLength(/<\/D:depth>(.*)<D:timeout>/s.exec(small.body)![1]!) - 1;
+    await unlock(probe, small);
+
+    const p = `${fresh('lock')}.txt`;
+    await dav('PUT', p, { payload: 'x' });
+    const over = withOwner('x'.repeat(4097 - wrapping));
+    const r = await lock(p, { body: over });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().code).toBe('VALIDATION');
+    expect(r.headers['lock-token']).toBeUndefined();
+    // Bytes, not characters: 1400 euro signs are 4200 bytes.
+    expect((await lock(p, { body: withOwner('€'.repeat(1400)) })).statusCode).toBe(400);
+    const unmapped = `${fresh('lock')}.txt`;
+    expect((await lock(unmapped, { body: over })).statusCode).toBe(400);
+    expect((await dav('GET', unmapped)).statusCode).toBe(404);
+    // Nothing was locked: an exclusive lock still goes through.
+    const l = await lock(p);
+    expect(l.statusCode).toBe(200);
+    await unlock(p, l);
+    // An owner of exactly 4096 bytes is kept and reported back as sent.
+    const text = 'y'.repeat(4096 - wrapping);
+    const ok = await lock(p, { body: withOwner(text) });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.body).toContain(`${text}</D:owner>`);
+    await unlock(p, ok);
+  });
+
+  it('caps the live locks of one member at 100; another member can still lock', async () => {
+    const p = `${fresh('lock')}.txt`;
+    await dav('PUT', p, { payload: 'x' });
+    await dav('PUT', p, { payload: 'x', password: memberPw });
+    const tokens: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      const r = await lock(p, { body: SHARED });
+      expect(r.statusCode).toBe(200);
+      tokens.push(tokenOf(r));
+    }
+    const over = await lock(p, { body: SHARED });
+    expect(over.statusCode).toBe(503);
+    expect(over.json().code).toBe('LOCK_LIMIT');
+    expect(over.headers['lock-token']).toBeUndefined();
+    // Not even on another item, and a refused lock on an unmapped URL creates no file.
+    const q = `${fresh('lock')}.txt`;
+    expect((await lock(q)).statusCode).toBe(503);
+    expect((await dav('GET', q)).statusCode).toBe(404);
+    // The other member's locks are counted apart.
+    const theirs = await lock(p, { password: memberPw });
+    expect(theirs.statusCode).toBe(200);
+    expect((await dav('UNLOCK', p, { headers: { 'lock-token': `<${tokenOf(theirs)}>` }, password: memberPw })).statusCode).toBe(204);
+    // A refresh adds no lock and still works at the cap.
+    expect((await dav('LOCK', p, { headers: { if: `(<${tokens[0]}>)`, timeout: 'Second-900' } })).statusCode).toBe(200);
+    // Releasing one frees a place.
+    expect((await dav('UNLOCK', p, { headers: { 'lock-token': `<${tokens.pop()}>` } })).statusCode).toBe(204);
+    const again = await lock(p, { body: SHARED });
+    expect(again.statusCode).toBe(200);
+    tokens.push(tokenOf(again));
+    for (const tk of tokens) expect((await dav('UNLOCK', p, { headers: { 'lock-token': `<${tk}>` } })).statusCode).toBe(204);
+  });
 });

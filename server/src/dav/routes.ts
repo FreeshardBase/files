@@ -330,6 +330,9 @@ export async function registerDavRoutes(app: FastifyInstance): Promise<void> {
         const depthHeader = req.headers.depth ?? 'infinity';
         if (depthHeader !== '0' && depthHeader !== 'infinity') throw new AppError('VALIDATION');
         const owner = child(info, 'owner');
+        const ownerXml = owner ? serialize(owner) : '';
+        // Before the empty file of an unmapped URL is created, so a refused lock leaves nothing behind (create checks again).
+        c.locks.admit(c.user.id, ownerXml);
         const existing = await statOrUndefined(c.home, path);
         if (!existing && await parentMissing(c, path)) return reply.status(409).send({ code: 'NOT_FOUND' });
         if (c.locks.conflicts(c.user.id, path, depthHeader, scope)) return davError(reply, 423, 'no-conflicting-lock');
@@ -340,7 +343,7 @@ export async function registerDavRoutes(app: FastifyInstance): Promise<void> {
           await c.home.write(path, Readable.from([]), { onCollision: 'fail', maxBytes: config.maxUploadBytes, size: 0 });
         }
         const lock = c.locks.create({ userId: c.user.id, root: path, depth: depthHeader, scope, timeoutSeconds: timeout,
-          ownerXml: owner ? serialize(owner) : '' });
+          ownerXml });
         return answer(lock, existing ? 200 : 201);
       },
 

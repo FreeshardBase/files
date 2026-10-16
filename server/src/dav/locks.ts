@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AppError } from '../errors.ts';
 import { isUnder, parentOf } from './paths.ts';
 
 // WebDAV write locks (class 2, RFC 4918 §6–7), per member: a member's home is reachable only by that member, so another
@@ -9,6 +10,9 @@ export type Lock = { token: string; userId: string; root: string; depth: '0' | '
   ownerXml: string; timeoutSeconds: number; expires: number };
 
 export const MAX_TIMEOUT_SECONDS = 24 * 3600;
+// A lock stays in memory for up to a day, so its owner XML and the number one member holds are bounded (#253).
+export const MAX_OWNER_BYTES = 4096;
+export const MAX_LOCKS_PER_MEMBER = 100;
 const DEFAULT_TIMEOUT_SECONDS = 3600;
 
 /** `Timeout: Second-600, Infinite`: the first value we understand, capped at a day. */
@@ -54,7 +58,14 @@ export class LockStore {
     return reached.some((l) => scope === 'exclusive' || l.scope === 'exclusive');
   }
 
+  /** Whether the member may take one more lock with this owner: VALIDATION beyond 4 KiB of owner XML, LOCK_LIMIT at 100. */
+  admit(userId: string, ownerXml: string): void {
+    if (Buffer.byteLength(ownerXml) > MAX_OWNER_BYTES) throw new AppError('VALIDATION');
+    if (this.live(userId).length >= MAX_LOCKS_PER_MEMBER) throw new AppError('LOCK_LIMIT', { max: MAX_LOCKS_PER_MEMBER });
+  }
+
   create(l: Omit<Lock, 'token' | 'expires'>): Lock {
+    this.admit(l.userId, l.ownerXml);
     const lock: Lock = { ...l, token: `opaquelocktoken:${randomUUID()}`, expires: Date.now() + l.timeoutSeconds * 1000 };
     this.locks.set(lock.token, lock);
     return lock;

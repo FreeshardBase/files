@@ -514,7 +514,8 @@
     "SOURCE_CHANGED": "Changed in the cloud since the migration, so it was kept.",
     "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept.",
     "NOT_SUPPORTED": "This source doesn't offer that.",
-    "APP_PASSWORD_LIMIT": "You can have at most {max} app passwords. Revoke one you no longer use first."
+    "APP_PASSWORD_LIMIT": "You can have at most {max} app passwords. Revoke one you no longer use first.",
+    "LOCK_LIMIT": "Your WebDAV clients hold {max} locks, the most there can be. Unlock files you no longer edit first."
   },
   "versions": {
     "title": "Versions",
