@@ -59,7 +59,10 @@ watch(() => folder.entries, (entries) => {
   const there = new Set(entries.map((e) => e.path));
   selected.value = selected.value.filter((p) => there.has(p));
 });
-const selectedEntries = computed(() => folder.entries.filter((e) => selected.value.includes(e.path)));
+const selectedEntries = computed(() => {
+  const chosen = new Set(selected.value); // Ctrl+A in a large folder (#225): one lookup per entry, not a scan
+  return folder.entries.filter((e) => chosen.has(e.path));
+});
 // The member's sort (#226), applied here to the whole listing (the store loads every page first), for every source.
 // Everything that walks the items in order (list, gallery, preview, focus) uses this order.
 const sort = computed<Sort>(() => ({ key: sortStore.key, dir: sortStore.dir }));
