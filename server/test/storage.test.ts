@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import http from 'node:http';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
 import { homeRoot } from '../src/paths.ts';
 import type { ConnectedBackend } from '../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
@@ -29,6 +32,29 @@ async function signIn(t: TestApp, user: string): Promise<S> {
 const b64 = (v: string) => Buffer.from(v).toString('base64');
 const putBytes = (t: TestApp, s: S, path: string, bytes: Buffer) => as(t, s, 'PUT',
   `/api/v1/sources/home/content?path=${encodeURIComponent(path)}&onCollision=fail`, bytes, { 'content-type': 'application/octet-stream' });
+/**
+ * A PUT without Content-Length (`transfer-encoding: chunked`), which `inject` cannot send. It writes `bytes` and never
+ * ends the body, so it cannot run into the socket the server closes after an early answer (as in sources.test.ts).
+ */
+async function chunkedPut(t: TestApp, path: string, headers: Record<string, string>, bytes: number) {
+  if (!t.app.server.listening) await t.app.listen({ port: 0, host: '127.0.0.1' });
+  const req = http.request({ port: (t.app.server.address() as AddressInfo).port, host: '127.0.0.1', method: 'PUT', path,
+    headers: { ...headers, 'transfer-encoding': 'chunked' } });
+  req.on('error', () => undefined); // handled: the destroy below aborts the unfinished body; the response decides the test
+  const answered = once(req, 'response');
+  req.write(Buffer.alloc(bytes));
+  try {
+    const [res] = (await Promise.race([answered,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('no answer to the chunked PUT')), 3000))])) as [http.IncomingMessage];
+    const body = await new Promise<string>((resolve) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => resolve(b)); });
+    return { statusCode: res.statusCode, body };
+  } finally { req.destroy(); }
+}
+// No file at `path` and no upload left behind anywhere in the home.
+const leftNothing = (root: string, name: string) => {
+  expect(existsSync(join(root, name))).toBe(false);
+  expect(readdirSync(root, { recursive: true }).map(String).filter((n) => n.endsWith('.upload'))).toEqual([]);
+};
 const quotaOf = (t: TestApp, id: string) => t.db.prepare('SELECT quota_bytes FROM users WHERE id = ?').pluck().get(id);
 async function settled(t: TestApp, s: S, id: string): Promise<Job> {
   const end = Date.now() + 10_000;
@@ -84,6 +110,23 @@ describe('quota enforcement (#156)', () => {
     const r = await putBytes(t, member, '/put.bin', Buffer.alloc(2 * MB));
     expect(r.json().code).toBe('QUOTA_EXCEEDED');
     expect(existsSync(join(root, 'put.bin'))).toBe(false);
+  });
+
+  // #256: without a Content-Length nothing is reserved up front; only the streaming limiter holds the write to what is left.
+  // 1 MB is left; one byte more is refused.
+  it('refuses a chunked PUT (no Content-Length) one byte over the quota and leaves no file', async () => {
+    const r = await chunkedPut(t, '/api/v1/sources/home/content?path=%2Fchunked.bin&onCollision=fail',
+      { cookie: member.cookie, 'x-csrf-token': member.csrf, origin: ORIGIN, 'content-type': 'application/octet-stream' }, MB + 1);
+    expect(r.statusCode, r.body).toBe(507);
+    expect(JSON.parse(r.body).code).toBe('QUOTA_EXCEEDED');
+    leftNothing(root, 'chunked.bin');
+  });
+
+  it('refuses a chunked WebDAV PUT one byte over the quota and leaves no file', async () => {
+    const pw = await createAppPassword(t, member);
+    const r = await chunkedPut(t, '/dav/chunked-dav.bin', { authorization: basic(pw) }, MB + 1);
+    expect(r.statusCode, r.body).toBe(507);
+    leftNothing(root, 'chunked-dav.bin');
   });
 
   it('refuses copying a 2 MB file, and copies it once the quota is removed', async () => {
