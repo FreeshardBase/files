@@ -1,10 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, createHmac } from 'node:crypto';
+import { lstatSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Entry, PublicLink } from '@files/shared';
 import type { ConnectedBackend, StorageBackend } from '../src/storage/backend.ts';
+import { AppError } from '../src/errors.ts';
+import { homeRoot } from '../src/paths.ts';
 import { isExpired } from '../src/storage/publicLinks.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
@@ -17,15 +20,19 @@ let t: TestApp; let owner: S; let other: S; let dist: string;
 const ORIGIN = 'https://files.example.com';
 const mutating = (s: S) => ({ cookie: s.cookie, 'x-csrf-token': s.csrf, origin: ORIGIN });
 
-// `testuser`'s cloud connection `cloud`, present while `linked` is true; its one file is /doc.txt.
-let ownerId = ''; let linked = true;
+// `testuser`'s cloud connection `cloud`, present while `linked` is true; its one file is /doc.txt. While `failure` is set,
+// every read of it throws that owner-facing error, as a provider whose grant was revoked or that rate-limits would.
+let ownerId = ''; let linked = true; let failure: AppError | undefined;
 const nope = async (): Promise<never> => { throw new Error('not used by the link test'); };
 const cloudEntry = (path: string): Entry => ({ name: 'doc.txt', path, type: 'file', size: 11, modified: '2026-10-01T00:00:00.000Z',
   mime: 'text/plain' });
 const cloud: StorageBackend = {
-  list: nope, write: nope, mkdir: nope, move: nope, copy: nope, delete: nope,
-  stat: async (p) => cloudEntry(p),
-  read: async (p) => ({ entry: cloudEntry(p), stream: Readable.from([Buffer.from('cloud bytes')]), etag: '"c1"' }),
+  list: async () => { if (failure) throw failure; return { entries: [cloudEntry('/folder/doc.txt')] }; }, write: nope, mkdir: nope, move: nope, copy: nope, delete: nope,
+  stat: async (p) => { if (failure) throw failure; return cloudEntry(p); },
+  read: async (p) => {
+    if (failure) throw failure;
+    return { entry: cloudEntry(p), stream: Readable.from([Buffer.from('cloud bytes')]), etag: '"c1"' };
+  },
 };
 const connections = async (user: { id: string }): Promise<ConnectedBackend[]> =>
   user.id === ownerId && linked ? [{ id: 'cloud', backend: cloud }] : [];
@@ -43,7 +50,7 @@ beforeAll(async () => {
   ownerId = (await t.app.inject({ url: '/api/v1/me', headers: { cookie: owner.cookie } })).json().id;
 });
 afterAll(async () => { delete process.env.FILES_WEB_DIST; await t.close(); rmSync(dist, { recursive: true, force: true }); });
-afterEach(() => { vi.useRealTimers(); linked = true; });
+afterEach(() => { vi.useRealTimers(); linked = true; failure = undefined; });
 
 const put = (path: string, text: string, onCollision = 'fail') => t.app.inject({
   method: 'PUT', url: `/api/v1/sources/home/content?path=${encodeURIComponent(path)}&onCollision=${onCollision}`,
@@ -385,6 +392,67 @@ describe('orphaned links (#95)', () => {
       expect(r.json()).toEqual({ code: 'SHARE_ORPHANED' });
       expect(r.body).not.toContain('HOME BYTES');
     }
+  });
+});
+
+describe('what a visitor learns about the owner (#279)', () => {
+  it('never sees the state of the owner\'s cloud connection: one LINK_UNAVAILABLE for every provider error', async () => {
+    const token = 'D'.repeat(22); const dirToken = 'E'.repeat(22);
+    const insert = t.db.prepare(`INSERT INTO public_links (id, token, owner_id, source, path, type, label, created_at)
+      VALUES (?, ?, ?, 'conn:cloud', ?, ?, '', ?)`);
+    insert.run('d'.repeat(32), token, ownerId, '/doc.txt', 'file', new Date().toISOString());
+    insert.run('e'.repeat(32), dirToken, ownerId, '/folder', 'directory', new Date().toISOString());
+    expect((await visit(token, 'content')).body).toBe('cloud bytes');
+    expect((await visit(dirToken, 'list')).statusCode).toBe(200);
+    // The provider's codes, and one no link ever names: only the link's own codes pass, not just these four are hidden.
+    for (const code of ['CONNECTION_REAUTH', 'PROVIDER_UNAVAILABLE', 'AMBIGUOUS_NAME', 'NOT_EXPORTABLE', 'NOT_SUPPORTED'] as const) {
+      failure = new AppError(code, code === 'AMBIGUOUS_NAME' ? { name: 'doc.txt' } : undefined);
+      const before = logLines.length;
+      for (const [tok, rest] of [[token, 'info'], [token, 'content'], [dirToken, 'list']] as const) {
+        const r = await visit(tok, rest);
+        expect(r.statusCode, `${code} ${rest}`).toBe(503);
+        expect(r.json(), `${code} ${rest}`).toEqual({ code: 'LINK_UNAVAILABLE' });
+      }
+      const nav = await visit(token, 'content', { headers: { 'sec-fetch-mode': 'navigate' } });
+      expect(nav.statusCode).toBe(303);
+      expect(nav.headers.location).toBe(`/s/${token}?error=LINK_UNAVAILABLE`);
+      // The real code stays in the log, with the link's id, for the shard's admin.
+      const logged = logLines.slice(before);
+      expect(logged.some((l) => l.includes(`"code":"${code}"`) && l.includes('d'.repeat(32))), code).toBe(true);
+      expect(logged.some((l) => l.includes(`"code":"${code}"`) && l.includes('e'.repeat(32))), code).toBe(true);
+    }
+    // The link's own answers still reach the visitor.
+    const dir = await folder({ 'a.txt': 'abc' });
+    const l = await link(dir);
+    expect((await visit(l.token, 'content?path=%2Fnope.txt')).json()).toEqual({ code: 'NOT_FOUND' });
+    expect((await visit(l.token, 'content?path=%2F')).json()).toEqual({ code: 'IS_A_DIRECTORY' });
+    expect((await visit(l.token, 'content?path=%2Fa.txt', { headers: { range: 'bytes=50-' } })).statusCode).toBe(416);
+    expect((await visit(l.token, 'list?path=%2Fa.txt')).json()).toEqual({ code: 'NOT_A_DIRECTORY' });
+  });
+
+  it('the content ETag reveals neither the inode nor the mtime of the owner\'s file', async () => {
+    const dir = await folder({ 'pub.txt': 'hello public' });
+    const l = await link(`${dir}/pub.txt`);
+    const r = await visit(l.token, 'content');
+    expect(r.body).toBe('hello public');
+    const etag = String(r.headers.etag);
+    expect(etag).toMatch(/^"[^"]+"$/);
+    const st = lstatSync(join(homeRoot(t.config.dataDir, ownerId), dir, 'pub.txt'));
+    expect(etag).not.toContain(st.ino.toString(16));
+    expect(etag).not.toContain(Math.floor(st.mtimeMs).toString(16));
+    // Keyed: an unkeyed hash of inode, size and mtime would let a visitor search the inode, since size and mtime are shown.
+    const facts = `${st.ino}|${st.size}|${Math.floor(st.mtimeMs)}`;
+    expect(etag).not.toContain(createHash('sha256').update(facts).digest('base64url').slice(0, 27));
+    expect(etag).toBe(`"${createHmac('sha256', t.config.etagKey).update(facts).digest('base64url').slice(0, 27)}"`);
+    // The owner's own API sends the same tag, and it still guards a PUT with If-Match; the old raw form no longer does.
+    const url = `/api/v1/sources/home/content?path=${encodeURIComponent(`${dir}/pub.txt`)}`;
+    expect((await t.app.inject({ url, headers: { cookie: owner.cookie } })).headers.etag).toBe(etag);
+    const putIfMatch = (tag: string) => t.app.inject({ method: 'PUT', url: `${url}&onCollision=replace`,
+      headers: { ...mutating(owner), 'content-type': 'application/octet-stream', 'if-match': tag }, payload: Buffer.from('v2') });
+    const raw = `"${st.ino.toString(16)}-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+    expect((await putIfMatch(raw)).statusCode).toBe(412);
+    expect((await putIfMatch(etag)).statusCode).toBe(201);
+    expect((await visit(l.token, 'content')).body).toBe('v2');
   });
 });
 

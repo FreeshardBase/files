@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { CreateLinkRequest, LinkToken, UnlockRequest, UpdateLinkRequest, type PublicLinkInfo, type PublicLinkList } from '@files/shared';
+import { CreateLinkRequest, LinkToken, UnlockRequest, UpdateLinkRequest, type ErrorCode, type PublicLinkInfo,
+  type PublicLinkList } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { cookieNames } from '../auth/cookies.ts';
@@ -11,7 +12,6 @@ import { ownerSource, parseSource, resolveSource } from '../storage/resolveSourc
 import { ShareBackend } from '../storage/shares.ts';
 import { createLink, hashPassword, isExpired, linkByToken, linksOf, ownLink, parseExpiry, passwordStamp, removeLink,
   takeDownload, toPublicLink, updateLink, verifyPassword, type LinkRow } from '../storage/publicLinks.ts';
-
 const LinkId = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) });
 // Wrong passwords: 5 per link and 20 per address within 15 minutes, then 429 until the window ends (#104).
 const WINDOW_MS = 15 * 60_000;
@@ -19,6 +19,10 @@ const PER_LINK = 5;
 const PER_IP = 20;
 // How long an entered password holds, for this link only.
 const UNLOCK_MS = 60 * 60_000;
+// The codes a visitor may see: the link's own state and the visitor's own request (#279).
+const VISITOR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['NOT_FOUND', 'SHARE_ORPHANED', 'LINK_EXPIRED',
+  'PASSWORD_REQUIRED', 'PASSWORD_WRONG', 'TOO_MANY_ATTEMPTS', 'DOWNLOAD_LIMIT_REACHED', 'CSRF', 'VALIDATION',
+  'RANGE_NOT_SATISFIABLE', 'IS_A_DIRECTORY', 'NOT_A_DIRECTORY', 'PATH_INVALID']);
 
 // Public links (#147): the owner's management API under /api/v1/links (session and CSRF like every route), and the
 // visitor's side under /s/<token>/…, the one public route family. The SPA serves the share page itself at /s/<token>.
@@ -140,6 +144,16 @@ export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
     return sendContent(reply, r, q.inline !== undefined, 'private, no-store');
   }
 
+  // #279: what the owner's source says about its own state (a revoked grant, a rate-limiting provider, Drive's naming)
+  // is the owner's business. The visitor gets only the link's own answers; anything else is one LINK_UNAVAILABLE, and
+  // the real code goes to the log with the link's id.
+  function forVisitor(req: FastifyRequest, token: string, e: unknown): unknown {
+    if (!(e instanceof AppError) || VISITOR_CODES.has(e.code)) return e;
+    const row = LinkToken.safeParse(token).success ? linkByToken(db, token) : undefined;
+    req.log.warn({ link: row?.id, code: e.code }, 'public link source failed');
+    return new AppError('LINK_UNAVAILABLE', undefined, { cause: e });
+  }
+
   app.route({
     method: ['GET', 'POST'], url: '/s/:token/*',
     // Not derived from GET: a HEAD would run the handler and count as a download without serving a byte.
@@ -159,7 +173,8 @@ export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
           case 'GET content': return await content(req, reply, row);
           default: throw new AppError('NOT_FOUND');
         }
-      } catch (e) {
+      } catch (caught) {
+        const e = forVisitor(req, p.token, caught);
         // handled: a download link the browser navigated to gets the share page with the error, not a JSON body.
         if (op === 'GET content' && e instanceof AppError && req.headers['sec-fetch-mode'] === 'navigate'
           && LinkToken.safeParse(p.token).success) {

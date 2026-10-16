@@ -88,6 +88,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
     publicUrl: e.FILES_PUBLIC_URL,
     dataDir: e.FILES_DATA_DIR,
     sessionSecret: e.FILES_SESSION_SECRET,
+    // Keys the local ETags (#279). Derived, so it is never the cookie key itself; a new secret only makes held ETags stale.
+    etagKey: Buffer.from(hkdfSync('sha256', e.FILES_SESSION_SECRET, ENCRYPTION_KEY_SALT, 'files/etag-key/v1', 32)),
     encryptionKey: e.FILES_ENCRYPTION_KEY,
     oidc: {
       issuer: e.FILES_OIDC_ISSUER, clientId: e.FILES_OIDC_CLIENT_ID,

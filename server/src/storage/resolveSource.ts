@@ -36,7 +36,8 @@ async function resolveConnection(deps: FastifyInstance['deps'], user: User, id: 
  */
 export function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
   const { config, db, pathTables, trashTables, thumbs } = deps;
-  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, versions: config.versions });
+  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, versions: config.versions,
+    etagKey: config.etagKey });
 }
 
 // The owner's own source behind a share or a public link (#147), reached on the server: their home, or their cloud

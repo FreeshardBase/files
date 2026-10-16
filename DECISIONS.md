@@ -830,3 +830,11 @@ Decision:
 - **Collision (M5).** At ≤600 px the three buttons stack full width with "Keep both" on top (`column-reverse`). The DOM order stays Skip, Replace, Keep both, so the desktop's order (#238) and Tab order are unchanged; the focus starts on "Keep both" as before.
 
 Why: each is the narrowest change that fixes what the review shows on the phone without moving the desktop. A menu for the add actions follows the issue's own fix and the guide's dropdown recipe instead of an icon-only control without a visible label. `e2e/mobile-layout.spec.ts` checks each on desktop and phone in both themes.
+
+## 2026-10-17: what a public link's visitor learns about the owner (#279)
+
+Question: which code does a visitor get when the owner's source fails for its own reasons (`CONNECTION_REAUTH`, `PROVIDER_UNAVAILABLE`, `AMBIGUOUS_NAME`, `NOT_EXPORTABLE`, …), and how is the inode kept out of ETags?
+
+Decision: a new `LINK_UNAVAILABLE` (503, "can't be opened right now, try again later") for every `AppError` that is not one of the link's own or the visitor's request (`NOT_FOUND`, `SHARE_ORPHANED`, `LINK_EXPIRED`, the password codes, `DOWNLOAD_LIMIT_REACHED`, `CSRF`, `VALIDATION`, `RANGE_NOT_SATISFIABLE`, `IS_A_DIRECTORY`, `NOT_A_DIRECTORY`, `PATH_INVALID`); the real code is logged with the link's id. Local ETags become `HMAC-SHA256(key, ino|size|mtime)` (27 base64url characters) for everyone, with the key derived from `FILES_SESSION_SECRET` by HKDF; `If-Match` compares against the same derivation. Shares keep their codes: a grantee is a member, not an anonymous visitor.
+
+Why: `SHARE_ORPHANED` would tell the visitor the item was deleted, which is false for a transient failure. Keying the one tag the backend has keeps `If-Match` and the thumbnail cache working without a second tag; a rotated secret only makes held ETags stale (412, a regenerated thumbnail). Two links to the same file still show the same ETag; their paths are the same item, and hiding that would need a per-link tag that `If-Match` cannot use. The key matters because size and mtime are already in every `Entry`, so an unkeyed hash would only hide the inode behind a small search. A cloud item's tag stays the provider's own (Drive's md5 or `modifiedTime`, Graph's `eTag`, Dropbox's `rev`); it names nothing on the shard.

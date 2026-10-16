@@ -34,6 +34,17 @@ describe('loadConfig', () => {
     expect(() => loadConfig(env)).toThrow(new RegExp(key));
   });
 
+  it('derives the ETag key from the session secret, never the secret itself (#279)', () => {
+    const a = loadConfig(valid).etagKey;
+    const b = loadConfig({ ...valid, FILES_SESSION_SECRET: 'y'.repeat(48) }).etagKey;
+    expect(a).toBeInstanceOf(Buffer);
+    expect(a.length).toBe(32);
+    expect(a.equals(b)).toBe(false);
+    expect(a.equals(loadConfig(valid).etagKey)).toBe(true);
+    expect(a.includes(Buffer.from(valid.FILES_SESSION_SECRET))).toBe(false);
+    expect(a.equals(loadConfig(valid).encryptionKey)).toBe(false);
+  });
+
   it('refuses a short session secret', () => {
     expect(() => loadConfig({ ...valid, FILES_SESSION_SECRET: 'short' })).toThrow(/FILES_SESSION_SECRET/);
   });
