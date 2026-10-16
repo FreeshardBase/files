@@ -47,6 +47,17 @@ watch(() => folder.entries, (entries) => {
   selected.value = selected.value.filter((p) => there.has(p));
 });
 const selectedEntries = computed(() => folder.entries.filter((e) => selected.value.includes(e.path)));
+// The selection bar's height (#224): on the phone the bar is fixed at the bottom, and the folder keeps that much room
+// below the list so the bar never covers the last row.
+const selectionBar = ref<HTMLElement>();
+const selectionBarHeight = ref(0);
+const barObserver = new ResizeObserver(([e]) => { selectionBarHeight.value = e ? e.borderBoxSize[0]!.blockSize : 0; });
+watch(selectionBar, (el, old) => {
+  if (old) barObserver.unobserve(old);
+  if (el) barObserver.observe(el);
+  else selectionBarHeight.value = 0;
+});
+onUnmounted(() => barObserver.disconnect());
 
 // A share (#146) is named after the shared item, from its own `stat`; the folders above it in the owner's home stay hidden.
 const shareName = ref<string | null>(null);
@@ -363,6 +374,7 @@ function onDrop(paths: string[], dir: string) {
   <section
     class="folder"
     :class="{ 'drop-active': dropActive }"
+    :style="{ '--selection-bar-height': `${selectionBarHeight}px` }"
     @dragover="onFileDragOver"
     @dragleave="onFileDragLeave"
     @drop="onFileDrop"
@@ -415,6 +427,7 @@ function onDrop(paths: string[], dir: string) {
     </div>
     <div
       v-if="selectedEntries.length || canPaste"
+      ref="selectionBar"
       class="selection-bar"
       role="group"
       :aria-label="$t('actions.toolbar')"
