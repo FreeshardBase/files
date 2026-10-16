@@ -75,7 +75,7 @@ test('a folder of images in gallery view shows thumbnails; a click opens the lig
   await expect(gallery.getByRole('listitem')).toHaveCount(4);
   await expectThumbnailsLoaded(page, '.gallery-thumb', 3);
   // Each thumbnail is the photo's own: the tile shows its colour.
-  const red = gallery.getByRole('button', { name: 'a-red.png' }).locator('img');
+  const red = gallery.getByRole('button', { name: 'a-red.png', exact: true }).locator('img');
   const pixel = await red.evaluate((el: HTMLImageElement) => {
     const c = document.createElement('canvas'); c.width = el.naturalWidth; c.height = el.naturalHeight;
     const g = c.getContext('2d')!; g.drawImage(el, 0, 0);
@@ -84,7 +84,7 @@ test('a folder of images in gallery view shows thumbnails; a click opens the lig
   expect(pixel[0]).toBeGreaterThan(150); expect(pixel[1]).toBeLessThan(90); expect(pixel[2]).toBeLessThan(90);
 
   // The lightbox: the second photo, then → and ← step through the photos.
-  await gallery.getByRole('button', { name: 'b-green.png' }).click();
+  await gallery.getByRole('button', { name: 'b-green.png', exact: true }).click();
   const box = (name: string) => page.getByRole('dialog', { name, exact: true });
   await expect(box('b-green.png')).toBeVisible();
   await expect(box('b-green.png').locator('img.preview-media')).toBeVisible();
@@ -97,10 +97,10 @@ test('a folder of images in gallery view shows thumbnails; a click opens the lig
   // Esc closes and the focus is back on the tile of the photo shown last.
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(gallery.getByRole('button', { name: 'a-red.png' })).toBeFocused();
+  await expect(gallery.getByRole('button', { name: 'a-red.png', exact: true })).toBeFocused();
 
   // A folder tile opens the folder; the view is kept there and after a reload.
-  await gallery.getByRole('button', { name: 'album' }).click();
+  await gallery.getByRole('button', { name: 'album', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/home/${dir}/album$`));
   await expect(page.getByText(/leer|empty/)).toBeVisible();
   await page.goBack();

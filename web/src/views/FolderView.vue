@@ -8,7 +8,8 @@ import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
 import ShareDialog from '../components/ShareDialog.vue';
 import DetailsDrawer from '../components/DetailsDrawer.vue';
-import FileList, { type ItemAction } from '../components/FileList.vue';
+import FileList from '../components/FileList.vue';
+import type { ItemAction } from '../itemActions.ts';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
@@ -229,7 +230,9 @@ async function settle(at: { source: string; dir: string }) {
   void favourites.load(); // moves and deletes carry favourites along on the server (#155)
   if (at.dir === folder.path && at.source === folder.source) await folder.open(at.dir, { refresh: true });
   await nextTick();
-  if (!conflict.value && !renaming.value && (document.activeElement === document.body || !document.activeElement)) list.value?.focus();
+  if (!conflict.value && !renaming.value && (document.activeElement === document.body || !document.activeElement)) {
+    (view.value === 'gallery' ? gallery.value : list.value)?.focus();
+  }
 }
 
 // Uploads run in the uploads store (resumable, one panel); failures are summarised there, so this only reports the
@@ -675,10 +678,16 @@ function onDrop(paths: string[], dir: string) {
         <GalleryGrid
           v-else-if="view === 'gallery'"
           ref="gallery"
+          v-model:selected="selected"
           :entries="entries"
           :folder-name="folderName"
           :source="source"
+          :editable="editable"
+          :shareable="shareable"
+          :starred="starred"
           @open="open"
+          @action="onAction"
+          @paste="paste"
         />
         <FileList
           v-else
