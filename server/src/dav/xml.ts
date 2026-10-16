@@ -79,6 +79,7 @@ export function propElement(p: PropName, inner = ''): string {
 
 export const STATUS: Record<number, string> = {
   200: 'HTTP/1.1 200 OK', 403: 'HTTP/1.1 403 Forbidden', 404: 'HTTP/1.1 404 Not Found', 424: 'HTTP/1.1 424 Failed Dependency',
+  507: 'HTTP/1.1 507 Insufficient Storage',
 };
 
 export const XML_HEAD = '<?xml version="1.0" encoding="utf-8"?>\n';

@@ -382,6 +382,181 @@ describe('properties', () => {
     const [r] = multistatus((await propfind(c, '0', askProps)).body);
     expect(r!.props.get('{http://example.com/ns}colour')!.el.textContent).toBe('teal');
   });
+
+  // #254: dead properties live in the shared database, outside the quota, so their size and number are bounded.
+  const statusOf = (body: string, name: string) => multistatus(body)[0]!.props.get(`{http://example.com/ns}${name}`)!.status;
+  const ask = (...names: string[]) => `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:Z="http://example.com/ns">
+    <D:prop>${names.map((x) => `<Z:${x}/>`).join('')}</D:prop></D:propfind>`;
+  const OK = 'HTTP/1.1 200 OK'; const FULL = 'HTTP/1.1 507 Insufficient Storage'; const DEPENDS = 'HTTP/1.1 424 Failed Dependency';
+  const MISSING = 'HTTP/1.1 404 Not Found';
+
+  it('refuses a property larger than 64 KiB with 507 and applies nothing of that request', async () => {
+    const p = `${fresh('props')}.txt`;
+    await dav('PUT', p, { payload: 'x' });
+    const big = await dav('PROPPATCH', p, { payload: PROPPATCH(`<Z:big>${'x'.repeat(65536)}</Z:big><Z:small>s</Z:small>`) });
+    expect(big.statusCode).toBe(207);
+    expect(statusOf(big.body, 'big')).toBe(FULL);
+    expect(statusOf(big.body, 'small')).toBe(DEPENDS);
+    // Bytes, not characters: 22,000 euro signs are 66,000 bytes.
+    const euro = await dav('PROPPATCH', p, { payload: PROPPATCH(`<Z:big>${'€'.repeat(22000)}</Z:big>`) });
+    expect(statusOf(euro.body, 'big')).toBe(FULL);
+    let [r] = multistatus((await propfind(p, '0', ask('big', 'small'))).body);
+    expect(r!.props.get('{http://example.com/ns}big')!.status).toBe(MISSING);
+    expect(r!.props.get('{http://example.com/ns}small')!.status).toBe(MISSING);
+    // The bound is on the stored element: measure its wrapping, then exactly 65,536 bytes are kept and one more is not.
+    await dav('PROPPATCH', p, { payload: PROPPATCH('<Z:big>y</Z:big>') });
+    const stored = t.db.prepare("SELECT xml FROM dav_props WHERE path = ? AND name = 'big'").pluck().get(p) as string;
+    const wrapping = Buffer.byteLength(stored) - 1;
+    const over = await dav('PROPPATCH', p, { payload: PROPPATCH(`<Z:big>${'z'.repeat(65537 - wrapping)}</Z:big>`) });
+    expect(statusOf(over.body, 'big')).toBe(FULL);
+    const fits = await dav('PROPPATCH', p, { payload: PROPPATCH(`<Z:big>${'w'.repeat(65536 - wrapping)}</Z:big>`) });
+    expect(statusOf(fits.body, 'big')).toBe(OK);
+    [r] = multistatus((await propfind(p, '0', ask('big'))).body);
+    expect(r!.props.get('{http://example.com/ns}big')!.el.textContent).toBe('w'.repeat(65536 - wrapping));
+    await dav('DELETE', p);
+  });
+
+  it('keeps at most 100 properties on one item; replacing or swapping one at the cap still works', async () => {
+    const p = `${fresh('props')}.txt`;
+    await dav('PUT', p, { payload: 'x' });
+    const hundred = Array.from({ length: 100 }, (_, i) => `<Z:p${i}>v</Z:p${i}>`).join('');
+    const set = await dav('PROPPATCH', p, { payload: PROPPATCH(hundred) });
+    expect(statusOf(set.body, 'p99')).toBe(OK);
+    const over = await dav('PROPPATCH', p, { payload: PROPPATCH('<Z:extra>e</Z:extra>', '<Z:nothere/>') });
+    expect(statusOf(over.body, 'extra')).toBe(FULL);
+    expect(statusOf(over.body, 'nothere')).toBe(DEPENDS);
+    expect(multistatus((await propfind(p, '0', ask('extra'))).body)[0]!.props.get('{http://example.com/ns}extra')!.status).toBe(MISSING);
+    // Another item has its own 100.
+    const q = `${fresh('props')}.txt`;
+    await dav('PUT', q, { payload: 'x' });
+    expect(statusOf((await dav('PROPPATCH', q, { payload: PROPPATCH('<Z:extra>e</Z:extra>') })).body, 'extra')).toBe(OK);
+    expect(statusOf((await dav('PROPPATCH', p, { payload: PROPPATCH('<Z:p0>new</Z:p0>') })).body, 'p0')).toBe(OK);
+    const swap = await dav('PROPPATCH', p, { payload: `<?xml version="1.0"?><D:propertyupdate xmlns:D="DAV:" xmlns:Z="http://example.com/ns">
+      <D:remove><D:prop><Z:p1/></D:prop></D:remove><D:set><D:prop><Z:extra>e</Z:extra></D:prop></D:set></D:propertyupdate>` });
+    expect(statusOf(swap.body, 'extra')).toBe(OK);
+    const [r] = multistatus((await propfind(p, '0', ask('p0', 'p1', 'extra'))).body);
+    expect(r!.props.get('{http://example.com/ns}p0')!.el.textContent).toBe('new');
+    expect(r!.props.get('{http://example.com/ns}p1')!.status).toBe(MISSING);
+    expect(r!.props.get('{http://example.com/ns}extra')!.status).toBe(OK);
+    await dav('DELETE', p); await dav('DELETE', q);
+  });
+
+  it('keeps at most 1 MiB of properties per member, also through COPY, whatever the quota (the issue\'s probe)', async () => {
+    const uid = (await t.app.inject({ url: '/api/v1/me', headers: { cookie: m.cookie } })).json().id;
+    t.db.prepare('UPDATE users SET quota_bytes = 1000 WHERE id = ?').run(uid);
+    const md = (method: string, path: string, o: Opts = {}) => dav(method, path, { ...o, password: memberPw });
+    // Bytes, not characters: 20,000 euro signs are 60,000 bytes.
+    const value = '€'.repeat(20000);
+    const dir = fresh('propdir');
+    try {
+      expect((await md('MKCOL', dir)).statusCode).toBe(201);
+      const p = `${dir}/a.txt`;
+      expect((await md('PUT', p, { payload: 'x' })).statusCode).toBe(201);
+      // 17 such properties fit in 1 MiB; the 18th does not.
+      for (let i = 0; i < 17; i++) {
+        const r = await md('PROPPATCH', p, { payload: PROPPATCH(`<Z:p${i}>${value}</Z:p${i}>`) });
+        expect(statusOf(r.body, `p${i}`)).toBe(OK);
+      }
+      const q = `${dir}/b.txt`;
+      expect((await md('PUT', q, { payload: 'y' })).statusCode).toBe(201);
+      const full = await md('PROPPATCH', q, { payload: PROPPATCH(`<Z:p17>${value}</Z:p17>`) });
+      expect(statusOf(full.body, 'p17')).toBe(FULL);
+      expect(multistatus((await propfind(q, '0', ask('p17'), { password: memberPw })).body)[0]!.props.get('{http://example.com/ns}p17')!.status).toBe(MISSING);
+      // Copies would double them: COPY is refused before anything is copied.
+      const c = await md('COPY', p, { headers: dest(`${dir}/copy.txt`) });
+      expect(c.statusCode).toBe(507);
+      expect(c.json().code).toBe('QUOTA_EXCEEDED');
+      expect((await md('GET', `${dir}/copy.txt`)).statusCode).toBe(404);
+      const deep = await md('COPY', dir, { headers: dest(`${dir}-copy`) });
+      expect(deep.statusCode).toBe(507);
+      expect((await md('PROPFIND', `${dir}-copy`, { headers: { depth: '0' } })).statusCode).toBe(404);
+      // Another member has their own budget.
+      const own = `${fresh('props')}.txt`;
+      await dav('PUT', own, { payload: 'x' });
+      expect(statusOf((await dav('PROPPATCH', own, { payload: PROPPATCH(`<Z:p17>${value}</Z:p17>`) })).body, 'p17')).toBe(OK);
+      await dav('DELETE', own);
+      // Removing properties frees room.
+      expect(statusOf((await md('PROPPATCH', p, { payload: PROPPATCH('', '<Z:p1/>') })).body, 'p1')).toBe(OK);
+      expect(statusOf((await md('PROPPATCH', q, { payload: PROPPATCH(`<Z:p17>${value}</Z:p17>`) })).body, 'p17')).toBe(OK);
+    } finally {
+      await md('DELETE', dir);
+      t.db.prepare('UPDATE users SET quota_bytes = NULL WHERE id = ?').run(uid);
+    }
+  });
+
+  it('a COPY near the 1 MiB bound counts the properties of the target it replaces as freed', async () => {
+    const md = (method: string, path: string, o: Opts = {}) => dav(method, path, { ...o, password: memberPw });
+    const value = 'c'.repeat(59 * 1024);
+    const fill = async (path: string, from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        expect(statusOf((await md('PROPPATCH', path, { payload: PROPPATCH(`<Z:p${i}>${value}</Z:p${i}>`) })).body, `p${i}`)).toBe(OK);
+      }
+    };
+    const dir = fresh('propdir');
+    try {
+      expect((await md('MKCOL', dir)).statusCode).toBe(201);
+      const a = `${dir}/a.txt`; const b = `${dir}/b.txt`;
+      await md('PUT', a, { payload: 'a' }); await md('PUT', b, { payload: 'b' });
+      // 8 on a and 9 on b: copying a over b leaves 16, though 17 + 8 would not fit.
+      await fill(a, 0, 8); await fill(b, 0, 9);
+      expect((await md('COPY', a, { headers: { ...dest(b), overwrite: 'T' } })).statusCode).toBe(204);
+      let [r] = multistatus((await propfind(b, '0', ask('p7', 'p8'), { password: memberPw })).body);
+      expect(r!.props.get('{http://example.com/ns}p7')!.status).toBe(OK);
+      expect(r!.props.get('{http://example.com/ns}p8')!.status).toBe(MISSING);
+      // A folder copied with Depth: 0 over a folder replaces that folder whole, so the properties beneath it count as freed.
+      await md('DELETE', b);
+      const f1 = `${dir}/f1`; const f2 = `${dir}/f2`; const c = `${f2}/c.txt`;
+      await md('MKCOL', f1); await md('MKCOL', f2); await md('PUT', c, { payload: 'c' });
+      await fill(c, 0, 8); await fill(f1, 0, 1);
+      expect((await md('COPY', f1, { headers: { ...dest(f2), overwrite: 'T', depth: '0' } })).statusCode).toBe(204);
+      [r] = multistatus((await propfind(f2, '0', ask('p0'), { password: memberPw })).body);
+      expect(r!.props.get('{http://example.com/ns}p0')!.status).toBe(OK);
+    } finally { await md('DELETE', dir); }
+  });
+
+  it('counts the path of every property row: empty properties on long paths cannot grow the database either', async () => {
+    const md = (method: string, path: string, o: Opts = {}) => dav(method, path, { ...o, password: memberPw });
+    const dir = `${fresh('propdir')}-${'d'.repeat(240)}`;
+    const empty = Array.from({ length: 100 }, (_, i) => `<Z:e${i}/>`).join('');
+    try {
+      expect((await md('MKCOL', dir)).statusCode).toBe(201);
+      // A row with an empty property and a path of about 500 bytes takes more than 1 KiB, so 1 MiB is gone before
+      // 11 items of 100; without the path counted, 30 items would be a few kilobytes of XML.
+      let refused = 0;
+      for (let i = 0; i < 30 && refused === 0; i++) {
+        const f = `${dir}/${String(i).padStart(2, '0')}${'f'.repeat(240)}`;
+        expect((await md('PUT', f, { payload: '' })).statusCode).toBe(201);
+        const r = await md('PROPPATCH', f, { payload: PROPPATCH(empty) });
+        if (statusOf(r.body, 'e0') === FULL) refused = i + 1;
+        else expect(statusOf(r.body, 'e0')).toBe(OK);
+      }
+      expect(refused).toBeGreaterThan(1);
+      expect(refused).toBeLessThanOrEqual(11);
+    } finally { await md('DELETE', dir); }
+  });
+
+  it('a member above a bound (properties stored before it) can still remove and shrink them, but not add', async () => {
+    const uid = (await t.app.inject({ url: '/api/v1/me', headers: { cookie: m.cookie } })).json().id;
+    const md = (method: string, path: string, o: Opts = {}) => dav(method, path, { ...o, password: memberPw });
+    const p = `${fresh('props')}.txt`; const q = `${fresh('props')}.txt`;
+    try {
+      expect((await md('PUT', p, { payload: 'x' })).statusCode).toBe(201);
+      expect((await md('PUT', q, { payload: 'x' })).statusCode).toBe(201);
+      const seed = t.db.prepare('INSERT INTO dav_props (user_id, path, ns, name, xml) VALUES (?, ?, ?, ?, ?)');
+      const el = (name: string, text: string) => `<Z:${name} xmlns:Z="http://example.com/ns">${text}</Z:${name}>`;
+      // 150 properties on p, and 20 of 60 KiB on q: both bounds broken.
+      for (let i = 0; i < 150; i++) seed.run(uid, p, 'http://example.com/ns', `s${i}`, el(`s${i}`, 'v'));
+      for (let i = 0; i < 20; i++) seed.run(uid, q, 'http://example.com/ns', `b${i}`, el(`b${i}`, 'b'.repeat(60 * 1024)));
+      expect(statusOf((await md('PROPPATCH', p, { payload: PROPPATCH('', '<Z:s0/>') })).body, 's0')).toBe(OK);
+      expect(statusOf((await md('PROPPATCH', p, { payload: PROPPATCH('<Z:new>n</Z:new>') })).body, 'new')).toBe(FULL);
+      expect(statusOf((await md('PROPPATCH', q, { payload: PROPPATCH('', '<Z:b0/>') })).body, 'b0')).toBe(OK);
+      expect(statusOf((await md('PROPPATCH', q, { payload: PROPPATCH('<Z:b1>small</Z:b1>') })).body, 'b1')).toBe(OK);
+      expect(statusOf((await md('PROPPATCH', q, { payload: PROPPATCH('<Z:b2>' + 'b'.repeat(61 * 1024) + '</Z:b2>') })).body, 'b2')).toBe(FULL);
+      const [r] = multistatus((await propfind(q, '0', ask('b0', 'b1'), { password: memberPw })).body);
+      expect(r!.props.get('{http://example.com/ns}b0')!.status).toBe(MISSING);
+      expect(r!.props.get('{http://example.com/ns}b1')!.el.textContent).toBe('small');
+    } finally { await md('DELETE', p); await md('DELETE', q); }
+  });
 });
 
 const LOCKINFO = `<?xml version="1.0" encoding="utf-8"?><D:lockinfo xmlns:D="DAV:">

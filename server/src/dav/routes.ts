@@ -11,7 +11,7 @@ import type { User } from '../users.ts';
 import { ForeignUrl, headerPath, hrefOf, parentOf, requestPath } from './paths.ts';
 import { LockStore, parseTimeout, type Lock } from './locks.ts';
 import { parseIf, sameEtag, submittedTokens, type IfList } from './ifHeader.ts';
-import { changeProps, copyProps, deadProps, type PropChange } from './props.ts';
+import { changeProps, checkCopyFits, copyProps, deadProps, tooLarge, type PropChange } from './props.ts';
 import {
   child, children, DAV, escapeXml, isDav, parseXml, propElement, propKey, propNameOf, readText, serialize, STATUS, XML_HEAD,
   type PropName,
@@ -297,10 +297,15 @@ export async function registerDavRoutes(app: FastifyInstance): Promise<void> {
         }
         // Live properties are the server's: one of them in the request fails the whole request (RFC 4918 §9.2).
         const denied = changes.filter((ch) => ch.prop.ns === DAV);
-        if (denied.length === 0) changeProps(db, c.user.id, e.path, changes);
+        // Beyond the bounds on dead properties (#254) nothing is applied. 507 goes to the properties too large, or else
+        // (too many on the item, too many bytes for the member) to every property to be set; the rest get 424.
+        const applied = denied.length === 0 && changeProps(db, c.user.id, e.path, changes);
+        const sets = changes.flatMap((ch) => ch.op === 'set' ? [ch.prop] : []);
+        const large = sets.filter(tooLarge);
+        const full = new Set((large.length > 0 ? large : sets).map(propKey));
         const names = [...new Map(changes.map((ch) => [propKey(ch.prop), ch.prop])).values()];
-        const status = (p: PropName) => denied.length === 0 ? 200 : p.ns === DAV ? 403 : 424;
-        const groups = [200, 403, 424].map((s) => [s, names.filter((p) => status(p) === s)] as const).filter(([, ps]) => ps.length > 0);
+        const status = (p: PropName) => denied.length > 0 ? (p.ns === DAV ? 403 : 424) : applied ? 200 : full.has(propKey(p)) ? 507 : 424;
+        const groups = [200, 403, 424, 507].map((s) => [s, names.filter((p) => status(p) === s)] as const).filter(([, ps]) => ps.length > 0);
         return multistatus(reply, `<D:response><D:href>${escapeXml(hrefOf(e.path, e.type === 'directory'))}</D:href>${groups.map(([s, ps]) =>
           `<D:propstat><D:prop>${ps.map((p) => propElement(p)).join('')}</D:prop><D:status>${STATUS[s]}</D:status></D:propstat>`).join('')}</D:response>`);
       },
@@ -382,6 +387,8 @@ export async function registerDavRoutes(app: FastifyInstance): Promise<void> {
       ]);
       if (refused) return refuse(reply, refused);
       const policy = target ? 'replace' : 'fail';
+      // The copy's dead properties must fit the member's bound (#254): checked before anything is copied.
+      if (method === 'COPY') checkCopyFits(db, c.user.id, from, to, !(depth === '0' && src.type === 'directory'));
       if (method === 'MOVE') {
         await c.home.move(from, to, policy); // dead properties follow in the move's transaction (PATH_TABLES)
         c.locks.removeUnder(c.user.id, from);
