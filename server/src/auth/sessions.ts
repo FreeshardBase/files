@@ -23,12 +23,23 @@ export function deleteSession(db: Db, idHash: string): void {
   db.prepare('DELETE FROM sessions WHERE id_hash = ?').run(idHash);
 }
 
+/** The most login attempts alive at once (#255): /auth/login is public, so its rows need a bound of their own. */
+export const LOGIN_ATTEMPTS_MAX = 10_000;
+
 export type LoginAttempt = { state: string; nonce: string; verifier: string; returnTo: string };
-export function createLoginAttempt(db: Db, a: LoginAttempt): string {
+/** Starts a login attempt after dropping the expired ones; undefined (refused) while LOGIN_ATTEMPTS_MAX are alive. */
+export function createLoginAttempt(db: Db, a: LoginAttempt): string | undefined {
   const id = token();
-  db.prepare('INSERT INTO login_attempts (id_hash, state, nonce, verifier, return_to, expires_at) VALUES (?,?,?,?,?,?)')
-    .run(hash(id), a.state, a.nonce, a.verifier, a.returnTo, new Date(Date.now() + LOGIN_TTL_MS).toISOString());
-  return id;
+  return db.transaction(() => {
+    const now = new Date();
+    db.prepare('DELETE FROM login_attempts WHERE expires_at <= ?').run(now.toISOString());
+    const live = db.prepare('SELECT count(*) FROM login_attempts').pluck().get() as number;
+    // Live attempts are never pushed out, so a flood cannot cancel a login a member has already started.
+    if (live >= LOGIN_ATTEMPTS_MAX) return undefined;
+    db.prepare('INSERT INTO login_attempts (id_hash, state, nonce, verifier, return_to, expires_at) VALUES (?,?,?,?,?,?)')
+      .run(hash(id), a.state, a.nonce, a.verifier, a.returnTo, new Date(now.getTime() + LOGIN_TTL_MS).toISOString());
+    return id;
+  })();
 }
 export function takeLoginAttempt(db: Db, id: string): LoginAttempt | undefined {
   return db.transaction(() => {

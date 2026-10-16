@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { homeRoot } from '../src/paths.ts';
+import { LocalBackend } from '../src/storage/local.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { basic, createAppPassword, multistatus, propText } from './support/dav.ts';
 
@@ -381,6 +382,39 @@ describe('properties', () => {
     expect((await dav('COPY', p, { headers: dest(c) })).statusCode).toBe(201);
     const [r] = multistatus((await propfind(c, '0', askProps)).body);
     expect(r!.props.get('{http://example.com/ns}colour')!.el.textContent).toBe('teal');
+  });
+
+  it('walks the home once per PROPFIND for the quota properties, however many folders it lists (#255)', async () => {
+    const dir = fresh('quota-walk');
+    expect((await dav('MKCOL', dir)).statusCode).toBe(201);
+    for (let i = 0; i < 20; i++) expect((await dav('MKCOL', `${dir}/sub-${i}`)).statusCode).toBe(201);
+    await dav('PUT', `${dir}/sub-0/file.txt`, { payload: 'twelve bytes' });
+    const uid = (await t.app.inject({ url: '/api/v1/me', headers: { cookie: a.cookie } })).json().id as string;
+    const QUOTA_BYTES = 1_000_000_000;
+    const ask = (props: string) => `<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop>${props}</D:prop></D:propfind>`;
+    t.db.prepare('UPDATE users SET quota_bytes = ? WHERE id = ?').run(QUOTA_BYTES, uid);
+    const usage = vi.spyOn(LocalBackend.prototype, 'usage');
+    try {
+      const r = await propfind(dir, '1', ask('<D:quota-used-bytes/><D:quota-available-bytes/>'));
+      expect(r.statusCode).toBe(207);
+      expect(usage).toHaveBeenCalledTimes(1);
+      const total = (await (usage.mock.results[0]!.value as ReturnType<LocalBackend['usage']>)).total;
+      expect(total).toBeGreaterThanOrEqual(12);
+      const responses = multistatus(r.body);
+      expect(responses).toHaveLength(21);
+      for (const e of responses) {
+        expect(propText(e, 'quota-used-bytes')).toBe(String(total));
+        expect(propText(e, 'quota-available-bytes')).toBe(String(QUOTA_BYTES - total));
+      }
+      // The figure lives for one request only: the next PROPFIND walks again and sees bytes written outside WebDAV.
+      writeFileSync(join(root, dir, 'sub-1', 'more.txt'), 'abc');
+      const again = multistatus((await propfind(dir, '0', ask('<D:quota-used-bytes/>'))).body);
+      expect(usage).toHaveBeenCalledTimes(2);
+      expect(propText(again[0], 'quota-used-bytes')).toBe(String(total + 3));
+    } finally {
+      usage.mockRestore();
+      t.db.prepare('UPDATE users SET quota_bytes = NULL WHERE id = ?').run(uid);
+    }
   });
 
   // #254: dead properties live in the shared database, outside the quota, so their size and number are bounded.

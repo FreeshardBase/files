@@ -8,6 +8,7 @@ import { cookieNames } from './cookies.ts';
 import { requireUser } from './guard.ts';
 
 export const LOGIN_FAILED_URL = '/?loginError=1';
+const RETURN_TO_MAX = 2048;
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps;
@@ -22,7 +23,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     catch { return '/'; } // handled: unparsable returnTo falls back to /
     if (u.origin !== config.publicUrl.origin) return '/';
     const out = u.pathname + u.search + u.hash;
-    return out.startsWith('/') && !out.startsWith('//') ? out : '/';
+    // Bounded after normalising too: percent-encoding grows a non-ASCII path up to ninefold, and it is stored (#255).
+    return out.startsWith('/') && !out.startsWith('//') && out.length <= RETURN_TO_MAX ? out : '/';
   };
   const secure = config.publicUrl.protocol === 'https:';
   const cookieBase = { httpOnly: true, sameSite: 'lax' as const, secure, path: '/' };
@@ -31,9 +33,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const loginCookie = names.prefixed ? cookieBase : { ...cookieBase, path: '/auth/callback' };
 
   app.get('/auth/login', { config: { public: true } }, async (req, reply) => {
-    const q = z.object({ returnTo: z.string().optional().transform((v) => (v !== undefined && v.length > 2048 ? undefined : v)), login_hint: z.string().max(200).optional() }).parse(req.query);
+    const q = z.object({ returnTo: z.string().optional().transform((v) => (v !== undefined && v.length > RETURN_TO_MAX ? undefined : v)), login_hint: z.string().max(200).optional() }).parse(req.query);
     const state = randomState(); const nonce = randomNonce(); const verifier = randomVerifier();
     const id = createLoginAttempt(db, { state, nonce, verifier, returnTo: safeReturnTo(q.returnTo) });
+    // The most live attempts exist (#255): back to the SPA, which shows LOGIN_FAILED instead of looping into login.
+    if (id === undefined) {
+      req.log.warn('login refused: too many live login attempts');
+      return reply.redirect(LOGIN_FAILED_URL);
+    }
     reply.setCookie(names.login, id, { ...loginCookie, maxAge: LOGIN_TTL_MS / 1000 });
     const url = oidc.authorizationUrl({ state, nonce, challenge: await challengeFor(verifier), ...(q.login_hint ? { loginHint: q.login_hint } : {}) });
     return reply.redirect(url.href);
