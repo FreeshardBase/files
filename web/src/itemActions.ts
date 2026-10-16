@@ -1,0 +1,100 @@
+// The selection model and item actions shared by the list and the gallery (#229): Ctrl+click and Space toggle, Shift+click
+// selects a range, the item menu and the action keys (F2, Delete, Ctrl+C/X/V/A, the context menu key) act on the
+// selection if the item is part of it, else on the item alone. Each view keeps its own navigation keys and layout.
+import { computed, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { Entry } from '@files/shared';
+
+export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
+export type ItemProps = { entries: Entry[]; selected: string[]; editable: boolean; shareable: boolean; starred: string[] };
+type Emits = {
+  open: (e: Entry) => void; select: (paths: string[]) => void; action: (a: ItemAction, entries: Entry[]) => void; paste: () => void;
+};
+
+// Rename, favourite, share and details act on the item itself, never on the whole selection.
+const SINGLE = new Set(['rename', 'favourite', 'share', 'details']);
+
+export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i: number) => void }) {
+  const { t } = useI18n();
+  let anchor = 0; // where a Shift+click range starts
+  const chosen = computed(() => new Set(props.selected));
+  function toggle(i: number) {
+    anchor = i;
+    const p = props.entries[i]!.path;
+    emit.select(chosen.value.has(p) ? props.selected.filter((x) => x !== p) : [...props.selected, p]);
+  }
+  function selectRange(i: number) {
+    const [a, b] = [Math.min(anchor, i), Math.max(anchor, i)];
+    emit.select(props.entries.slice(a, b + 1).map((e) => e.path));
+  }
+  // An action on an item applies to the whole selection if the item is part of it, else to the item alone.
+  const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path)
+    ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
+
+  // The destructive action stays last; favourite, share and details sit between the file actions and it.
+  const menuItems = computed(() => ([
+    'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite',
+    ...(props.shareable ? ['share'] as const : []), 'details', ...(props.editable ? ['trash'] as const : []),
+  ] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
+  // The favourite entry says what choosing it does to this item (#155).
+  const starredSet = computed(() => new Set(props.starred));
+  const isFavourite = (e: Entry) => starredSet.value.has(e.path);
+  const itemsFor = (e: Entry) => menuItems.value.map((m) => m.id === 'favourite'
+    ? { id: m.id, label: t(isFavourite(e) ? 'favourites.remove' : 'favourites.add') } : m);
+  function fromMenu(i: number, id: string) { emit.action(id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i)); }
+
+  /** The keys that select, act or open; true when the key was one of them. Navigation keys belong to each view. */
+  function onActionKey(e: KeyboardEvent, i: number): boolean {
+    const entry = props.entries[i]!;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const handled = () => { e.preventDefault(); return true; };
+    if (key === ' ' && handled()) toggle(i);
+    else if (props.editable && key === 'F2' && handled()) emit.action('rename', [entry]);
+    else if (props.editable && key === 'Delete' && handled()) emit.action('trash', targets(i));
+    else if (props.editable && mod && key === 'c' && handled()) emit.action('copy', targets(i));
+    else if (props.editable && mod && key === 'x' && handled()) emit.action('cut', targets(i));
+    else if (props.editable && mod && key === 'v' && handled()) emit.paste();
+    else if (mod && key === 'a' && handled()) emit.select(props.entries.map((x) => x.path));
+    else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) ui.showMenu(i);
+    else if (key === 'Enter' && handled()) emit.open(entry); // a folder opens, a file opens in the preview
+    else return false;
+    return true;
+  }
+  /** Shift+click selects a range, Ctrl+click toggles; true when the click did either. */
+  function onSelectClick(e: MouseEvent, i: number): boolean {
+    if (e.shiftKey) selectRange(i);
+    else if (e.ctrlKey || e.metaKey) toggle(i);
+    else return false;
+    return true;
+  }
+
+  return { chosen, toggle, targets, itemsFor, isFavourite, fromMenu, onActionKey, onSelectClick };
+}
+
+// Long-press (#160): a touch held still for half a second calls `onPress`. The click the lifted finger may still produce
+// is swallowed, so the press does not also open or select the item.
+const LONG_PRESS_MS = 500;
+export function useLongPress(onPress: (i: number) => void) {
+  let press: { x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  let pressed = false;
+  function cancel() { if (press) clearTimeout(press.timer); press = null; }
+  function onPointerDown(e: PointerEvent, i: number) {
+    cancel();
+    pressed = false;
+    if (e.pointerType !== 'touch' || (e.target instanceof Element && e.target.closest('.item-menu'))) return;
+    press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => { press = null; pressed = true; onPress(i); }, LONG_PRESS_MS) };
+  }
+  function onPointerMove(e: PointerEvent) {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancel(); // a scroll, not a press
+  }
+  function onClickCapture(e: MouseEvent) {
+    if (!pressed) return;
+    pressed = false;
+    e.preventDefault(); e.stopPropagation();
+  }
+  onBeforeUnmount(cancel);
+  /** A touch is being held or has just been held: the browser's own long-press context menu belongs to it. */
+  const touching = () => press !== null || pressed;
+  return { onPointerDown, onPointerMove, onPointerUp: cancel, onClickCapture, touching };
+}

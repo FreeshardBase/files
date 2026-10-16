@@ -7,9 +7,9 @@ import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
 import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
+import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
 
-export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
 // `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
 // offered, the change keys do nothing and rows are not dragged. `shareable`: the items are the caller's own (#146).
 // `starred`: the paths of this source that are favourites (#155); every row has the star toggle.
@@ -24,14 +24,13 @@ const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
   sort: [SortKey];
 }>();
-const { locale, t } = useI18n();
+const { locale } = useI18n();
 const active = ref(0);
 const body = ref<HTMLElement>();
 // The menus of the rendered rows by row index, collected anew on every render.
 const menus = new Map<number, InstanceType<typeof ItemMenu>>();
 onBeforeUpdate(() => menus.clear());
 const dropTarget = ref<string | null>(null);
-let anchor = 0; // where a Shift+click range starts
 
 // Keep the roving tab stop inside the list when it shrinks.
 watch(() => props.entries.length, (n) => {
@@ -72,33 +71,11 @@ const items = computed(() => slots.value.map((s: Slot): Item => (s.row === undef
   : { kind: 'row', key: props.entries[s.row]!.path, e: props.entries[s.row]!, i: s.row })));
 const rowEl = (i: number) => body.value?.querySelector<HTMLElement>(`tr[aria-rowindex="${i + 2}"]`);
 
-const chosen = computed(() => new Set(props.selected));
-const select = (paths: string[]) => emit('update:selected', paths);
-function toggle(i: number) {
-  anchor = i;
-  const p = props.entries[i]!.path;
-  select(chosen.value.has(p) ? props.selected.filter((x) => x !== p) : [...props.selected, p]);
-}
-function selectRange(i: number) {
-  const [a, b] = [Math.min(anchor, i), Math.max(anchor, i)];
-  select(props.entries.slice(a, b + 1).map((e) => e.path));
-}
-// An action on a row applies to the whole selection if the row is part of it, else to the row alone.
-const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path) ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
-
-// The destructive action stays last; favourite, share and details sit between the file actions and it.
-const menuItems = computed(() => ([
-  'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite',
-  ...(props.shareable ? ['share'] as const : []), 'details', ...(props.editable ? ['trash'] as const : []),
-] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
-// The favourite entry says what choosing it does to this row (#155).
-const starredSet = computed(() => new Set(props.starred));
-const isFavourite = (e: Entry) => starredSet.value.has(e.path);
-const itemsFor = (e: Entry) => menuItems.value.map((m) => m.id === 'favourite'
-  ? { id: m.id, label: t(isFavourite(e) ? 'favourites.remove' : 'favourites.add') } : m);
-// Rename, favourite, share and details act on the row itself, never on the whole selection.
-const SINGLE = new Set(['rename', 'favourite', 'share', 'details']);
-function fromMenu(i: number, id: string) { emit('action', id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i)); }
+// Selection, the item menu and the action keys are the gallery's too (#229).
+const { chosen, toggle, targets, itemsFor, isFavourite, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
+  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (a, es) => emit('action', a, es),
+  paste: () => emit('paste'),
+}, { showMenu: (i) => { void menus.get(i)?.show(); } });
 
 // The row becomes the tab stop, which is always rendered; focusing it scrolls it into view.
 async function focusRow(i: number) {
@@ -113,28 +90,14 @@ defineExpose({
 });
 function onKey(e: KeyboardEvent, i: number) {
   if (e.target !== e.currentTarget) return; // keys inside the row's own controls belong to them
-  const entry = props.entries[i]!;
-  const mod = e.ctrlKey || e.metaKey;
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  const handled = () => { e.preventDefault(); return true; };
-  if (key === 'ArrowDown' && handled()) void focusRow(i + 1);
-  else if (key === 'ArrowUp' && handled()) void focusRow(i - 1);
-  else if (key === 'Home' && handled()) void focusRow(0);
-  else if (key === 'End' && handled()) void focusRow(props.entries.length - 1);
-  else if (key === ' ' && handled()) toggle(i);
-  else if (props.editable && key === 'F2' && handled()) emit('action', 'rename', [entry]);
-  else if (props.editable && key === 'Delete' && handled()) emit('action', 'trash', targets(i));
-  else if (props.editable && mod && key === 'c' && handled()) emit('action', 'copy', targets(i));
-  else if (props.editable && mod && key === 'x' && handled()) emit('action', 'cut', targets(i));
-  else if (props.editable && mod && key === 'v' && handled()) emit('paste');
-  else if (mod && key === 'a' && handled()) select(props.entries.map((x) => x.path));
-  else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) void menus.get(i)?.show();
-  else if (key === 'Enter' && handled()) emit('open', entry); // a folder opens, a file opens in the preview
+  const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: props.entries.length - 1 }[e.key];
+  if (to === undefined) { onActionKey(e, i); return; }
+  e.preventDefault();
+  void focusRow(to);
 }
 function onClick(e: MouseEvent, i: number) {
   active.value = i;
-  if (e.shiftKey) selectRange(i);
-  else if (e.ctrlKey || e.metaKey) toggle(i);
+  onSelectClick(e, i);
 }
 // A plain click on a file's name previews it; the link itself (new tab, save link as) still downloads.
 function onFileClick(e: MouseEvent, entry: Entry) {
@@ -147,30 +110,8 @@ function onContextMenu(e: MouseEvent, i: number) {
   active.value = i;
   void menus.get(i)?.show();
 }
-// Long-press (#160): a touch held still for half a second opens the row's menu, as the context menu does with a mouse.
-// The click the lifted finger may still produce is swallowed, so the press does not also open or select the item.
-const LONG_PRESS_MS = 500;
-let press: { x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
-let pressed = false;
-function cancelPress() { if (press) clearTimeout(press.timer); press = null; }
-function onPointerDown(e: PointerEvent, i: number) {
-  cancelPress();
-  pressed = false;
-  if (e.pointerType !== 'touch' || (e.target instanceof Element && e.target.closest('.item-menu'))) return;
-  press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
-    press = null; pressed = true; active.value = i;
-    void menus.get(i)?.show();
-  }, LONG_PRESS_MS) };
-}
-function onPointerMove(e: PointerEvent) {
-  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress(); // a scroll, not a press
-}
-function onClickCapture(e: MouseEvent) {
-  if (!pressed) return;
-  pressed = false;
-  e.preventDefault(); e.stopPropagation();
-}
-onBeforeUnmount(cancelPress);
+// Long-press (#160): a touch held still opens the row's menu, as the context menu does with a mouse.
+const press = useLongPress((i) => { active.value = i; void menus.get(i)?.show(); });
 function onDragOver(e: DragEvent, entry: Entry) {
   if (props.editable && entry.type === 'directory' && acceptDrag(e)) dropTarget.value = entry.path;
 }
@@ -262,12 +203,12 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
             :aria-selected="chosen.has(e.path)"
             :class="{ selected: chosen.has(e.path), 'drop-target': dropTarget === e.path }"
             :draggable="editable"
-            @click.capture="onClickCapture"
+            @click.capture="press.onClickCapture"
             @click="onClick($event, i)"
-            @pointerdown="onPointerDown($event, i)"
-            @pointermove="onPointerMove"
-            @pointerup="cancelPress"
-            @pointercancel="cancelPress"
+            @pointerdown="press.onPointerDown($event, i)"
+            @pointermove="press.onPointerMove"
+            @pointerup="press.onPointerUp"
+            @pointercancel="press.onPointerUp"
             @focusin="active = i"
             @keydown="onKey($event, i)"
             @dblclick="emit('open', e)"

@@ -3,14 +3,31 @@
 // its line icon. A folder tile opens the folder, a file tile the preview overlay, which is the lightbox (←/→ step).
 // Large folders (#225): only the rows of tiles near the viewport are in the DOM (`useWindowedRows`), plus the tile with
 // the tab stop; each tile carries aria-setsize and aria-posinset, so the list still counts the whole folder.
-import { nextTick, onMounted, onUpdated, reactive, ref, watch } from 'vue';
+// Selection and actions (#229) are the list's (`useItemActions`): a click opens, Ctrl/Shift+click and Space select, the
+// context menu, Shift+F10 and each tile's menu button open the list's item menu. The tile's checkbox and menu button
+// show on hover or focus, while the tile is selected, and always on a touch screen; there a long-press selects.
+import { nextTick, onBeforeUpdate, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import type { Entry } from '@files/shared';
 import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
+import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
+import ItemMenu from './ItemMenu.vue';
 
-const props = defineProps<{ entries: Entry[]; folderName: string; source: string }>();
-const emit = defineEmits<{ open: [Entry] }>();
+const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source: string; selected?: string[];
+  editable?: boolean; shareable?: boolean; starred?: string[] }>(),
+{ selected: () => [], editable: true, shareable: false, starred: () => [] });
+const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: [] }>();
 const grid = ref<HTMLElement>();
+// The menus of the rendered tiles by index, collected anew on every render.
+const menus = new Map<number, InstanceType<typeof ItemMenu>>();
+onBeforeUpdate(() => menus.clear());
+const { chosen, toggle, itemsFor, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
+  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (a, es) => emit('action', a, es),
+  paste: () => emit('paste'),
+}, { showMenu: (i) => { void menus.get(i)?.show(); } });
+// A long-press selects (the menu button is always there on a touch screen); the browser's own long-press context menu
+// is dropped, so the press does not also open the item menu.
+const press = useLongPress((i) => { active.value = i; toggle(i); });
 // A thumbnail that could not be loaded (corrupt file, say) falls back to the icon instead of a broken image.
 const failed = reactive(new Set<string>());
 
@@ -58,11 +75,24 @@ async function focusTile(i: number) {
 function onKey(e: KeyboardEvent, i: number) {
   const to = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + perRow.value, ArrowUp: i - perRow.value,
     Home: 0, End: props.entries.length - 1 }[e.key];
-  if (to === undefined) return;
+  if (to === undefined) { onActionKey(e, i); return; }
   e.preventDefault();
   void focusTile(to);
 }
+// Space is taken on keydown; the button would still click on keyup.
+function onKeyUp(e: KeyboardEvent) { if (e.key === ' ') e.preventDefault(); }
+function onClick(e: MouseEvent, i: number) {
+  active.value = i;
+  if (!onSelectClick(e, i)) emit('open', props.entries[i]!);
+}
+function onContextMenu(e: MouseEvent, i: number) {
+  e.preventDefault();
+  if (press.touching()) return; // a held touch selects instead
+  active.value = i;
+  void menus.get(i)?.show();
+}
 defineExpose({
+  focus: () => { void focusTile(active.value); }, // after an action took the focused tile away
   focusPath: (path: string) => { const i = props.entries.findIndex((e) => e.path === path); if (i >= 0) void focusTile(i); }, // after the preview
 });
 </script>
@@ -87,6 +117,7 @@ defineExpose({
         <li
           v-for="{ e, i } in tilesOf(s)"
           :key="e.path"
+          :class="{ selected: chosen.has(e.path) }"
           :aria-setsize="entries.length"
           :aria-posinset="i + 1"
         >
@@ -97,7 +128,14 @@ defineExpose({
             :tabindex="i === active ? 0 : -1"
             @focus="active = i"
             @keydown="onKey($event, i)"
-            @click="emit('open', e)"
+            @keyup="onKeyUp"
+            @click.capture="press.onClickCapture"
+            @click="onClick($event, i)"
+            @contextmenu="onContextMenu($event, i)"
+            @pointerdown="press.onPointerDown($event, i)"
+            @pointermove="press.onPointerMove"
+            @pointerup="press.onPointerUp"
+            @pointercancel="press.onPointerUp"
           >
             <img
               v-if="hasThumbnail(e) && !failed.has(e.path)"
@@ -117,6 +155,27 @@ defineExpose({
             /></span>
             <span class="gallery-name">{{ e.name }}</span>
           </button>
+          <!-- Beside the tile, not inside it: a button holds no other controls. The label is the 44 px touch target. -->
+          <label
+            class="check-target gallery-check"
+            @click.stop
+          >
+            <input
+              type="checkbox"
+              tabindex="-1"
+              :checked="chosen.has(e.path)"
+              :aria-label="$t('actions.select', { name: e.name })"
+              @click.stop="active = i; toggle(i)"
+            >
+          </label>
+          <ItemMenu
+            :ref="(el) => { if (el) menus.set(i, el as InstanceType<typeof ItemMenu>) }"
+            class="gallery-menu"
+            :label="$t('actions.menu', { name: e.name })"
+            :items="itemsFor(e)"
+            @select="fromMenu(i, $event)"
+            @closed="focusTile(i)"
+          />
         </li>
       </template>
     </template>

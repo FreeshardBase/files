@@ -9,6 +9,7 @@ const props = defineProps<{ label: string; items: MenuItem[] }>();
 const emit = defineEmits<{ select: [string]; closed: [] }>();
 const open = ref(false);
 const up = ref(false);
+const right = ref(false);
 const root = ref<HTMLElement>();
 const menu = ref<HTMLElement>();
 const entries = ref<HTMLElement[]>([]);
@@ -16,14 +17,17 @@ const entries = ref<HTMLElement[]>([]);
 function onOutside(e: Event) {
   if (root.value && e.target instanceof Node && !root.value.contains(e.target)) close(false);
 }
-// The menu opens below its button unless it would run past the viewport there and there is more room above (#224).
+// The menu opens below its button unless it would run past the viewport there and there is more room above (#224). It
+// hangs to the left of its button unless it would run past the left edge and there is more room to the right (a tile in
+// the gallery's first column, #229).
 function place() {
   const button = root.value!.getBoundingClientRect();
   const below = window.innerHeight - button.bottom;
   up.value = menu.value!.offsetHeight > below && button.top > below;
+  right.value = menu.value!.offsetWidth > button.right && window.innerWidth - button.left > button.right;
 }
 async function show() {
-  up.value = false;
+  up.value = false; right.value = false;
   open.value = true;
   document.addEventListener('pointerdown', onOutside, true);
   await nextTick();
@@ -77,7 +81,7 @@ defineExpose({ show });
       v-if="open"
       ref="menu"
       class="menu"
-      :class="{ 'menu-up': up }"
+      :class="{ 'menu-up': up, 'menu-right': right }"
       role="menu"
       :aria-label="label"
       @keydown="onKey"
