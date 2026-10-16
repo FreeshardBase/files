@@ -139,6 +139,47 @@ describe('edit share', () => {
     }
     expect(existsSync(ownerFile(s.dir))).toBe(true);
   });
+
+  it('a file share at edit: `/` with keep-both or fail writes nothing beside the file (#252)', async () => {
+    const dir = `/private-${++n}`;
+    await expectOk(post('home', 'mkdir', { path: dir }, owner));
+    await expectOk(put('home', `${dir}/shared.txt`, 'the shared file', owner));
+    const r = await share({ source: 'home', path: `${dir}/shared.txt`, grantee: granteeId, access: 'edit' });
+    expect(r.statusCode, r.body).toBe(201);
+    const source = `share:${r.json().id}`;
+    const listing = async () => (await get('home', 'list', dir, owner)).json().entries.map((e: { name: string }) => e.name).sort();
+    expect(await listing()).toEqual(['shared.txt']);
+
+    for (const root of ['/', '//', '/', '///']) {
+      const kb = await put(source, root, 'planted by the grantee', grantee, 'keep-both');
+      expect(kb.statusCode, `${root}: ${kb.body}`).toBe(403);
+      expect(kb.json().code).toBe('FORBIDDEN');
+    }
+    const fail = await put(source, '/', 'planted by the grantee', grantee, 'fail');
+    expect(fail.statusCode, fail.body).toBe(409);
+    expect(fail.json().code).toBe('FILE_EXISTS');
+    expect(await listing()).toEqual(['shared.txt']);
+    expect(existsSync(ownerFile(`${dir}/shared (1).txt`))).toBe(false);
+    expect(readFileSync(ownerFile(`${dir}/shared.txt`), 'utf8')).toBe('the shared file');
+
+    // Overwriting the shared file itself stays allowed.
+    expect((await put(source, '/', 'changed by the grantee', grantee, 'replace')).statusCode).toBe(201);
+    expect(readFileSync(ownerFile(`${dir}/shared.txt`), 'utf8')).toBe('changed by the grantee');
+    expect(await listing()).toEqual(['shared.txt']);
+  });
+
+  it('a folder share at edit: every write at `/` is 403 and changes nothing (#252)', async () => {
+    const s = await sharedFolder('edit');
+    const rootNames = async () => (await get('home', 'list', '/', owner)).json().entries.map((e: { name: string }) => e.name).sort();
+    const before = await rootNames();
+    for (const [root, policy] of [['/', 'keep-both'], ['//', 'replace'], ['/', 'fail']]) {
+      const w = await put(s.source, root!, 'planted by the grantee', grantee, policy);
+      expect(w.statusCode, `${root} ${policy}: ${w.body}`).toBe(403);
+      expect(w.json().code).toBe('FORBIDDEN');
+    }
+    expect(await rootNames()).toEqual(before);
+    expect(readFileSync(ownerFile(`${s.dir}/note.txt`), 'utf8')).toBe('hello from the owner');
+  });
 });
 
 describe('who may use a share', () => {
