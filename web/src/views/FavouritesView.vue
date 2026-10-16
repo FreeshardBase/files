@@ -117,11 +117,17 @@ async function remove(f: Favourite) {
                 :class="f.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              {{ f.name }}
+              <span
+                class="name-text"
+                :title="f.name"
+              >{{ f.name }}</span>
             </div>
           </td>
           <td class="origin">
-            {{ location(f) }}
+            <span
+              class="origin-text"
+              :title="location(f)"
+            >{{ location(f) }}</span>
             <span
               v-if="!f.available"
               class="favourite-unavailable"

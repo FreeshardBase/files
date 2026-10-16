@@ -189,11 +189,17 @@ async function confirmed() {
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              {{ item.name }}
+              <span
+                class="name-text"
+                :title="item.name"
+              >{{ item.name }}</span>
             </div>
           </td>
           <td class="origin">
-            {{ folderLabel(parentOf(item.originalPath)) }}
+            <span
+              class="origin-text"
+              :title="folderLabel(parentOf(item.originalPath))"
+            >{{ folderLabel(parentOf(item.originalPath)) }}</span>
           </td>
           <td class="num date">
             {{ formatDate(item.deletedAt, intlLocale(locale)) }}

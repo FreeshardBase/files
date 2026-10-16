@@ -121,6 +121,7 @@ function submit(m: MemberUsage) {
               <span
                 v-if="m.email"
                 class="members-email"
+                :title="m.email"
               >{{ m.email }}</span>
             </div>
           </td>
@@ -179,12 +180,12 @@ function submit(m: MemberUsage) {
               >
                 {{ $t('members.remove') }}
               </button>
-              <span
-                v-if="formOf(m.id).invalid"
-                :id="`quota-error-${m.id}`"
-                class="fs-field__error members-error"
-              >{{ $t('members.invalid') }}</span>
             </form>
+            <span
+              v-if="formOf(m.id).invalid"
+              :id="`quota-error-${m.id}`"
+              class="fs-field__error members-error"
+            >{{ $t('members.invalid') }}</span>
           </td>
         </tr>
       </tbody>
