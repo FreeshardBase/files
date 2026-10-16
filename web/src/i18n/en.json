@@ -532,6 +532,9 @@
     "restoreLabel": "Restore the version from {date}",
     "restored": "The version from {date} was restored. The content it replaced is kept as a version."
   },
+  "toast": {
+    "close": "Dismiss message"
+  },
   "view": {
     "label": "View",
     "list": "List",

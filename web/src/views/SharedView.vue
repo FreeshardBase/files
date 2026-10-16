@@ -113,7 +113,10 @@ async function remove(item: IncomingShare) {
             {{ item.owner.displayName }}
           </td>
           <td class="origin">
-            {{ item.orphaned ? $t('shared.orphaned') : $t(`share.${item.access}`) }}
+            <span
+              class="fs-pill"
+              :data-tone="item.orphaned ? 'danger' : undefined"
+            >{{ item.orphaned ? $t('shared.orphaned') : $t(`share.${item.access}`) }}</span>
           </td>
           <td class="num date">
             {{ formatDate(item.createdAt, intlLocale(locale)) }}

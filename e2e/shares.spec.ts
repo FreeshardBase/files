@@ -75,8 +75,8 @@ test('owner shares a folder read-only; the member opens it under "Shared with me
   await expect(member.getByTestId('upload-input')).toHaveCount(0);
   await expect(member.getByRole('button', { name: /Hochladen|Upload/ })).toHaveCount(0);
   await menuButton(member, 'plan.txt').click();
-  await expect(member.getByRole('menu').getByRole('menuitem')).toHaveText([/Herunterladen|Download/,
-    /Zu Favoriten hinzufügen|Add to favourites/, 'Details']);
+  await expect(member.getByRole('menu').getByRole('menuitem')).toHaveText([/Herunterladen|Download/, 'Details',
+    /Zu Favoriten hinzufügen|Add to favourites/]);
   const [download] = await Promise.all([member.waitForEvent('download'),
     member.getByRole('menu').getByRole('menuitem', { name: /Herunterladen|Download/ }).click()]);
   expect(download.suggestedFilename()).toBe('plan.txt');

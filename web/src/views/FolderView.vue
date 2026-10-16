@@ -17,6 +17,7 @@ import RenameDialog from '../components/RenameDialog.vue';
 import NewFolderDialog from '../components/NewFolderDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
+import ActionToast, { type Toast } from '../components/ActionToast.vue';
 import { useUploadsStore, type PickedFile } from '../stores/uploads.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
@@ -33,7 +34,10 @@ const connections = useConnectionsStore();
 const transfers = useTransfersStore();
 const favourites = useFavouritesStore();
 const sortStore = useSortStore();
-const status = ref('');
+// The feedback of the last action, shown as a toast (#241); an outcome with failures takes the error kind.
+const toast = ref<Toast | null>(null);
+let toastId = 0;
+const say = (text: string, kind: Toast['kind'] = 'success') => { toast.value = { text, kind, id: ++toastId }; };
 const source = computed(() => String(route.params.source));
 const path = computed(() => {
   const p = route.params.path; const segs = Array.isArray(p) ? p : p ? [p] : [];
@@ -51,7 +55,7 @@ let refocus: { source: string; path: string } | null = null; // where the naviga
 watch([source, path], ([s, p], [os, op]) => {
   const active = document.activeElement;
   refocus = os !== undefined && op !== undefined && active && section.value?.contains(active) ? { source: os, path: op } : null;
-  status.value = ''; failures.value = null; selected.value = [];
+  toast.value = null; failures.value = null; selected.value = [];
   void folder.open(p, { source: s });
   if (refocus) void nextTick(() => content.value?.focus()); // the rows are inert while loading
 }, { immediate: true });
@@ -236,13 +240,13 @@ async function settle(at: { source: string; dir: string }) {
 }
 
 // Uploads run in the uploads store (resumable, one panel); failures are summarised there, so this only reports the
-// batch in the status line and relists once it has an outcome.
+// batch in a toast and relists once it has an outcome.
 function upload(files: PickedFile[]) {
   const at = { source: folder.source, dir: folder.path }; // captured: navigating away mid-batch must not redirect the remaining files
   failures.value = null;
   uploads.enqueue(files, at, { returnFocus: uploadButton.value?.input, settled: (r) => {
-    status.value = r.skipped ? t('upload.summarySkipped', { done: r.done, total: r.total, skipped: r.skipped })
-      : t('upload.summary', { done: r.done, total: r.total });
+    say(r.skipped ? t('upload.summarySkipped', { done: r.done, total: r.total, skipped: r.skipped })
+      : t('upload.summary', { done: r.done, total: r.total }), r.failed ? 'error' : 'success');
     void settle(at);
   } });
 }
@@ -272,8 +276,8 @@ async function transfer(op: 'move' | 'copy', items: Item[], dir: string, from = 
   try {
     const r = await batch(todo, (x) => x.name, (x, policy) => folder.transfer(op, from, x.from, join(dir, x.name), policy));
     showFailures(t('transfer.failedHeading'), r.failed, 'transfer.failedItem');
-    status.value = r.skipped ? t(`transfer.${op}SummarySkipped`, { done: r.done, total: todo.length, skipped: r.skipped })
-      : t(`transfer.${op}Summary`, { done: r.done, total: todo.length });
+    say(r.skipped ? t(`transfer.${op}SummarySkipped`, { done: r.done, total: todo.length, skipped: r.skipped })
+      : t(`transfer.${op}Summary`, { done: r.done, total: todo.length }), r.failed.length ? 'error' : 'success');
     return r;
   } finally {
     await settle(at);
@@ -289,10 +293,10 @@ async function trash(entries: Entry[]) {
   failures.value = null;
   try {
     await folder.trash(at.source, entries.map((e) => e.path));
-    status.value = t('transfer.trashed', { count: entries.length });
+    say(t('transfer.trashed', { count: entries.length }));
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
-    status.value = '';
+    toast.value = null;
     failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] };
   } finally {
     await settle(at);
@@ -317,7 +321,7 @@ async function createFolder(name: string) {
   }
   creating.value = null;
   failures.value = null;
-  status.value = t('folder.created', { name: created.name });
+  say(t('folder.created', { name: created.name }));
   if (at.source !== folder.source || at.dir !== folder.path) return;
   selected.value = [created.path];
   await nextTick(); // after AppDialog restored focus to where the dialog was opened
@@ -354,7 +358,7 @@ async function rename(name: string) {
   }
   renaming.value = null;
   failures.value = null;
-  status.value = t('transfer.renamed', { name: placed.name });
+  say(t('transfer.renamed', { name: placed.name }));
   await settle(at);
 }
 
@@ -367,15 +371,15 @@ function download(entries: Entry[]) {
 }
 
 const starred = computed(() => favourites.items.filter((f) => f.source === source.value).map((f) => f.path));
-// Stars or unstars one item of this source (#155); the status line says which.
+// Stars or unstars one item of this source (#155); a toast says which.
 async function toggleFavourite(e: Entry) {
   failures.value = null;
   try {
     const now = await favourites.toggle(source.value, e.path);
-    status.value = t(now ? 'favourites.added' : 'favourites.removed', { name: e.name });
+    say(t(now ? 'favourites.added' : 'favourites.removed', { name: e.name }));
   } catch (err) {
     if (!(err instanceof ApiFailure)) throw err;
-    status.value = '';
+    toast.value = null;
     failures.value = { heading: t('favourites.failedHeading'), items: [t(`errors.${err.code}`)] };
   }
 }
@@ -390,7 +394,7 @@ function onAction(action: ItemAction, entries: Entry[]) {
   else {
     const mode = action === 'cut' ? 'move' : 'copy';
     folder.clipboard = { mode, source: folder.source, entries };
-    status.value = t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length });
+    say(t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length }));
   }
 }
 // Within one source items move and copy directly; from another source they become a transfer job (#152).
@@ -424,13 +428,13 @@ async function pasteAcross(clip: NonNullable<typeof folder.clipboard>) {
     }
     if (policy !== 'skip') items.push({ path: e.path, onCollision: policy });
   }
-  if (!items.length) { status.value = t('transfers.nothingToDo'); return; }
+  if (!items.length) { say(t('transfers.nothingToDo')); return; }
   try {
     await transfers.start({ mode: clip.mode, from: clip.source, to: at.source, dir: at.dir, items });
-    status.value = t(`transfers.started.${clip.mode}`, items.length);
+    say(t(`transfers.started.${clip.mode}`, items.length));
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
-    status.value = '';
+    toast.value = null;
     failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] };
   }
 }
@@ -486,7 +490,7 @@ function onDrop(paths: string[], dir: string) {
           </option>
         </select>
         <div
-          class="view-toggle"
+          class="segmented view-toggle"
           role="group"
           :aria-label="$t('view.label')"
         >
@@ -494,11 +498,17 @@ function onDrop(paths: string[], dir: string) {
             v-for="v in (['list', 'gallery'] as const)"
             :key="v"
             type="button"
-            class="button"
+            class="segment"
+            :aria-label="$t(`view.${v}`)"
             :aria-pressed="view === v"
             @click="setView(v)"
           >
-            {{ $t(`view.${v}`) }}
+            <span
+              class="icon"
+              :class="`icon-view-${v}`"
+              aria-hidden="true"
+            />
+            <span class="segment-text">{{ $t(`view.${v}`) }}</span>
           </button>
         </div>
         <button
@@ -627,13 +637,10 @@ function onDrop(paths: string[], dir: string) {
       :source="source"
       @close="closePreview"
     />
-    <p
-      class="status"
-      role="status"
-      aria-live="polite"
-    >
-      {{ status }}
-    </p>
+    <ActionToast
+      :toast="toast"
+      @dismiss="toast = null"
+    />
     <div
       v-if="failures"
       class="upload-failures"

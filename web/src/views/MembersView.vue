@@ -115,7 +115,7 @@ function submit(m: MemberUsage) {
                 {{ m.displayName }}
                 <span
                   v-if="m.role === 'admin'"
-                  class="members-role"
+                  class="fs-pill members-role"
                 >{{ $t('members.admin') }}</span>
               </span>
               <span

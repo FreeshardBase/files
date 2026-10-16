@@ -236,7 +236,7 @@ async function revoke(s: Share) {
         :key="s.id"
       >
         <span class="share-name">{{ s.grantee.displayName }}</span>
-        <span class="share-level">{{ t(`share.${s.access}`) }}</span>
+        <span class="share-level fs-pill">{{ t(`share.${s.access}`) }}</span>
         <button
           type="button"
           class="button danger"

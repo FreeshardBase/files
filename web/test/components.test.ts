@@ -97,16 +97,16 @@ describe('FileList actions', () => {
     expect(w.emitted('paste')).toBeUndefined();
     expect(w.findAll('tbody tr').map((r) => r.attributes('draggable'))).toEqual(['false', 'false']);
     await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
-    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Add to favourites', 'Details']);
+    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details', 'Add to favourites']);
     w.unmount();
   });
   it('the member\'s own items offer "Share", which acts on the row alone', async () => {
     const w = mount(FileList, { props: { ...both, shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
     await w.findAll('.item-menu .icon-button')[0]!.trigger('click');
     const items = w.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Share', 'Details',
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Add to favourites',
       'Move to trash']);
-    await items[5]!.trigger('click');
+    await items[1]!.trigger('click');
     expect(w.emitted('action')).toEqual([['share', [entries[0]]]]);
     w.unmount();
   });
@@ -129,7 +129,7 @@ describe('FileList actions', () => {
     const menu = w.find('[role=menu]');
     expect(menu.attributes('aria-label')).toBe('Actions for a b.txt');
     const items = menu.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Details', 'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Details', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Move to trash']);
     expect(document.activeElement).toBe(items[0]!.element);
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]!.element);

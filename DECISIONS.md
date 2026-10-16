@@ -704,3 +704,18 @@ Decision: the list and the gallery share one composable (`web/src/itemActions.ts
 Why: the issue names the selection model and long-press-selects. Selecting by long-press is how photo grids work on phones, and the always-visible menu button keeps every action one tap away, so nothing needs the long-press to open a menu. Taps keep opening (no "selection mode" that turns taps into toggles), because the issue says "click opens" and the checkbox is the touch path to add items (YAGNI). One composable keeps the two views from drifting apart.
 
 Left open: tiles are not dragged onto folders and have no star toggle of their own; the menu's favourite entry covers starring.
+
+## 2026-10-16: The guide's toast, menu, segmented control and pills (#241)
+
+Question: the issue asks for the PDF guide's toast, dropdown, segmented control and status pill. It leaves some points open. Where does the toast sit, and which feedback becomes one? When is a toast an error? Which dot colour does a pill get when it only labels (access, role)? Should the focus scale of `.fs-focusable` be added or recorded as a deviation?
+
+Decision:
+- **Toast.** The folder view's feedback line becomes a toast, fixed at the bottom right of the window and the full width less the margin on the phone. It sits below dialogs (z-index 9 against 10). It is an error toast when the outcome had failures: a move, copy or upload batch with a failed item. It is a success toast otherwise. A success fades after 5 s, measured from the latest message; an error stays until it is closed or replaced. Failures still list their reasons in the failure box above the list; a refusal that produced no outcome (trash, favourite, starting a transfer) is shown only there, as before.
+- **Other views.** The status lines of the other views (settings, members, cloud accounts, shared, trash, favourites, the migration wizard) stay as they are. They confirm settings or show refusals in place, not the outcome of a file action.
+- **Menu.** The item menu has one hairline, before "Move to trash". The issue's "|" between the first two groups marks the order, not more separators.
+- **Pills.** A pill that only labels ("Can view", "Can edit", "Admin", an unavailable connection, one without a library) gets a muted dot. Teal and danger mean a state the member should notice.
+- **Focus scale.** It is recorded as a deviation in DESIGN.md rather than added.
+
+Why: a fixed toast is what the guide and Calendar's `.toast` show. Keeping it below dialogs means it never covers a question. A success that fades and an error that stays is what the issue asks for. Errors without an outcome already have their alert box, and a second copy in a toast would only repeat it (YAGNI). The focus targets are mostly full-width rows, where the guide itself drops the scale. Scaling buttons and tiles would make them overlap in the toolbar and the gallery.
+
+Left open: the other views' status lines and the alert boxes keep their current form; making them toasts or the guide's alert banner (p.17) is a separate change.

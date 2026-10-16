@@ -80,7 +80,6 @@ body {
 .library-url, .connection-library { font-size: var(--fs-small); color: var(--ink-muted); }
 .connection-library { display: block; }
 .connections-add { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
-.connection-status[data-status='reauth'] { color: var(--danger); }
 @media (max-width: 600px) {
   /* Phone: the places collapse behind one toggle under the header and open as a list in the page flow, 44 px rows. */
   .app-body { flex-direction: column; }
@@ -365,9 +364,24 @@ body {
 /* Thumbnails (#144): a small square in the row's icon slot; in the gallery a tile of the surface tone with a hairline. */
 .row-thumb { flex: none; width: 28px; height: 28px; margin: -4px 0; object-fit: cover; border-radius: 4px; background: var(--bg); }
 .toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.view-toggle { display: flex; gap: var(--space-1); }
-/* The current view is marked like the current place in the sidebar: teal hairline and teal text, never a fill. */
-.view-toggle .button[aria-pressed='true'] { border-color: var(--line); color: var(--line); }
+/* The guide's segmented control (PDF p.19, #241): one shared hairline; the current segment takes the surface fill and a
+   hairline of its own, the others stay transparent. Text on the desktop, line icons on the phone (names via aria-label). */
+.segmented {
+  display: inline-flex; padding: 2px; border: var(--border-w) solid var(--border); border-radius: var(--radius-control);
+}
+.segment {
+  display: inline-flex; align-items: center; justify-content: center; padding: 7px 14px;
+  font: 400 var(--fs-small)/1 var(--font-ui); color: var(--ink-muted); background: transparent;
+  border: var(--border-w) solid transparent; border-radius: calc(var(--radius-control) - 2px); cursor: pointer;
+}
+.segment[aria-pressed='true'] { background: var(--surface); border-color: var(--border); color: var(--ink); }
+.segment:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+.segment .icon { display: none; width: 18px; height: 18px; background: currentColor; }
+@media (max-width: 600px) {
+  .segment { min-width: 44px; min-height: 44px; padding: 0 var(--space-2); }
+  .segment .icon { display: block; }
+  .segment-text { display: none; }
+}
 .gallery {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3);
   list-style: none; margin: 0; padding: 0;
@@ -472,7 +486,7 @@ body {
 /* Members (#156): name over e-mail, and a compact quota form per row. */
 .members-name { flex-direction: column; align-items: flex-start; gap: 0; }
 .members-email { font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
-.members-role { margin-left: var(--space-2); font: 600 var(--fs-label)/1 var(--font-ui); text-transform: uppercase; letter-spacing: var(--ls-label); color: var(--ink-muted); }
+.members-role { margin-left: var(--space-2); }
 .members-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .members-amount { width: 7em; }
 .members-unit { width: auto; }
@@ -552,7 +566,43 @@ body {
   display: block; width: 100%; padding: 10px var(--space-4); text-align: left; white-space: nowrap;
   font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink); background: none; border: 0; cursor: pointer;
 }
-.menu button:hover, .menu button:focus-visible { background: color-mix(in srgb, var(--line) 10%, transparent); outline: none; }
+/* The guide's dropdown (PDF p.18, #241): a 5 % ink highlight on the active entry; the destructive entry last, in
+   danger, under a hairline. */
+.menu button:hover, .menu button:focus { background: color-mix(in srgb, var(--ink) 5%, transparent); outline: none; }
+.menu button.menu-danger { color: var(--danger); }
+.menu-separator { margin: var(--space-1) 0; border-top: var(--border-w) solid var(--border); }
+
+/* The guide's toast (PDF p.16, #241): the feedback of an action at the bottom right, a surface sheet with a hairline
+   and a 3 px edge, teal for a success, danger for an outcome with failures; the close X in its bottom-right corner.
+   Empty, it keeps no chrome and no size, so the live region stays in place without showing. */
+.toast {
+  position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 9; box-sizing: border-box;
+  display: flex; align-items: flex-end; gap: var(--space-2); max-width: min(440px, calc(100vw - 2 * var(--space-4)));
+}
+.toast.shown {
+  padding: var(--space-3) var(--space-2) var(--space-2) var(--space-4); background: var(--surface);
+  border: var(--border-w) solid var(--border); border-left: 3px solid var(--data); border-radius: var(--radius-tile);
+}
+.toast.shown[data-kind='error'] { border-left-color: var(--danger); }
+.toast-text { margin: 0; }
+.toast.shown .toast-text { margin: 0 0 var(--space-1); font-size: var(--fs-small); color: var(--ink); overflow-wrap: anywhere; }
+.toast-close .icon { width: 16px; height: 16px; background: var(--ink-muted); }
+@media (max-width: 600px) {
+  .toast { left: var(--space-3); right: var(--space-3); bottom: var(--space-3); max-width: none; }
+  .toast-text { flex: 1; }
+}
+
+/* The guide's status pill (data table, PDF p.15, #241): an outline pill with a dot; teal is fine, danger needs the
+   member, a muted dot only labels (access, role). */
+.fs-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; white-space: nowrap;
+  font: 400 var(--fs-small)/1.4 var(--font-ui); color: var(--ink); background: transparent;
+  border: var(--border-w) solid var(--border); border-radius: var(--radius-pill);
+}
+.fs-pill::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-muted); }
+.fs-pill[data-tone='ok']::before { background: var(--data); }
+.fs-pill[data-tone='danger']::before { background: var(--danger); }
+.fs-pill[data-tone='danger'] { color: var(--danger); }
 
 .app-dialog-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--space-4); }
 .app-dialog-field .fs-input { box-sizing: border-box; }
@@ -574,6 +624,15 @@ body {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='5.5' cy='12' r='1.25'/%3E%3Ccircle cx='12' cy='12' r='1.25'/%3E%3Ccircle cx='18.5' cy='12' r='1.25'/%3E%3C/svg%3E");
 }
 .icon { flex: none; width: 20px; height: 20px; background: var(--line); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.icon-close {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+}
+.icon-view-list {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01'/%3E%3C/svg%3E");
+}
+.icon-view-gallery {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='7' height='7' rx='1.5'/%3E%3Crect x='13' y='4' width='7' height='7' rx='1.5'/%3E%3Crect x='4' y='13' width='7' height='7' rx='1.5'/%3E%3Crect x='13' y='13' width='7' height='7' rx='1.5'/%3E%3C/svg%3E");
+}
 .icon-folder {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
 }
