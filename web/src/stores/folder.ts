@@ -52,10 +52,12 @@ export const useFolderStore = defineStore('folder', {
     async trash(source: string, paths: string[]): Promise<void> {
       await api.post(`${sourceApi(source)}/delete`, { paths } satisfies DeleteRequest);
     },
-    async mkdir(name: string) {
+    /** Creates `name` in the open folder and relists it if it is still open. Answers the new folder. */
+    async mkdir(name: string): Promise<Entry> {
       const dir = this.path; const source = this.source;
-      await api.post(`${sourceApi(source)}/mkdir`, { path: join(dir, name) });
+      const created = await api.post<Entry>(`${sourceApi(source)}/mkdir`, { path: join(dir, name) });
       if (dir === this.path && source === this.source) await this.open(dir, { refresh: true });
+      return created;
     },
   },
 });

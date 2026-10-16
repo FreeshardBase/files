@@ -233,7 +233,10 @@
     "newFolder": "Neuer Ordner",
     "newFolderPrompt": "Wie soll der Ordner heißen?",
     "create": "Erstellen",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "newFolderLabel": "Name",
+    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten.",
+    "created": "Ordner {name} erstellt"
   },
   "upload": {
     "button": "Hochladen",
@@ -636,6 +639,7 @@
       "cut": "Strg + X",
       "copy": "Strg + C",
       "paste": "Strg + V",
+      "newFolder": "Umschalt + N",
       "menu": "Umschalt + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
@@ -653,6 +657,7 @@
       "cut": "Zum Verschieben vormerken",
       "copy": "Zum Kopieren vormerken",
       "paste": "Vorgemerkte Einträge hierher verschieben oder kopieren",
+      "newFolder": "Neuer Ordner",
       "menu": "Aktionsmenü des Eintrags öffnen",
       "close": "Dialog oder Menü schließen",
       "history": "Im Ordnerverlauf zurück oder vor, auch mit den Seitentasten der Maus",

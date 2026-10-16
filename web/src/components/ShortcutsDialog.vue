@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // The keyboard shortcuts (#160): opened by "?" outside a text field or by the header button. The list is what FileList,
-// ItemMenu, the gallery and AppDialog actually handle; nothing here is a shortcut of its own. Key names are translated
-// too ("Strg", "Entf").
+// ItemMenu, the gallery, FolderView (Shift+N, #221) and AppDialog actually handle; nothing here is a shortcut of its own.
+// Key names are translated too ("Strg", "Entf").
 import { useI18n } from 'vue-i18n';
 import AppDialog from './AppDialog.vue';
 
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 const SHORTCUTS = ['arrows', 'galleryArrows', 'homeEnd', 'open', 'select', 'selectAll', 'rename', 'trash', 'cut', 'copy',
-  'paste', 'menu', 'close', 'history', 'help'] as const;
+  'paste', 'newFolder', 'menu', 'close', 'history', 'help'] as const;
 </script>
 
 <template>
