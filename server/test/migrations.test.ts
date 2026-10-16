@@ -14,7 +14,7 @@ import { MemBackend } from './support/memBackend.ts';
 
 type S = { cookie: string; csrf: string; id: string };
 type Job = { id: string; kind: string; origin: string | null; status: string; total: number; done: number;
-  failed: { path: string; code: string }[]; cancelled: number; verifiedFiles: number };
+  failed: { path: string; code: string }[]; cancelled: number; verifiedFiles: number; files: number; listing: boolean };
 const ORIGIN = 'https://files.example.com';
 
 const as = (t: TestApp, s: S, method: string, url: string, payload?: unknown) => t.app.inject({
@@ -140,6 +140,21 @@ describe('migrating a cloud account or folder to the shard', () => {
     expect(readFileSync(join(home(t, a), 'Taken'), 'utf8')).toBe('mine, not the cloud\'s');
     expect(readFileSync(join(home(t, a), 'Taken (1)', 'top.txt'), 'utf8')).toBe('at the root');
     expect(readFileSync(join(home(t, a), 'Taken (1)', 'Docs', 'inner.txt'), 'utf8')).toBe('inside');
+  });
+
+  it('lists every folder before copying files, so the file total matches the scan while files are still copying (#227)', async () => {
+    const { m, source } = mem();
+    m.put('/M/a.txt', 'first').put('/M/b.txt', 'second').put('/M/z/deep/c.txt', 'third');
+    // Both files at the top stall, holding every worker; only folders listed before them count.
+    m.stall('/M/a.txt'); m.stall('/M/b.txt');
+    const scan = (await as(t, a, 'GET', `/api/v1/migrations/scan?source=${source}&path=%2FM`)).json() as { files: number };
+    expect(scan.files).toBe(3);
+    const job = await migrate(t, a, { from: source, path: '/M', name: 'M listed' });
+    expect(job).toMatchObject({ status: 'running', listing: true });
+    const mid = await until(() => jobOf(t, a, job.id), (j) => !j.listing, 'the listing', 3000);
+    expect(mid).toMatchObject({ status: 'running', files: scan.files });
+    m.release('/M/a.txt'); m.release('/M/b.txt');
+    expect(await settled(t, a, job.id)).toMatchObject({ status: 'completed', files: 3, verifiedFiles: 3, listing: false });
   });
 
   it('a migration from Google Drive also checks Drive\'s MD5 of every file', async () => {

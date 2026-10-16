@@ -666,3 +666,11 @@ Decision: a rename is one request of its own and keeps the dialog open while it 
 Why: the issue offers either a note or a retry. The note is always correct. A retry would mean replaying a stored request (a body, a CSRF token from the old session), and that is unsafe for a move or delete whose target may have changed meanwhile (YAGNI). Replacing an item by renaming onto its name is rare. The new-folder dialog already refuses a taken name inline, and rename now matches it. Disabling the buttons, rather than debouncing them, also covers keyboard repeats and shows the member that something is running.
 
 Left open: dialogs that close on confirm (empty trash, unlink, revoke) already ignore a second click, so they stay as they are.
+
+## 2026-10-16: Migration page totals, heading and a direct load of the wizard (#227)
+
+Question: a migration's page counted job items ("0 of 1": at the start only the migrated folder was known), while the scan counted files. The heading kept saying "is moving" after the job had ended. Opening `/migrate` directly lost the connection list to a race between two loads. What should the page count, what should the heading say, and how does a direct load work?
+
+Decision: a migration's page counts files, like the scan: "n of m files", where n is the verified files and m every file item of the job. Each job lists its folders before it copies files: the pump takes folders and unexamined items first, and a folder's children are typed from its listing. Until every folder is listed the page says "Counting …" instead of a total. The job carries `files` and `listing` for this. The heading is "Moving “x” to the shard" while running, "“x” moved to the shard" once it has ended (also with failures, which the summary lists), and "Moving “x” was cancelled" after a cancel. A `connections.load()` that a newer load overtakes now resolves with the newer load, so every caller sees the list.
+
+Why: the issue asks for totals that match the scan. Scanning again on start would double the listing, and carrying the scan's numbers in the request would trust the client. Listing folders first gives the exact count from the job itself, early, at no extra cost. A file count is what the member reviewed; folder items are bookkeeping. The transfer panel keeps its item count (YAGNI).

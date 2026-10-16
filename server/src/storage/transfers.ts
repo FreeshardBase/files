@@ -148,7 +148,7 @@ export class TransferEngine {
     if (target === dir || posix.dirname(target) !== dir) throw new AppError('VALIDATION');
     if ((await to.backend.stat(dir)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
     return this.insertJob({ user, kind: 'migration', mode: 'copy', from: req.from, to: 'home', dir },
-      [{ from_path: path, to_path: target, on_collision: 'keep-both' }]);
+      [{ from_path: path, to_path: target, on_collision: 'keep-both', type: 'directory' }]);
   }
 
   /**
@@ -299,6 +299,9 @@ export class TransferEngine {
       .all(id) as { from_path: string; error: ErrorCode }[]).map((r) => ({ path: r.from_path, code: r.error }));
     const done = db.prepare(`SELECT coalesce(sum(bytes), 0) AS bytes, count(CASE WHEN type = 'file' THEN 1 END) AS files
       FROM transfer_items WHERE job_id = ? AND status = 'done'`).get(id) as { bytes: number; files: number };
+    const known = db.prepare(`SELECT count(CASE WHEN type = 'file' THEN 1 END) AS files,
+      count(CASE WHEN status IN ('pending', 'active') AND (type IS NULL OR type = 'directory') THEN 1 END) AS unlisted
+      FROM transfer_items WHERE job_id = ?`).get(id) as { files: number; unlisted: number };
     let flowing = 0;
     for (const [key, n] of this.inflight) if (key.startsWith(`${id}:`)) flowing += n;
     const first = db.prepare(`SELECT from_path, coalesce(placed, to_path) AS target FROM transfer_items WHERE job_id = ? ORDER BY seq LIMIT 1`)
@@ -309,7 +312,7 @@ export class TransferEngine {
       : posix.basename(job.kind === 'migration' ? first!.target : job.dir);
     return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
       status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0, verifiedFiles: done.files,
-      cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
+      files: known.files, listing: job.status === 'running' && known.unlisted > 0, cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
       createdAt: job.created_at, finishedAt: job.finished_at };
   }
 
@@ -329,12 +332,14 @@ export class TransferEngine {
     this.emit(jobId);
   }
 
-  // Starts pending items of running jobs, oldest job first, until the concurrency is used.
+  // Starts pending items of running jobs, oldest job first, until the concurrency is used. Within a job, folders (and
+  // items not yet looked at) go before files, so its totals are complete early (#227).
   private pump(): void {
     const { db } = this.deps;
     while (!this.stopping && this.active.size < TRANSFER_CONCURRENCY) {
       const next = db.prepare(`SELECT i.job_id AS jobId, i.seq FROM transfer_items i JOIN transfer_jobs j ON j.id = i.job_id
-        WHERE i.status = 'pending' AND j.status = 'running' ORDER BY j.created_at, j.id, i.seq LIMIT 1`).get() as { jobId: string; seq: number } | undefined;
+        WHERE i.status = 'pending' AND j.status = 'running' ORDER BY j.created_at, j.id, i.type IS 'file', i.seq LIMIT 1`)
+        .get() as { jobId: string; seq: number } | undefined;
       if (!next) return;
       db.prepare(`UPDATE transfer_items SET status = 'active' WHERE job_id = ? AND seq = ?`).run(next.jobId, next.seq);
       const key = `${next.jobId}:${next.seq}`;
@@ -471,20 +476,23 @@ export class TransferEngine {
     const there = await statOrNull(to, placed);
     if (!there) await to.mkdir(placed);
     else if (there.type !== 'directory') throw new AppError('FILE_EXISTS', { name: posix.basename(placed) });
-    const children: string[] = [];
+    const children: { name: string; type: 'file' | 'directory' }[] = [];
     let cursor: string | undefined;
     do {
       const page = await from.list(item.from_path, cursor);
-      for (const e of page.entries) children.push(e.name);
+      for (const e of page.entries) children.push({ name: e.name, type: e.type });
       cursor = page.next;
     } while (cursor);
     const { db } = this.deps;
     db.transaction(() => {
       let seq = db.prepare(`SELECT max(seq) FROM transfer_items WHERE job_id = ?`).pluck().get(item.job_id) as number;
-      // The folder is this job's own, so whatever lies in it came from this job (an earlier attempt): replace it.
-      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, parent, from_path, to_path, on_collision, status)
-        VALUES (?, ?, ?, ?, ?, 'replace', 'pending')`);
-      for (const name of children) insert.run(item.job_id, ++seq, item.seq, posix.join(item.from_path, name), posix.join(placed, name));
+      // The folder is this job's own, so whatever lies in it came from this job (an earlier attempt): replace it. The type
+      // from the listing orders the work and counts the files; each item's own stat confirms it when it runs.
+      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, parent, from_path, to_path, on_collision, type, status)
+        VALUES (?, ?, ?, ?, ?, 'replace', ?, 'pending')`);
+      for (const c of children) {
+        insert.run(item.job_id, ++seq, item.seq, posix.join(item.from_path, c.name), posix.join(placed, c.name), c.type);
+      }
       this.setItem(item.job_id, item.seq, { status: 'done', error: null });
     }).immediate();
   }

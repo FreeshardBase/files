@@ -33,10 +33,16 @@ const account = computed(() => {
 });
 const percent = (j: TransferJob) => (j.status !== 'running' || j.total === 0 ? 100
   : Math.min(100, Math.round(((j.done + j.failed.length + j.cancelled) / j.total) * 100)));
+// A migration counts files, like its scan; until every folder is listed its total is not known yet (#227).
 const state = (j: TransferJob) => (j.status === 'running'
-  ? t('transfers.state.running', { done: j.done, total: j.total, size: size(j.bytes) })
+  ? j.kind === 'migration'
+    ? j.listing ? t('migrate.counting') : t('migrate.running', { done: j.verifiedFiles, total: j.files, size: size(j.bytes) })
+    : t('transfers.state.running', { done: j.done, total: j.total, size: size(j.bytes) })
   : j.status === 'completed_with_errors' ? t('transfers.state.completed_with_errors', { failed: j.failed.length, total: j.total })
     : t(`transfers.state.${j.status}`));
+// The heading follows the job: moving, moved, or cancelled (#227).
+const heading = (j: TransferJob) => t(j.status === 'running' ? 'migrate.jobTitle'
+  : j.status === 'cancelled' ? 'migrate.jobTitleCancelled' : 'migrate.jobTitleDone', { name: j.name });
 const reportHref = (j: TransferJob) => `/api/v1/transfers/${encodeURIComponent(j.id)}/report`;
 
 const report = (e: unknown) => {
@@ -72,7 +78,7 @@ async function confirmCleanup() {
   <section class="migrate">
     <div class="toolbar">
       <h1 class="view-title">
-        {{ job ? t('migrate.jobTitle', { name: job.name }) : t('migrate.title') }}
+        {{ job ? heading(job) : t('migrate.title') }}
       </h1>
       <RouterLink
         class="button"

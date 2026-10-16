@@ -41,6 +41,10 @@ export const TransferJobSchema = z.object({
   done: z.number().int().nonnegative(),
   /** Files among the done items: verified copies (a migration's), or originals deleted (a cleanup's). */
   verifiedFiles: z.number().int().nonnegative(),
+  /** Files among all items known so far; once `listing` is false, every file of the job (#227). */
+  files: z.number().int().nonnegative(),
+  /** Folders (or picked items not yet looked at) still wait to be listed, so `total` and `files` may still grow. */
+  listing: z.boolean(),
   cancelled: z.number().int().nonnegative(),
   failed: z.array(z.object({ path: z.string(), code: z.enum(ERROR_CODES) })),
   /** Bytes copied so far, verified items plus the items in flight. */

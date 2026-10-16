@@ -95,3 +95,39 @@ test('migrate a cloud folder with the wizard, read the summary, and delete only 
   expect(await list(source, `/${folder}/Photos`)).toEqual([]);
   expect(await list('home', `/${folder} archive`)).toEqual(['Photos', 'letter.txt']);
 });
+
+// #227: opening /migrate directly (a reload, a bookmark) works like navigating there: the connection is chosen and
+// step 2 proposes its name.
+test('a direct load of the wizard preselects the connection and proposes the folder name', async ({ page }) => {
+  await connected(page);
+  for (const open of [() => page.goto('/migrate'), () => page.reload()]) {
+    await open();
+    await expect(page.getByRole('radio', { name: /Fake Cloud: testuser@example\.com/ })).toBeChecked();
+    await page.getByRole('button', { name: /^(Weiter|Next)$/ }).click();
+    await expect(page.getByLabel(/Name des neuen Ordners|Name of the new folder/)).toHaveValue('Fake Cloud testuser@example.com');
+    await expect(page.getByRole('button', { name: /^(Weiter|Next)$/ })).toBeEnabled();
+  }
+});
+
+// #227: the job's page counts files like the scan did and says "Counting …" until every folder is listed, instead of a
+// total that only knows the migrated folder itself; its heading follows the job once it has ended.
+test('the job page counts until the folders are listed, and its heading follows the ended job', async ({ page }, info) => {
+  await connected(page);
+  const name = `Notes ${info.project.name}`;
+  // Without the event stream the page shows the job as the start answered it: only its folder is known yet.
+  await page.route('**/api/v1/transfers/events', (r) => r.abort());
+  await page.goto('/migrate');
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await page.getByRole('button', { name: /^(Weiter|Next)$/ }).click();
+  await page.getByLabel(/Name des neuen Ordners|Name of the new folder/).fill(name);
+  await page.getByRole('button', { name: /^(Weiter|Next)$/ }).click();
+  await expect(page.getByTestId('scan-files')).toHaveText('1');
+  await page.getByRole('button', { name: /Umzug starten|Start migration/ }).click();
+  await expect(page).toHaveURL(/\/migrate\/[0-9a-f]{32}$/);
+  await expect(page.locator('.migrate-state')).toHaveText(/^(Wird gezählt …|Counting …)$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^(„${name}“ zieht auf den Shard um|Moving “${name}” to the shard)$`));
+  await page.unroute('**/api/v1/transfers/events');
+  await page.reload();
+  await expect(page.locator('.migrate-state')).toHaveText(/^(Fertig|Done)$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^(„${name}“ ist auf den Shard umgezogen|“${name}” moved to the shard)$`));
+});
