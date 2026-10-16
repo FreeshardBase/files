@@ -8,6 +8,7 @@ import SharedView from '../src/views/SharedView.vue';
 import ConnectionsView from '../src/views/ConnectionsView.vue';
 import MigrateView from '../src/views/MigrateView.vue';
 import MigrationJobView from '../src/views/MigrationJobView.vue';
+import NotFoundView from '../src/views/NotFoundView.vue';
 import { folderRoute } from '../src/api/paths.ts';
 
 const mk = () => createRouter({ history: createMemoryHistory(), routes });
@@ -50,10 +51,11 @@ describe('router', () => {
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(SharedView);
     await r.push('/home/shared');
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(FolderView);
-    // Anything else that looks like a source is not one.
+    // Anything else that looks like a source is not one: the not-found view, at the address asked for (#240).
     for (const bad of ['/share:/x', '/share:a.b/x', '/conn:/y', '/conn:a.b/y', '/sharex/y']) {
       await r.push(bad);
-      expect(r.currentRoute.value.path, bad).toBe('/home');
+      expect(r.currentRoute.value.path, bad).toBe(bad);
+      expect(r.currentRoute.value.matched[0]?.components?.default, bad).toBe(NotFoundView);
     }
   });
   it('routes a connection to the folder view with `conn:<id>` as its source, and /connections to "Cloud accounts" (#148)', async () => {
@@ -75,7 +77,8 @@ describe('router', () => {
     expect(r.currentRoute.value.matched[0]?.components?.default).toBe(MigrationJobView);
     expect(r.currentRoute.value.params.id).toBe('a1'.repeat(16));
     await r.push('/migrate/not-a-job');
-    expect(r.currentRoute.value.path).toBe('/home');
+    expect(r.currentRoute.value.path).toBe('/migrate/not-a-job');
+    expect(r.currentRoute.value.matched[0]?.components?.default).toBe(NotFoundView);
   });
   it('treats /home as the root folder', async () => {
     const r = mk();

@@ -212,6 +212,7 @@ test('the owner edits label, expiry, limit and password of a link, and revokes i
   await expect(d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ })).toBeFocused();
   await v.reload();
   await expect(v.getByRole('heading', { name: 'This link can’t be opened' })).toBeVisible();
-  await expect(v.getByRole('alert')).toHaveText('This doesn\'t exist (any more).');
+  // The guide's alert banner with a sentence that says what to do (#240).
+  await expect(v.getByRole('alert')).toContainText('This link does not exist, or no longer does. Ask the person who sent it to you.');
   await v.context().close();
 });

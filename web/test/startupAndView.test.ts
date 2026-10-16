@@ -28,9 +28,13 @@ describe('startup failure', () => {
     const router = mk(); await router.push('/');
     const w = mount(App, { global: { plugins: [i18n(), router] } });
     await flushPromises();
-    expect(w.find('[role=alert]').text()).toBe(en.errors.INTERNAL);
+    // The shell stays (#240): the places, and the alert banner with its title and the error's sentence.
+    const alert = w.find('[role=alert]');
+    expect(alert.find('.alert-title').text()).toBe(en.app.loadFailed);
+    expect(alert.find('.alert-text').text()).toBe(en.errors.INTERNAL);
+    expect(w.find('nav a[href="/home"]').exists()).toBe(true);
     ok = true;
-    await w.find('button').trigger('click');
+    await alert.find('button').trigger('click');
     await flushPromises();
     expect(w.find('[role=alert]').exists()).toBe(false);
     expect(f.mock.calls.filter(([u]) => String(u).includes('/api/v1/me'))).toHaveLength(2);

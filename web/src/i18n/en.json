@@ -7,7 +7,12 @@
     "signOutFailed": "Signing out didn't work: {reason} You're still signed in.",
     "offline": "You're offline. Files and folders load again once the connection is back.",
     "actionLost": "Your session had expired and you're signed in again. Your last action was not carried out; please do it again.",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "loadFailed": "“Files” could not be loaded"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "text": "This address does not exist in “Files”."
   },
   "shareTarget": {
     "title": "Save shared files",
@@ -21,6 +26,7 @@
   "nav": {
     "home": "My storage",
     "breadcrumbRoot": "My storage",
+    "toHome": "Go to “My storage”",
     "sources": "Places",
     "recent": "Recent",
     "shared": "Shared with me",
@@ -239,6 +245,10 @@
   },
   "folder": {
     "empty": "This folder is empty.",
+    "emptyHome": "Nothing here yet. Upload your first files.",
+    "notFound": "Folder not found",
+    "notFoundText": "This folder does not exist, or no longer does.",
+    "failed": "The folder can’t be opened",
     "loading": "Loading …",
     "columns": {
       "name": "Name",
@@ -458,7 +468,8 @@
       "up": "Up one folder",
       "contents": "Contents of {name}",
       "countNote": "Every download and every preview counts towards the limit of this link.",
-      "unavailable": "This link can’t be opened"
+      "unavailable": "This link can’t be opened",
+      "notFound": "This link does not exist, or no longer does. Ask the person who sent it to you."
     }
   },
   "details": {

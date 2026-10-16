@@ -10,6 +10,7 @@ import { folderRoute } from '../api/paths.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t, locale } = useI18n();
 const trash = useTrashStore();
@@ -140,9 +141,7 @@ async function confirmed() {
     >
       {{ failure }}
     </p>
-    <p v-if="!trash.loaded">
-      {{ $t('folder.loading') }}
-    </p>
+    <RowSkeleton v-if="!trash.loaded" />
     <p
       v-else-if="trash.error"
       role="alert"

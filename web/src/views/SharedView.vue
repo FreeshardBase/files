@@ -9,6 +9,7 @@ import { useSharedStore } from '../stores/shared.ts';
 import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
 import PreviewDialog from '../components/PreviewDialog.vue';
+import RowSkeleton from '../components/RowSkeleton.vue';
 import { formatDate, intlLocale } from '../format.ts';
 
 const { t, locale } = useI18n();
@@ -54,9 +55,7 @@ async function remove(item: IncomingShare) {
     >
       {{ status }}
     </p>
-    <p v-if="!shared.loaded">
-      {{ $t('folder.loading') }}
-    </p>
+    <RowSkeleton v-if="!shared.loaded" />
     <p
       v-else-if="shared.error"
       role="alert"

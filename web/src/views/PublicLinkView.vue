@@ -10,6 +10,7 @@ import { ApiFailure } from '../api/client.ts';
 import { linkContentHref, linkInfo, linkList, pageError, unlockLink } from '../api/publicLink.ts';
 import { previewKind } from '../preview.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
+import StateAlert from '../components/StateAlert.vue';
 
 const route = useRoute();
 const { t, locale } = useI18n();
@@ -52,6 +53,8 @@ async function unlock() {
 const opensInline = (mime: string | undefined) =>
   ['image', 'video', 'audio'].includes(previewKind(mime)) || (mime ?? '').split(';')[0]!.trim() === 'text/plain';
 const href = (p: string, inline = false) => linkContentHref(token.value, p, inline);
+// No downloads left (#240): the page offers no download or preview it would refuse, only the refusal.
+const exhausted = computed(() => info.value?.downloadsLeft === 0);
 const parent = computed(() => path.value.slice(0, path.value.lastIndexOf('/')) || '/');
 const fmtDate = (iso: string) => formatDate(iso, intlLocale(locale.value));
 const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
@@ -71,12 +74,11 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
         {{ t(`errors.${refused}`) }}
       </p>
       <section v-if="failure">
-        <h1 class="view-title">
-          {{ t('link.page.unavailable') }}
-        </h1>
-        <p role="alert">
-          {{ t(`errors.${failure}`) }}
-        </p>
+        <StateAlert
+          class="link-alert"
+          :title="t('link.page.unavailable')"
+          :text="failure === 'NOT_FOUND' ? t('link.page.notFound') : t(`errors.${failure}`)"
+        />
       </section>
       <p v-else-if="!info">
         {{ t('folder.loading') }}
@@ -154,13 +156,13 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
             </template>
           </dl>
           <p
-            v-if="info.downloadsLeft === 0"
+            v-if="exhausted && refused !== 'DOWNLOAD_LIMIT_REACHED'"
             class="link-alert"
           >
             {{ t('errors.DOWNLOAD_LIMIT_REACHED') }}
           </p>
           <div
-            v-if="info.type === 'file'"
+            v-if="info.type === 'file' && !exhausted"
             class="link-actions"
           >
             <a
@@ -215,24 +217,29 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
                 </template>
                 <template v-else>
                   <span class="share-level value-mono">{{ fmtSize(e.size) }}</span>
-                  <a
-                    class="button"
-                    :href="href(e.path)"
-                    :aria-label="t('link.page.downloadLabel', { name: e.name })"
-                  >{{ t('link.page.download') }}</a>
-                  <a
-                    v-if="opensInline(e.mime)"
-                    class="button"
-                    :href="href(e.path, true)"
-                    :aria-label="t('link.page.previewLabel', { name: e.name })"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >{{ t('link.page.preview') }}</a>
+                  <template v-if="!exhausted">
+                    <a
+                      class="button"
+                      :href="href(e.path)"
+                      :aria-label="t('link.page.downloadLabel', { name: e.name })"
+                    >{{ t('link.page.download') }}</a>
+                    <a
+                      v-if="opensInline(e.mime)"
+                      class="button"
+                      :href="href(e.path, true)"
+                      :aria-label="t('link.page.previewLabel', { name: e.name })"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ t('link.page.preview') }}</a>
+                  </template>
                 </template>
               </li>
             </ul>
           </template>
-          <p class="share-note">
+          <p
+            v-if="!exhausted"
+            class="share-note"
+          >
             {{ t('link.page.countNote') }}
           </p>
         </template>

@@ -7,6 +7,7 @@ import type { RecentItem } from '@files/shared';
 import { useRecentStore } from '../stores/recent.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t, locale } = useI18n();
 const recent = useRecentStore();
@@ -28,9 +29,7 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
         {{ $t('recent.title') }}
       </h1>
     </div>
-    <p v-if="!recent.loaded">
-      {{ $t('folder.loading') }}
-    </p>
+    <RowSkeleton v-if="!recent.loaded" />
     <p
       v-else-if="recent.error"
       role="alert"
