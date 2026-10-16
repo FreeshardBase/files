@@ -457,6 +457,9 @@ body {
   background: var(--surface); border-bottom: var(--border-w) solid var(--border); color: var(--ink-muted); font-size: var(--fs-small);
 }
 .offline-banner .icon { width: 16px; height: 16px; background: var(--ink-muted); }
+/* An action cut off by an expired session (#230): the same quiet line, in ink, with its dismiss button at the end. */
+.action-lost { color: var(--ink); justify-content: space-between; }
+.action-lost p { margin: 0; }
 /* Share target (#158): the migration wizard's column; the shared files as a hairline list with sizes in the mono face. */
 .share-target { max-width: 720px; }
 .share-target-files { list-style: none; margin: 0 0 var(--space-4); padding: 0; border-top: var(--border-w) solid var(--border); }
