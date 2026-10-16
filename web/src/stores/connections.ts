@@ -3,6 +3,9 @@ import type { AuthorizeRequest, AuthorizeResponse, Connection, ConnectionList, L
   Site, SiteList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 
+/** The newest load()'s promise: an overtaken load waits for it instead of ending with nothing applied. */
+let newest: Promise<void> = Promise.resolve();
+
 /** The member's own cloud connections (#148), for the sidebar and the "Cloud accounts" page. */
 export const useConnectionsStore = defineStore('connections', {
   state: () => ({
@@ -17,20 +20,25 @@ export const useConnectionsStore = defineStore('connections', {
     bySource: (s) => (source: string): Connection | undefined => s.items.find((c) => c.source === source),
   },
   actions: {
-    async load() {
+    /** Resolves once the newest load has applied its list, also for a caller whose own load was overtaken (#227). */
+    load(): Promise<void> {
       const id = ++this.seq;
       this.error = null;
-      try {
-        const r = await api.get<ConnectionList>('/api/v1/connections');
-        if (id !== this.seq) return;
-        this.items = r.items; this.providers = r.providers;
-      } catch (e) {
-        if (id !== this.seq) return;
-        if (!(e instanceof ApiFailure)) throw e;
-        this.error = e;
-      } finally {
-        if (id === this.seq) this.loaded = true;
-      }
+      const run = (async () => {
+        try {
+          const r = await api.get<ConnectionList>('/api/v1/connections');
+          if (id !== this.seq) return;
+          this.items = r.items; this.providers = r.providers;
+        } catch (e) {
+          if (id !== this.seq) return;
+          if (!(e instanceof ApiFailure)) throw e;
+          this.error = e;
+        } finally {
+          if (id === this.seq) this.loaded = true;
+        }
+      })().then(() => (id === this.seq ? undefined : newest));
+      newest = run;
+      return run;
     },
     /** Sends the browser to the provider's consent page; it comes back through the server's callback. */
     async authorize(body: AuthorizeRequest) {
