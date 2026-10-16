@@ -49,7 +49,7 @@ function submit(m: MemberUsage) {
 </script>
 
 <template>
-  <section class="recent members">
+  <section class="page recent members">
     <div class="toolbar">
       <h1
         class="view-title"
@@ -128,7 +128,13 @@ function submit(m: MemberUsage) {
             {{ size(m.used) }}
           </td>
           <td class="num date members-quota">
-            {{ m.quota === null ? $t('members.noQuota') : size(m.quota) }}
+            <span
+              v-if="m.quota === null"
+              class="num-word"
+            >{{ $t('members.noQuota') }}</span>
+            <template v-else>
+              {{ size(m.quota) }}
+            </template>
           </td>
           <td class="actions">
             <form

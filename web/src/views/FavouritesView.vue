@@ -47,7 +47,7 @@ async function remove(f: Favourite) {
 </script>
 
 <template>
-  <section class="favourites">
+  <section class="page favourites">
     <div class="toolbar">
       <h1
         ref="title"

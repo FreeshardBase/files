@@ -136,15 +136,21 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
           <dl class="details-facts link-facts">
             <template v-if="info.type === 'file' && info.size !== undefined">
               <dt>{{ t('link.page.size') }}</dt>
-              <dd>{{ fmtSize(info.size) }}</dd>
+              <dd class="value-mono">
+                {{ fmtSize(info.size) }}
+              </dd>
             </template>
             <template v-if="info.expiresAt">
               <dt>{{ t('link.page.expires') }}</dt>
-              <dd>{{ fmtDate(info.expiresAt) }}</dd>
+              <dd class="value-mono">
+                {{ fmtDate(info.expiresAt) }}
+              </dd>
             </template>
             <template v-if="info.downloadsLeft !== null && info.downloadsLeft !== undefined">
               <dt>{{ t('link.page.downloadsLeft') }}</dt>
-              <dd>{{ info.downloadsLeft }}</dd>
+              <dd class="value-mono">
+                {{ info.downloadsLeft }}
+              </dd>
             </template>
           </dl>
           <p
@@ -208,7 +214,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
                   </RouterLink>
                 </template>
                 <template v-else>
-                  <span class="share-level">{{ fmtSize(e.size) }}</span>
+                  <span class="share-level value-mono">{{ fmtSize(e.size) }}</span>
                   <a
                     class="button"
                     :href="href(e.path)"

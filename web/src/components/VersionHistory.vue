@@ -84,10 +84,10 @@ onMounted(load);
         v-for="v in newestFirst"
         :key="v.id"
       >
-        <span class="share-name">{{ when(v) }}</span>
+        <span class="share-name value-mono">{{ when(v) }}</span>
         <span
           v-if="v.size !== undefined"
-          class="share-level"
+          class="share-level value-mono"
         >{{ formatSize(v.size, intlLocale(locale)) }}</span>
         <span
           v-if="v.current"

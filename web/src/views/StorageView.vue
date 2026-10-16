@@ -33,7 +33,7 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
 </script>
 
 <template>
-  <section class="recent storage">
+  <section class="page recent storage">
     <div class="toolbar">
       <h1
         class="view-title"

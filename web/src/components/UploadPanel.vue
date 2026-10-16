@@ -69,7 +69,10 @@ const finished = computed(() => uploads.items.some((i) => ['done', 'skipped', 'f
         :data-state="i.state"
       >
         <span class="upload-name">{{ i.name }}</span>
-        <span class="upload-state">{{ stateText(i) }}</span>
+        <span
+          class="upload-state"
+          :class="{ 'value-mono': i.state === 'uploading' }"
+        >{{ stateText(i) }}</span>
         <div
           class="upload-bar"
           role="progressbar"

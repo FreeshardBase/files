@@ -80,7 +80,7 @@ async function start() {
 </script>
 
 <template>
-  <section class="migrate">
+  <section class="page page-narrow migrate">
     <div class="toolbar">
       <h1 class="view-title">
         {{ t('migrate.title') }}
