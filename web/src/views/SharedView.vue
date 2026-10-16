@@ -38,7 +38,7 @@ async function remove(item: IncomingShare) {
 </script>
 
 <template>
-  <section class="recent shared">
+  <section class="page recent shared">
     <div class="toolbar">
       <h1
         class="view-title"

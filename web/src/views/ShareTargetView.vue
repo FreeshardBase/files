@@ -49,7 +49,7 @@ async function discard() {
 </script>
 
 <template>
-  <section class="share-target">
+  <section class="page page-narrow share-target">
     <div class="toolbar">
       <h1 class="view-title">
         {{ t('shareTarget.title') }}

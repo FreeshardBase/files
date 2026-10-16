@@ -58,7 +58,10 @@ const stateText = (j: TransferJob) => {
         :data-state="j.status === 'completed_with_errors' ? 'failed' : j.status"
       >
         <span class="upload-name">{{ t(`transfers.label.${j.kind === 'transfer' ? j.mode : j.kind}`, { name: j.name, target: target(j) }) }}</span>
-        <span class="upload-state">{{ stateText(j) }}</span>
+        <span
+          class="upload-state"
+          :class="{ 'value-mono': j.status === 'running' }"
+        >{{ stateText(j) }}</span>
         <div
           class="upload-bar"
           role="progressbar"

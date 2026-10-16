@@ -193,8 +193,14 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
           class="fs-input"
           type="text"
           maxlength="100"
-          :placeholder="t('link.labelHint')"
+          :aria-describedby="`${formId}-label-hint`"
         >
+        <p
+          :id="`${formId}-label-hint`"
+          class="share-note"
+        >
+          {{ t('link.labelHint') }}
+        </p>
       </div>
       <div class="app-dialog-field">
         <label

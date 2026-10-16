@@ -19,7 +19,7 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
 </script>
 
 <template>
-  <section class="recent">
+  <section class="page recent">
     <div class="toolbar">
       <h1
         class="view-title"

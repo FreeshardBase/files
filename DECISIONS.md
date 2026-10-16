@@ -732,3 +732,20 @@ Decision:
 - **Hover on a dimmed button.** A `disabled` or `aria-disabled="true"` button gets no hover or press tint.
 
 Why: with "Share" next to the field, Tab would reach it before the access level. That level is part of what gets shared. Moving the radios above the field would make the member pick them with Shift+Tab, against the reading order. Next to the radios, "Share" still fixes what the issue is about: one alignment for every action row. A fixed `height` would clip a label that wraps on a phone (German labels are long). A minimum height gives the same 36 px everywhere else. `:has(:focus-visible)` covers the one place `:focus-within` was needed, without the ring after a mouse click that the issue reports.
+
+## 2026-10-16: Type scale and page grid (#239)
+
+Question: the issue fixes most points itself, but offers choices for several. Should the page column be centred (G1 says `margin: 0 auto`) or left-aligned beside the sidebar (G2's first option)? Where does the upload panel go: under the toolbar or docked bottom-right? Should the selection bar take the toolbar's place or reserve its height? Which pages and fields are in scope for "every view" and "every field"?
+
+Decision:
+- **Grid.** One `.page` column up to 960 px for every view of the signed-in app, left-aligned beside the sidebar like Calendar, not centred. Forms (Settings, the migration wizard and its job page, the share target) use a 720 px column on the same edge (`.page-narrow`). The header's app name takes the sidebar's width, so the search starts on the column's edge. The visitor's share page and the signed-out page have no sidebar and keep their centred column.
+- **Upload panel.** In a folder it sits under the toolbar, inside the page column; App.vue keeps it at the top of the main area on every other view (the folder route carries `meta.folder`). It is not docked.
+- **Selection bar.** It takes the place of the toolbar's actions while a selection or a pending move or copy exists, right-aligned, with the count first. On the desktop the toolbar holding it is sticky, so #224's bar stays in sight. On phone width it stays the fixed bottom sheet and the toolbar's actions stay.
+- **Mono.** Figures (sizes, dates, counts, progress, addresses) are mono; words are the UI face, also in a figure column or a state. The running transfer's "3 of 5 · 1.2 MB" is a figure; "Done" and "1 of 5 failed" are words.
+- **Labels.** Every form field gets a `.fs-label` above it; the link form's label hint moves under the field as its description. The header search and the share dialog's member picker keep their placeholders ("Search by name", "Type a name"): they prompt the typing and hold nothing to read later. The members' quota inputs inside table rows keep their `aria-label`; the column header labels them.
+- **Field error.** 13 px, 4 px under its field: the field before an error drops its bottom margin instead of the error pulling itself up.
+- **List corners.** `border-collapse: separate` with the corner cells rounded, not a wrapper with `overflow: hidden`, which would clip the row menus that open over the table's edge.
+
+Why: left-alignment answers both G1 (one width, one edge) and G2 (no gap beside the sidebar at 1440 px, and a header that can line up with the column), with Calendar's look; a centred column would need the header to mirror a centred grid. A docked panel would cover list rows and their menu buttons in the bottom-right corner and collide with the toast that sits there (#241); under the toolbar it covers nothing and the title stays put. Swapping the bar into the toolbar row moves nothing; reserving its height would leave an empty band above every list. Every placeholder that holds a hint the member must read is gone; a prompt in a search field is the common pattern and repeats nothing (YAGNI).
+
+Left open: the transfer panel stays at the top of the main area (#234); the drop hint above the toolbar still pushes the title down while files are dragged over the folder.

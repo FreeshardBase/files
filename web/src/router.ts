@@ -24,7 +24,8 @@ export const isPublicPage = (pathname: string): boolean =>
 // under their source.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
-  { path: '/:source(home|share:[A-Za-z0-9_-]{1,64}|conn:[A-Za-z0-9_-]{1,64})/:path(.*)*', component: FolderView },
+  // `folder`: the folder view shows the upload panel under its own toolbar (#239); App.vue shows it on every other view.
+  { path: '/:source(home|share:[A-Za-z0-9_-]{1,64}|conn:[A-Za-z0-9_-]{1,64})/:path(.*)*', component: FolderView, meta: { folder: true } },
   { path: '/favourites', component: FavouritesView },
   { path: '/recent', component: RecentView },
   { path: '/shared', component: SharedView },

@@ -293,6 +293,7 @@
   },
   "actions": {
     "toolbar": "Aktionen für die Auswahl",
+    "selected": "{count} ausgewählt",
     "column": "Aktionen",
     "menu": "Aktionen für {name}",
     "select": "{name} auswählen",

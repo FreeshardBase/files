@@ -29,16 +29,18 @@ body {
 a { color: var(--line); text-decoration: none; }
 a:where(:hover) { text-decoration: underline; }
 
-.app-shell { display: flex; flex-direction: column; min-height: 100%; }
+/* The page grid (#239): the sidebar's width (200 px of content, its padding and hairline) is shared with the header, so
+   the search field in the header starts on the edge of the page column below it. */
+.app-shell { display: flex; flex-direction: column; min-height: 100%; --nav-width: 225px; }
 .app-header {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
   background: var(--surface); border-bottom: var(--border-w) solid var(--border);
 }
-.app-title { font-size: var(--fs-h3); font-weight: 600; color: var(--ink); }
+/* The header's padding equals the main area's, so title width plus gap is the sidebar's width. */
+.app-title { flex: none; width: calc(var(--nav-width) - var(--space-3)); font-size: var(--fs-h3); font-weight: 600; color: var(--ink); }
 /* The signed-in member's display name from OIDC (#160), quiet, then the keyboard help button. */
 .app-user { margin-left: auto; font-size: var(--fs-small); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
-.search + .app-user { margin-left: 0; }
 /* Keyboard help (#160): the key in the mono face on a hairline, the action beside it. */
 .shortcuts { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
 .shortcuts td { padding: var(--space-2) 0; border-bottom: var(--border-w) solid var(--border); vertical-align: top; }
@@ -53,7 +55,7 @@ a:where(:hover) { text-decoration: underline; }
 /* Source sidebar: a quiet column on the surface tone; the current place is marked by a teal hairline, never a fill. */
 .app-body { flex: 1; display: flex; }
 .app-nav {
-  flex: none; width: 200px; display: flex; flex-direction: column; gap: var(--space-1);
+  flex: none; box-sizing: border-box; width: var(--nav-width); display: flex; flex-direction: column; gap: var(--space-1);
   padding: var(--space-4) var(--space-3);
   background: var(--surface); border-right: var(--border-w) solid var(--border);
 }
@@ -83,7 +85,7 @@ a:where(:hover) { text-decoration: underline; }
 .library-option-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .library-url, .connection-library { font-size: var(--fs-small); color: var(--ink-muted); }
 .connection-library { display: block; }
-.connections-add { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.connections-add { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 @media (max-width: 600px) {
   /* Phone: the places collapse behind one toggle under the header and open as a list in the page flow, 44 px rows. */
   .app-body { flex-direction: column; }
@@ -98,7 +100,7 @@ a:where(:hover) { text-decoration: underline; }
 }
 
 /* ---- name search in the header (#145): a field with a sheet-like results popup, no shadow ---- */
-.search { position: relative; flex: 1; max-width: 480px; margin-left: auto; display: flex; align-items: center; }
+.search { position: relative; flex: 1; max-width: 480px; display: flex; align-items: center; }
 .search > .icon { position: absolute; left: 10px; width: 16px; height: 16px; background: var(--ink-muted); pointer-events: none; }
 .search-input { padding-left: 32px; }
 .search-popup {
@@ -126,16 +128,21 @@ a:where(:hover) { text-decoration: underline; }
 /* Phone width: the field takes its own full-width row under the title, and the results popup that width. */
 @media (max-width: 600px) {
   .app-header { flex-wrap: wrap; row-gap: var(--space-2); padding: var(--space-3) var(--space-4); }
-  .search { flex-basis: 100%; max-width: none; margin-left: 0; order: 3; }
+  .app-title { width: auto; }
+  .search { flex-basis: 100%; max-width: none; order: 3; }
   .search + .app-user { margin-left: auto; }
   .search-input { min-height: 44px; }
   .search-option { min-height: 44px; }
 }
 
+/* ---- the page column (#239): every view, left-aligned beside the sidebar like Calendar; forms in a narrower one ---- */
+.page { max-width: 960px; }
+.page.page-narrow { max-width: 720px; }
+
 /* ---- trash and recent views (the recent list reuses the trash list's columns) ---- */
-.trash, .recent { max-width: 960px; margin: 0 auto; }
 .recent-empty { color: var(--ink-muted); }
-.view-title { margin: 0; font-size: var(--fs-h3); font-weight: 600; }
+/* The type scale (#239): the view title is h2, a section heading h3, the small heading in a dialog stays small. */
+.view-title { margin: 0; font-size: var(--fs-h2); font-weight: 600; }
 .view-title:focus { outline: none; }
 .trash-note { margin: 0 0 var(--space-3); font-size: var(--fs-small); color: var(--ink-muted); }
 .button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -317,7 +324,6 @@ a:where(:hover) { text-decoration: underline; }
   .preview-nav { flex: 1 1 100%; justify-content: space-between; margin-right: 0; }
 }
 
-.folder { max-width: 960px; margin: 0 auto; }
 .toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: var(--space-3); margin-bottom: var(--space-4);
@@ -332,16 +338,23 @@ a:where(:hover) { text-decoration: underline; }
 }
 .folder-items[inert] { opacity: 0.4; }
 
-.breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--fs-body); }
+/* The current crumb is the folder's title (#239): h2, bold, in ink; the ancestors before it are small and teal. */
+.breadcrumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; font-size: var(--fs-small); }
 .breadcrumbs a { color: var(--line); text-decoration: none; overflow-wrap: anywhere; }
 .breadcrumbs a:hover { text-decoration: underline; }
-.breadcrumbs a[aria-current='page'] { color: var(--ink); }
+.breadcrumbs a[aria-current='page'] { color: var(--ink); font-size: var(--fs-h2); font-weight: 600; line-height: 1.3; }
 .breadcrumbs .sep { color: var(--ink-muted); }
 
+/* A sheet with the guide's round corners (#239): `collapse` would drop the radius, so the borders stay separate (rows
+   draw their hairline on the cells) and the corner cells round their own ground to match. */
 .file-list {
-  width: 100%; border-collapse: collapse;
+  width: 100%; border-collapse: separate; border-spacing: 0;
   background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-sheet);
 }
+.file-list > :first-child > tr:first-child > :first-child { border-top-left-radius: calc(var(--radius-sheet) - var(--border-w)); }
+.file-list > :first-child > tr:first-child > :last-child { border-top-right-radius: calc(var(--radius-sheet) - var(--border-w)); }
+.file-list > tbody > tr:last-child > :first-child { border-bottom-left-radius: calc(var(--radius-sheet) - var(--border-w)); }
+.file-list > tbody > tr:last-child > :last-child { border-bottom-right-radius: calc(var(--radius-sheet) - var(--border-w)); }
 .file-list th {
   text-align: left; padding: var(--space-3) var(--space-4);
   font: 600 var(--fs-label)/1 var(--font-ui); text-transform: uppercase; letter-spacing: var(--ls-label);
@@ -449,16 +462,19 @@ a:where(:hover) { text-decoration: underline; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-2); }
 }
 
-/* Selection actions sit above the list; "Move here"/"Copy here" is the one forward action while items are marked.
-   The bar stays in sight while the list scrolls (#224): sticky at the top on the desktop, a sheet fixed at the bottom
-   on the phone; there the folder keeps the bar's height (measured in FolderView) free below the last row. */
-.selection-bar {
-  position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: var(--space-2);
-  margin-bottom: var(--space-3); padding: var(--space-2) 0; background: var(--bg);
+/* Selection actions: "Move here"/"Copy here" is the one forward action while items are marked. The bar opens with the
+   count and takes the place of the toolbar's actions, right-aligned like them, so the list never moves (#239). It stays
+   in sight while the list scrolls (#224): the toolbar holding it is sticky at the top on the desktop; on the phone the
+   bar is a sheet fixed at the bottom, and the folder keeps its height (measured in FolderView) free below the last row. */
+.selection-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
+.selection-count { margin-right: var(--space-2); font-size: var(--fs-small); color: var(--ink-muted); white-space: nowrap; }
+@media (min-width: 601px) {
+  .toolbar:has(.selection-bar) { position: sticky; top: 0; z-index: 3; background: var(--bg); }
+  .toolbar:has(.selection-bar) .toolbar-actions { display: none; }
 }
 @media (max-width: 600px) {
   .selection-bar {
-    position: fixed; top: auto; bottom: 0; left: 0; right: 0; margin: 0;
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 3; margin: 0; justify-content: flex-start;
     padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
     background: var(--surface); border-top: var(--border-w) solid var(--border);
   }
@@ -470,9 +486,10 @@ a:where(:hover) { text-decoration: underline; }
 .folder.drop-active { outline: 1.5px dashed var(--line); outline-offset: var(--space-2); border-radius: var(--radius-tile); }
 .drop-hint { margin: 0 0 var(--space-3); color: var(--line); font-size: var(--fs-small); }
 
-/* Upload panel: a sheet above the page content, one row per file with a thin teal progress line on a hairline track. */
+/* Upload panel: a sheet under the folder's toolbar (above the page on other views), one row per file with a thin teal
+   progress line on a hairline track. Its padding stays inside the page column (#239). */
 .upload-panel {
-  max-width: 960px; margin: 0 auto var(--space-4); padding: var(--space-3) var(--space-4);
+  box-sizing: border-box; max-width: 960px; margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
   background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-sheet);
 }
 .upload-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
@@ -487,14 +504,15 @@ a:where(:hover) { text-decoration: underline; }
 }
 .upload-item:last-child { border-bottom: 0; }
 .upload-name { overflow-wrap: anywhere; }
-.upload-state { font: 400 var(--fs-mono)/1.3 var(--font-mono); letter-spacing: var(--ls-mono); color: var(--ink-muted); white-space: nowrap; }
+/* A state word ("Uploaded", "Failed: …") is set in the UI face; a figure ("42 %") takes `.value-mono` (#239). */
+.upload-state { font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); white-space: nowrap; }
 .upload-item[data-state='failed'] .upload-state { color: var(--danger); white-space: normal; }
 .upload-actions { display: flex; gap: var(--space-2); }
 .upload-bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
 /* Storage overview (#156): one block per source, its figures over a usage gauge (red from 90 %), then the breakdown. */
-.storage-heading { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.storage-heading { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .storage-source { margin: 0 0 var(--space-4); }
 .storage-clouds { list-style: none; margin: 0; padding: 0; }
 .storage-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
@@ -516,8 +534,7 @@ a:where(:hover) { text-decoration: underline; }
 .members-unit { width: auto; }
 .members-error { flex-basis: 100%; }
 /* Migration (#153): one column of steps; a folder picker is crumbs over a hairline list of folder buttons. */
-.migrate { max-width: 720px; }
-.migrate-step { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.migrate-step { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .migrate-step:focus { outline: none; }
 .migrate-accounts { margin: 0 0 var(--space-4); padding: 0; border: 0; display: grid; gap: var(--space-2); }
 .migrate-accounts legend { margin-bottom: var(--space-2); }
@@ -537,7 +554,6 @@ a:where(:hover) { text-decoration: underline; }
 .action-lost { color: var(--ink); justify-content: space-between; }
 .action-lost p { margin: 0; }
 /* Share target (#158): the migration wizard's column; the shared files as a hairline list with sizes in the mono face. */
-.share-target { max-width: 720px; }
 .share-target-files { list-style: none; margin: 0 0 var(--space-4); padding: 0; border-top: var(--border-w) solid var(--border); }
 .share-target-files li {
   display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0;
@@ -630,7 +646,15 @@ a:where(:hover) { text-decoration: underline; }
 
 .app-dialog-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--space-4); }
 .app-dialog-field .fs-input { box-sizing: border-box; }
-.app-dialog-form .fs-field__error { margin: calc(-1 * var(--space-3)) 0 var(--space-4); }
+/* A field error (#239): small, right under its field (the field gives up its bottom margin to it), never pulled up. */
+.fs-field__error { font-size: var(--fs-small); }
+.app-dialog-field:has(+ .fs-field__error) { margin-bottom: 0; }
+.app-dialog-form .fs-field__error { margin: var(--space-1) 0 var(--space-4); }
+
+/* The mono face is for figures only (#239, guide): sizes, dates, counts, addresses. A word in a figure column
+   ("No quota") keeps the UI face. */
+.value-mono { font-family: var(--font-mono); font-size: var(--fs-mono); letter-spacing: var(--ls-mono); }
+.file-list .num-word { font-family: var(--font-ui); letter-spacing: normal; }
 
 /* 24px line icons (stroke 1.5, round) used as masks so they take currentColor. */
 .icon-menu {
@@ -705,8 +729,8 @@ a:where(:hover) { text-decoration: underline; }
 .icon-key {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='14' r='4'/%3E%3Cpath d='M11 11l8-8M16 6l2 2M14 8l2 2'/%3E%3C/svg%3E");
 }
-.settings-section { margin-bottom: var(--space-6); max-width: 48rem; }
-.settings-heading { margin: 0 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; }
+.settings-section { margin-bottom: var(--space-6); }
+.settings-heading { margin: 0 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .settings-field { max-width: 32rem; }
 .settings-mono { font-family: var(--font-mono); }
 .settings-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin-bottom: var(--space-4); }

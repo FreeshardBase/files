@@ -7,13 +7,13 @@ import { defineComponent, h } from 'vue';
 import en from '../src/i18n/en.json';
 import { routes } from '../src/router.ts';
 import FolderView from '../src/views/FolderView.vue';
-import UploadPanel from '../src/components/UploadPanel.vue';
 import { walkEntries } from '../src/dnd.ts';
 import { installFakeTus, type FakeTusOptions } from './fakeTus.ts';
 
 // #140: uploads go through the tus client and the uploads store; the panel shows progress and one failure summary.
+// The folder view holds the upload panel under its toolbar (#239), as in the app, where App.vue leaves it out there.
 const i18n = () => createI18n({ legacy: false, locale: 'en', messages: { en } });
-const Shell = defineComponent({ render: () => [h(UploadPanel), h(FolderView)] });
+const Shell = defineComponent({ render: () => [h(FolderView)] });
 let w: VueWrapper | undefined;
 
 beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); });

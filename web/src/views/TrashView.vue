@@ -78,7 +78,7 @@ async function confirmed() {
 </script>
 
 <template>
-  <section class="trash">
+  <section class="page trash">
     <div class="toolbar">
       <h1
         ref="heading"

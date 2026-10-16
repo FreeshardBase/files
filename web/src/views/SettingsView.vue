@@ -82,7 +82,7 @@ async function revoke() {
 </script>
 
 <template>
-  <section class="recent settings">
+  <section class="page page-narrow settings">
     <div class="toolbar">
       <h1
         class="view-title"
@@ -108,7 +108,10 @@ async function revoke() {
         {{ $t('settings.webdav.intro') }}
       </p>
       <div class="app-dialog-field settings-field">
-        <label :for="ids.address">{{ $t('settings.webdav.address') }}</label>
+        <label
+          class="fs-label"
+          :for="ids.address"
+        >{{ $t('settings.webdav.address') }}</label>
         <input
           :id="ids.address"
           class="fs-input settings-mono"
@@ -153,7 +156,10 @@ async function revoke() {
         @submit.prevent="create"
       >
         <div class="app-dialog-field settings-field">
-          <label :for="ids.label">{{ $t('appPasswords.label') }}</label>
+          <label
+            class="fs-label"
+            :for="ids.label"
+          >{{ $t('appPasswords.label') }}</label>
           <input
             :id="ids.label"
             v-model="label"
@@ -284,7 +290,10 @@ async function revoke() {
         {{ $t('appPasswords.shownText') }}
       </p>
       <div class="app-dialog-field">
-        <label :for="ids.password">{{ $t('appPasswords.password') }}</label>
+        <label
+          class="fs-label"
+          :for="ids.password"
+        >{{ $t('appPasswords.password') }}</label>
         <input
           :id="ids.password"
           ref="passwordInput"

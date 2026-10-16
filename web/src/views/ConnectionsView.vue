@@ -64,7 +64,7 @@ async function unlink() {
 </script>
 
 <template>
-  <section class="recent connections">
+  <section class="page recent connections">
     <div class="toolbar">
       <h1
         ref="heading"

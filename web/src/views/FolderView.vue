@@ -12,6 +12,7 @@ import FileList from '../components/FileList.vue';
 import type { ItemAction } from '../itemActions.ts';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
+import UploadPanel from '../components/UploadPanel.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
 import NewFolderDialog from '../components/NewFolderDialog.vue';
@@ -452,7 +453,7 @@ function onDrop(paths: string[], dir: string) {
 <template>
   <section
     ref="section"
-    class="folder"
+    class="page folder"
     :class="{ 'drop-active': dropActive }"
     :style="{ '--selection-bar-height': `${selectionBarHeight}px` }"
     @dragover="onFileDragOver"
@@ -525,73 +526,80 @@ function onDrop(paths: string[], dir: string) {
           @files="upload"
         />
       </div>
-    </div>
-    <div
-      v-if="selectedEntries.length || canPaste"
-      ref="selectionBar"
-      class="selection-bar"
-      role="group"
-      :aria-label="$t('actions.toolbar')"
-    >
-      <template v-if="selectedEntries.length">
-        <a
-          class="button"
-          :href="downloadHref(source, selectedEntries)"
-          download
-        >
-          {{ $t('actions.download') }}
-        </a>
-        <template v-if="editable">
-          <button
-            v-if="selectedEntries.length === 1"
-            type="button"
+      <!-- While a selection exists the bar takes the place of the toolbar's actions (#239), so the list never moves. -->
+      <div
+        v-if="selectedEntries.length || canPaste"
+        ref="selectionBar"
+        class="selection-bar"
+        role="group"
+        :aria-label="$t('actions.toolbar')"
+      >
+        <span
+          v-if="selectedEntries.length"
+          class="selection-count"
+        >{{ $t('actions.selected', { count: selectedEntries.length }) }}</span>
+        <template v-if="selectedEntries.length">
+          <a
             class="button"
-            @click="onAction('rename', selectedEntries)"
+            :href="downloadHref(source, selectedEntries)"
+            download
           >
-            {{ $t('actions.rename') }}
-          </button>
+            {{ $t('actions.download') }}
+          </a>
+          <template v-if="editable">
+            <button
+              v-if="selectedEntries.length === 1"
+              type="button"
+              class="button"
+              @click="onAction('rename', selectedEntries)"
+            >
+              {{ $t('actions.rename') }}
+            </button>
+            <button
+              type="button"
+              class="button"
+              @click="onAction('cut', selectedEntries)"
+            >
+              {{ $t('actions.cut') }}
+            </button>
+            <button
+              type="button"
+              class="button"
+              @click="onAction('copy', selectedEntries)"
+            >
+              {{ $t('actions.copy') }}
+            </button>
+            <button
+              type="button"
+              class="button danger"
+              :disabled="acting"
+              @click="onAction('trash', selectedEntries)"
+            >
+              {{ $t('actions.trash') }}
+            </button>
+          </template>
+        </template>
+        <template v-if="folder.clipboard && canPaste">
           <button
             type="button"
-            class="button"
-            @click="onAction('cut', selectedEntries)"
-          >
-            {{ $t('actions.cut') }}
-          </button>
-          <button
-            type="button"
-            class="button"
-            @click="onAction('copy', selectedEntries)"
-          >
-            {{ $t('actions.copy') }}
-          </button>
-          <button
-            type="button"
-            class="button danger"
+            class="button primary"
             :disabled="acting"
-            @click="onAction('trash', selectedEntries)"
+            @click="paste"
           >
-            {{ $t('actions.trash') }}
+            {{ $t(folder.clipboard.mode === 'move' ? 'actions.pasteMove' : 'actions.pasteCopy', { count: folder.clipboard.entries.length }) }}
+          </button>
+          <button
+            type="button"
+            class="button"
+            @click="folder.clipboard = null"
+          >
+            {{ $t('actions.clearClipboard') }}
           </button>
         </template>
-      </template>
-      <template v-if="folder.clipboard && canPaste">
-        <button
-          type="button"
-          class="button primary"
-          :disabled="acting"
-          @click="paste"
-        >
-          {{ $t(folder.clipboard.mode === 'move' ? 'actions.pasteMove' : 'actions.pasteCopy', { count: folder.clipboard.entries.length }) }}
-        </button>
-        <button
-          type="button"
-          class="button"
-          @click="folder.clipboard = null"
-        >
-          {{ $t('actions.clearClipboard') }}
-        </button>
-      </template>
+      </div>
     </div>
+    <!-- The upload panel sits under the toolbar here, so the title stays put when an upload starts (#239). -->
+    <UploadPanel />
     <CollisionDialog
       v-if="conflict"
       :name="conflict.name"

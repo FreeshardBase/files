@@ -55,11 +55,15 @@ onMounted(async () => {
       <dd>{{ entry.type === 'directory' ? t('details.folder') : (entry.mime ?? t('details.file')) }}</dd>
       <template v-if="entry.type === 'file'">
         <dt>{{ t('details.size') }}</dt>
-        <dd>{{ formatSize(entry.size, intlLocale(locale)) }}</dd>
+        <dd class="value-mono">
+          {{ formatSize(entry.size, intlLocale(locale)) }}
+        </dd>
       </template>
       <template v-if="entry.modified">
         <dt>{{ t('details.modified') }}</dt>
-        <dd>{{ formatDate(entry.modified, intlLocale(locale)) }}</dd>
+        <dd class="value-mono">
+          {{ formatDate(entry.modified, intlLocale(locale)) }}
+        </dd>
       </template>
       <dt>{{ t('details.location') }}</dt>
       <dd>{{ parentOf(entry.path) }}</dd>

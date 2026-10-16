@@ -298,7 +298,7 @@ onMounted(async () => {
         </div>
       </nav>
       <main class="app-main">
-        <UploadPanel />
+        <UploadPanel v-if="!route.meta.folder" />
         <TransferPanel />
         <RouterView />
       </main>
