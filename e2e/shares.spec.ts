@@ -9,7 +9,7 @@ const crumbs = (page: Page) => page.getByRole('navigation', { name: /Pfad|Path/ 
 const nav = (page: Page) => page.getByRole('navigation', { name: /Orte|Places/ });
 const row = (page: Page, name: string): Locator =>
   page.locator('tbody tr', { has: page.locator('.name').getByText(name, { exact: true }) });
-const shareDialog = (page: Page) => page.getByRole('dialog', { name: /teilen|Share/ });
+const shareDialog = (page: Page) => page.getByRole('dialog', { name: /freigeben|Share/ });
 const menuButton = (page: Page, name: string) =>
   row(page, name).getByRole('button', { name: new RegExp(`(Aktionen für|Actions for) ${name.replace(/[.()]/g, '\\$&')}`) });
 
@@ -48,13 +48,13 @@ test('owner shares a folder read-only; the member opens it under "Shared with me
   await setup(page, dir, { 'plan.txt': 'shared bytes' });
 
   await menuButton(page, dir).click();
-  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).click();
   const d = shareDialog(page);
   await expect(d).toBeVisible();
   await d.getByRole('combobox', { name: /Mitglied|Member/ }).fill('Test Mem');
   await d.getByRole('option', { name: 'Test Member' }).click();
   await expect(d.getByRole('radio', { name: /ansehen|view/ })).toBeChecked(); // read is the default
-  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).click();
+  await d.getByRole('button', { name: /^(Freigeben|Share)$/ }).click();
   await expect(d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText('Test Member');
   await expect(d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ })).toContainText(/Darf ansehen|Can view/);
   await page.keyboard.press('Escape');
@@ -62,7 +62,7 @@ test('owner shares a folder read-only; the member opens it under "Shared with me
 
   await member.reload();
   await openPlaces(member);
-  await nav(member).getByRole('link', { name: /Mit mir geteilt|Shared with me/ }).click();
+  await nav(member).getByRole('link', { name: /Für mich freigegeben|Shared with me/ }).click();
   await expect(member).toHaveURL(/\/shared$/);
   const shared = member.locator('tbody tr', { has: member.getByText(dir, { exact: true }) });
   await expect(shared).toContainText('Test User');
@@ -93,7 +93,7 @@ test('the share dialog works with the keyboard alone, and the member picker filt
   await row(page, dir).focus();
   await page.keyboard.press('Shift+F10');
   await expect(page.getByRole('menu')).toBeVisible();
-  for (let i = 0; i < 6 && !(await page.getByRole('menuitem', { name: /^(Teilen|Share)$/ }).evaluate((el) => el === document.activeElement)); i++) {
+  for (let i = 0; i < 6 && !(await page.getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).evaluate((el) => el === document.activeElement)); i++) {
     await page.keyboard.press('ArrowDown');
   }
   await page.keyboard.press('Enter');
@@ -125,7 +125,7 @@ test('the share dialog works with the keyboard alone, and the member picker filt
   await page.keyboard.press('ArrowDown');
   await expect(d.getByRole('radio', { name: /bearbeiten|edit/ })).toBeChecked();
   await page.keyboard.press('Tab');
-  await expect(d.getByRole('button', { name: /^(Teilen|Share)$/ })).toBeFocused();
+  await expect(d.getByRole('button', { name: /^(Freigeben|Share)$/ })).toBeFocused();
   await page.keyboard.press('Enter');
   const who = d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ });
   await expect(who).toContainText('Test Member');
@@ -143,7 +143,7 @@ test('the share dialog works with the keyboard alone, and the member picker filt
   // Share again (read), then Esc closes the dialog and the focus goes back to the row.
   await page.keyboard.type('test');
   await page.keyboard.press('Enter');
-  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).focus();
+  await d.getByRole('button', { name: /^(Freigeben|Share)$/ }).focus();
   await page.keyboard.press('Enter');
   await expect(who).toContainText('Test Member');
   await page.keyboard.press('Escape');
@@ -166,7 +166,7 @@ test('the share dialog works with the keyboard alone, and the member picker filt
 /** Opens the share dialog of `name` through the row's menu with the mouse. */
 async function openShare(page: Page, name: string) {
   await menuButton(page, name).click();
-  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Freigeben|Share)$/ }).click();
   const d = shareDialog(page);
   await expect(d).toBeVisible();
   return d;
@@ -179,7 +179,7 @@ test('#223: clicks land while the member list is open; the list overlays the for
   const d = await openShare(page, dir);
   const picker = d.getByRole('combobox', { name: /Mitglied|Member/ });
   const edit = d.getByRole('radio', { name: /bearbeiten|edit/ });
-  const submit = d.getByRole('button', { name: /^(Teilen|Share)$/ });
+  const submit = d.getByRole('button', { name: /^(Freigeben|Share)$/ });
 
   // The open list does not push the access radios or "Share" down.
   await picker.click();
@@ -223,7 +223,7 @@ test('#223: the member picker lists the members on focus; an unknown name keeps 
   await expect(d).toContainText(/Kein Mitglied passt zu „Nobody Here“|No member matches “Nobody Here”/);
   await d.getByRole('radio', { name: /ansehen|view/ }).click();
   await expect(d).toContainText(/Kein Mitglied passt zu „Nobody Here“|No member matches “Nobody Here”/);
-  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).click();
+  await d.getByRole('button', { name: /^(Freigeben|Share)$/ }).click();
   await expect(d.getByRole('alert')).toHaveText(/Wähle ein Mitglied|Wählen Sie ein Mitglied|Choose a member/);
   await expect(d).toContainText(/Nur du|Nur Sie|Only you/);
 });

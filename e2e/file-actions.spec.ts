@@ -87,7 +87,7 @@ test('renaming onto a taken name says so in the open dialog; Esc keeps both file
   await page.keyboard.press('F2');
   await renameDialog(page).getByRole('textbox').fill('b.txt');
   await page.keyboard.press('Enter');
-  await expect(renameDialog(page).getByRole('textbox')).toHaveAccessibleDescription(/existiert bereits|already exists/);
+  await expect(renameDialog(page).getByRole('textbox')).toHaveAccessibleDescription(/gibt es schon ein Element|already exists/);
   await expect(collision(page)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(renameDialog(page)).toHaveCount(0);

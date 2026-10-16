@@ -11,12 +11,12 @@
   },
   "shareTarget": {
     "title": "Save shared files",
-    "intro": "Choose the folder in My storage for the shared file. | Choose the folder in My storage for the {count} shared files.",
+    "intro": "Choose the folder in “My storage” for the shared file. | Choose the folder in “My storage” for the {count} shared files.",
     "picker": "Target folder",
     "target": "Saves to: {folder}",
     "save": "Save here",
     "discard": "Discard",
-    "missing": "Nothing to save here. Either the files were already saved, or the share did not reach Files: open Files once, then share again."
+    "missing": "Nothing to save here. Either the files were already saved, or the share did not reach “Files”: open “Files” once, then share again."
   },
   "nav": {
     "home": "My storage",
@@ -35,7 +35,7 @@
   },
   "signedOut": {
     "title": "Signed out",
-    "text": "You've signed out of Files on this device. Your shard keeps you signed in to its other apps.",
+    "text": "You've signed out of “Files” on this device. Your shard keeps you signed in to its other apps.",
     "signIn": "Sign in"
   },
   "settings": {
@@ -127,7 +127,7 @@
   },
   "members": {
     "title": "Members",
-    "intro": "Everyone who has signed in to Files once. A quota limits what a member can store on the shard: files, trash, versions and uploads in progress. Nothing already stored is removed.",
+    "intro": "Everyone who has signed in to “Files” before. A quota limits what a member can store on the shard: files, trash, versions and uploads in progress. Nothing already stored is removed.",
     "columns": {
       "member": "Member",
       "used": "Used",
@@ -487,7 +487,7 @@
     "UNSUPPORTED_MEDIA_TYPE": "This file type is not accepted here.",
     "RANGE_NOT_SATISFIABLE": "This part of the file does not exist.",
     "STORAGE_FULL": "Storage is full.",
-    "SOURCE_NOT_FOUND": "This storage location doesn't exist or isn't available to you.",
+    "SOURCE_NOT_FOUND": "This place doesn't exist or isn't available to you.",
     "PRECONDITION_FAILED": "The file was changed in the meantime. Reload and try again.",
     "SIZE_MISMATCH": "The upload was incomplete. Please try again.",
     "LOGIN_FAILED": "Signing in didn't work. Please try again.",
@@ -520,7 +520,7 @@
     "JOB_RUNNING": "The migration is still running.",
     "SOURCE_CHANGED": "Changed in the cloud since the migration, so it was kept.",
     "COPY_CHANGED": "The copy on the shard was changed, moved or deleted, so the original was kept.",
-    "NOT_SUPPORTED": "This source doesn't offer that.",
+    "NOT_SUPPORTED": "This place doesn't offer that.",
     "APP_PASSWORD_LIMIT": "You can have at most {max} app passwords. Revoke one you no longer use first.",
     "LOCK_LIMIT": "Your WebDAV clients hold {max} locks, the most there can be. Unlock files you no longer edit first."
   },

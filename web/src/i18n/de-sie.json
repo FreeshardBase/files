@@ -11,19 +11,19 @@
   },
   "shareTarget": {
     "title": "Geteilte Dateien speichern",
-    "intro": "Wählen Sie den Ordner in Mein Speicher für die geteilte Datei. | Wählen Sie den Ordner in Mein Speicher für die {count} geteilten Dateien.",
+    "intro": "Wählen Sie den Ordner in „Mein Speicher“ für die geteilte Datei. | Wählen Sie den Ordner in „Mein Speicher“ für die {count} geteilten Dateien.",
     "picker": "Zielordner",
     "target": "Speichert in: {folder}",
     "save": "Hier speichern",
     "discard": "Verwerfen",
-    "missing": "Hier ist nichts zu speichern. Entweder sind die Dateien schon gespeichert, oder das Teilen hat Dateien nicht erreicht: Öffnen Sie Dateien einmal und teilen Sie dann noch einmal."
+    "missing": "Hier gibt es nichts zu speichern. Entweder wurden die Dateien schon gespeichert, oder das Teilen ist nicht bei „Dateien“ angekommen: Öffnen Sie „Dateien“ einmal und teilen Sie dann noch einmal."
   },
   "nav": {
     "home": "Mein Speicher",
     "breadcrumbRoot": "Mein Speicher",
     "sources": "Orte",
-    "recent": "Zuletzt",
-    "shared": "Mit mir geteilt",
+    "recent": "Zuletzt geändert",
+    "shared": "Für mich freigegeben",
     "trash": "Papierkorb",
     "connections": "Cloud-Konten",
     "connection": "{provider}: {account}",
@@ -35,7 +35,7 @@
   },
   "signedOut": {
     "title": "Abgemeldet",
-    "text": "Sie haben sich auf diesem Gerät von Dateien abgemeldet. In den anderen Apps Ihres Shards bleiben Sie angemeldet.",
+    "text": "Sie haben sich auf diesem Gerät von „Dateien“ abgemeldet. In den anderen Apps Ihres Shards bleiben Sie angemeldet.",
     "signIn": "Anmelden"
   },
   "settings": {
@@ -103,7 +103,7 @@
     "title": "Speicherbelegung",
     "shard": "Auf dem Shard",
     "usedOf": "{used} von {total} belegt",
-    "usedNoQuota": "{used} belegt · kein Kontingent",
+    "usedNoQuota": "{used} belegt · unbegrenzt",
     "shardBar": "Belegter Speicher auf dem Shard",
     "breakdown": "Aufteilung",
     "files": "Dateien",
@@ -112,7 +112,7 @@
     "uploads": "Laufende Uploads",
     "clouds": "Cloud-Konten",
     "noClouds": "Sie haben noch kein Cloud-Konto verbunden.",
-    "cloudUsedNoLimit": "{used} belegt · ohne Grenze",
+    "cloudUsedNoLimit": "{used} belegt · unbegrenzt",
     "cloudUnknown": "Belegung unbekannt: Der Anbieter nennt für diesen Speicher keine Zahlen",
     "percent": "{percent} %",
     "percentBelowOne": "< 1 %",
@@ -127,7 +127,7 @@
   },
   "members": {
     "title": "Mitglieder",
-    "intro": "Alle, die sich einmal bei Files angemeldet haben. Ein Kontingent begrenzt, was ein Mitglied auf dem Shard speichern kann: Dateien, Papierkorb, Versionen und laufende Uploads. Bereits Gespeichertes bleibt erhalten.",
+    "intro": "Alle, die sich schon einmal bei „Dateien“ angemeldet haben. Ein Kontingent begrenzt, was ein Mitglied auf dem Shard speichern kann: Dateien, Papierkorb, Versionen und laufende Uploads. Bereits Gespeichertes bleibt erhalten.",
     "columns": {
       "member": "Mitglied",
       "used": "Belegt",
@@ -175,7 +175,7 @@
     "unlink": "Trennen",
     "unlinkLabel": "{account} trennen",
     "unlinkTitle": "{account} trennen?",
-    "unlinkMessage": "Geteilte Elemente und öffentliche Links aus diesem Konto funktionieren danach nicht mehr, auch wenn Sie es später wieder verbinden. Ihre Dateien bleiben bei {provider}; den Zugriff ganz widerrufen können Sie in Ihren Kontoeinstellungen bei {provider}.",
+    "unlinkMessage": "Freigaben und öffentliche Links aus diesem Konto funktionieren danach nicht mehr, auch wenn Sie es später wieder verbinden. Ihre Dateien bleiben bei {provider}; den Zugriff ganz widerrufen können Sie in Ihren Kontoeinstellungen bei {provider}.",
     "unlinked": "{account} getrennt",
     "add": "Konto verbinden",
     "connect": "{provider} verbinden",
@@ -286,12 +286,12 @@
     "cancelLabel": "Hochladen von {name} abbrechen"
   },
   "collision": {
-    "title": "Name bereits vergeben",
-    "message": "„{name}“ ist hier bereits vorhanden. Was soll geschehen?",
+    "title": "Name schon vergeben",
+    "message": "„{name}“ gibt es hier schon. Was möchten Sie tun?",
     "replace": "Ersetzen",
     "keepBoth": "Beide behalten",
     "skip": "Überspringen",
-    "applyAll": "Für alle weiteren Einträge übernehmen ({count})"
+    "applyAll": "Für alle weiteren Elemente übernehmen ({count})"
   },
   "actions": {
     "toolbar": "Aktionen für die Auswahl",
@@ -301,7 +301,7 @@
     "select": "{name} auswählen",
     "selectColumn": "Auswahl",
     "download": "Herunterladen",
-    "share": "Teilen",
+    "share": "Freigeben",
     "details": "Details",
     "rename": "Umbenennen",
     "cut": "Verschieben",
@@ -362,7 +362,7 @@
     "openFolder": "Ordner öffnen"
   },
   "share": {
-    "title": "„{name}“ teilen",
+    "title": "„{name}“ freigeben",
     "member": "Mitglied",
     "memberPlaceholder": "Namen eingeben",
     "options": "Mitglieder",
@@ -372,23 +372,23 @@
     "access": "Zugriff",
     "read": "Darf ansehen",
     "edit": "Darf bearbeiten",
-    "submit": "Teilen",
+    "submit": "Freigeben",
     "whoHasAccess": "Wer hat Zugriff",
     "onlyYou": "Nur Sie.",
     "remove": "Zugriff entfernen",
     "removeLabel": "Zugriff für {name} entfernen",
-    "shared": "Mit {name} geteilt: {access}",
+    "shared": "Für {name} freigegeben: {access}",
     "removed": "Zugriff für {name} entfernt",
     "close": "Schließen"
   },
   "shared": {
-    "title": "Mit mir geteilt",
-    "empty": "Mit Ihnen wurde noch nichts geteilt.",
+    "title": "Für mich freigegeben",
+    "empty": "Für Sie wurde noch nichts freigegeben.",
     "columns": {
       "name": "Name",
-      "owner": "Geteilt von",
+      "owner": "Freigegeben von",
       "access": "Zugriff",
-      "shared": "Geteilt am",
+      "shared": "Freigegeben am",
       "actions": "Aktionen"
     },
     "open": "Öffnen",
@@ -470,7 +470,7 @@
     "modified": "Geändert",
     "location": "Ort",
     "you": "Sie",
-    "share": "Teilen …"
+    "share": "Freigeben …"
   },
   "errors": {
     "UNAUTHENTICATED": "Sie sind nicht mehr angemeldet.",
@@ -478,16 +478,16 @@
     "CSRF": "Die Anfrage wurde aus Sicherheitsgründen abgelehnt. Bitte laden Sie die Seite neu.",
     "VALIDATION": "Die Eingabe ist ungültig.",
     "NOT_FOUND": "Das gibt es nicht (mehr).",
-    "FILE_EXISTS": "Ein Eintrag mit diesem Namen existiert bereits.",
+    "FILE_EXISTS": "Hier gibt es schon ein Element mit diesem Namen.",
     "PATH_INVALID": "Dieser Name oder Pfad ist nicht erlaubt.",
     "PATH_SYMLINK": "Verknüpfungen werden aus Sicherheitsgründen nicht geöffnet.",
     "NOT_A_DIRECTORY": "Das ist kein Ordner.",
     "IS_A_DIRECTORY": "Das ist ein Ordner, keine Datei.",
     "PAYLOAD_TOO_LARGE": "Die Datei ist zu groß.",
-    "UNSUPPORTED_MEDIA_TYPE": "Dieses Dateiformat wird hier nicht angenommen.",
+    "UNSUPPORTED_MEDIA_TYPE": "Dieser Dateityp wird hier nicht angenommen.",
     "RANGE_NOT_SATISFIABLE": "Dieser Teil der Datei existiert nicht.",
     "STORAGE_FULL": "Der Speicher ist voll.",
-    "SOURCE_NOT_FOUND": "Diesen Speicherort gibt es nicht, oder er steht Ihnen nicht zur Verfügung.",
+    "SOURCE_NOT_FOUND": "Diesen Ort gibt es nicht, oder Sie haben keinen Zugriff darauf.",
     "PRECONDITION_FAILED": "Die Datei wurde inzwischen geändert. Bitte laden Sie neu und versuchen Sie es erneut.",
     "SIZE_MISMATCH": "Der Upload war unvollständig. Bitte versuchen Sie es erneut.",
     "LOGIN_FAILED": "Die Anmeldung hat nicht geklappt. Bitte versuchen Sie es erneut.",
@@ -495,13 +495,13 @@
     "NETWORK": "Keine Verbindung zum Shard.",
     "TARGET_INSIDE_SOURCE": "Ein Ordner kann nicht in sich selbst verschoben oder kopiert werden.",
     "PURGE_FAILED": "Einige Elemente ({count}) ließen sich nicht endgültig löschen. Diese bleiben im Papierkorb. Bitte versuchen Sie es später erneut.",
-    "QUOTA_EXCEEDED": "Das passt nicht mehr in Ihren Speicherplatz.",
+    "QUOTA_EXCEEDED": "Dafür reicht Ihr Speicherplatz nicht mehr.",
     "OFFSET_MISMATCH": "Der Upload passt nicht mehr zum Stand auf dem Shard. Bitte versuchen Sie es erneut.",
     "UPLOAD_LOCKED": "Dieser Upload ist gerade beschäftigt. Bitte versuchen Sie es gleich erneut.",
     "NO_THUMBNAIL": "Für diesen Dateityp gibt es kein Vorschaubild.",
     "THUMBNAIL_FAILED": "Das Vorschaubild konnte nicht erstellt werden.",
     "SEARCH_FAILED": "Die Suche bei diesem Anbieter ist fehlgeschlagen.",
-    "SHARE_ORPHANED": "Das Geteilte gibt es nicht mehr: Die Person, die es geteilt hat, hat es gelöscht.",
+    "SHARE_ORPHANED": "Diese Freigabe gibt es nicht mehr: Die Person, die sie erstellt hat, hat das Element gelöscht.",
     "INVALID_EXPIRY": "Dieses Ablaufdatum ist ungültig. Wählen Sie einen Zeitpunkt in der Zukunft.",
     "LINK_EXPIRED": "Dieser Link ist abgelaufen.",
     "DOWNLOAD_LIMIT_REACHED": "Für diesen Link sind keine Downloads mehr übrig.",
@@ -512,7 +512,7 @@
     "CONNECT_ACCOUNT_MISMATCH": "Sie haben sich mit einem anderen Konto angemeldet. Melden Sie sich mit dem Konto dieser Verbindung an, oder verbinden Sie das andere Konto zusätzlich.",
     "CONNECTION_REAUTH": "Der Cloud-Anbieter akzeptiert die Anmeldung nicht mehr. Melden Sie sich unter „Cloud-Konten“ erneut an.",
     "PROVIDER_UNAVAILABLE": "Der Cloud-Anbieter ist gerade nicht erreichbar. Bitte versuchen Sie es später erneut.",
-    "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Einträge „{name}“. Öffnen Sie den Ordner neu und wählen Sie einen davon.",
+    "AMBIGUOUS_NAME": "In diesem Ordner heißen mehrere Elemente „{name}“. Öffnen Sie den Ordner neu und wählen Sie einen davon.",
     "NOT_EXPORTABLE": "Dieser Dokumenttyp lässt sich nicht herunterladen. Öffnen Sie ihn beim Cloud-Anbieter.",
     "LIBRARY_ALREADY_CONNECTED": "Diese Bibliothek ist schon verbunden. Wählen Sie eine andere.",
     "VERIFY_FAILED": "Die Kopie ließ sich nicht bestätigen: Am Ziel liegen nicht die gesendeten Bytes. Das Original bleibt, wo es war.",
@@ -520,7 +520,7 @@
     "JOB_RUNNING": "Der Umzug läuft noch.",
     "SOURCE_CHANGED": "Seit dem Umzug in der Cloud geändert, deshalb behalten.",
     "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original.",
-    "NOT_SUPPORTED": "Diese Quelle bietet das nicht an.",
+    "NOT_SUPPORTED": "Dieser Ort bietet das nicht an.",
     "APP_PASSWORD_LIMIT": "Sie können höchstens {max} App-Passwörter haben. Widerrufen Sie zuerst eines, das Sie nicht mehr brauchen.",
     "LOCK_LIMIT": "Ihre WebDAV-Programme halten {max} Sperren, mehr geht nicht. Entsperren Sie zuerst Dateien, die Sie nicht mehr bearbeiten."
   },
@@ -603,7 +603,7 @@
   },
   "migrate": {
     "title": "Auf den Shard umziehen",
-    "intro": "Kopieren Sie einen Cloud-Ordner oder ein ganzes Konto in einem Rutsch auf den Shard. Jede Datei wird bei der Ankunft geprüft. Danach können Sie die geprüften Originale in der Cloud löschen.",
+    "intro": "Kopieren Sie einen Cloud-Ordner oder ein ganzes Konto in einem Durchgang auf den Shard. Jede Datei wird bei der Ankunft geprüft. Danach können Sie die geprüften Originale in der Cloud löschen.",
     "noConnections": "Verbinden Sie zuerst ein Cloud-Konto:",
     "steps": {
       "source": "1. Was umzieht",
@@ -647,7 +647,7 @@
     },
     "cleanup": {
       "title": "Originale in der Cloud",
-      "intro": "Löschen Sie die geprüften Dateien in {account}. Sie landen im Papierkorb des Anbieters. Dateien, die fehlgeschlagen sind oder sich seit dem Umzug geändert haben, bleiben.",
+      "intro": "Löschen Sie die geprüften Dateien in {account}. Die Dateien landen im Papierkorb des Anbieters. Dateien, die fehlgeschlagen sind oder sich seit dem Umzug geändert haben, bleiben.",
       "nothing": "Es gibt keine geprüften Dateien zum Löschen.",
       "start": "Geprüfte Originale löschen …",
       "confirmTitle": "Geprüfte Originale löschen?",

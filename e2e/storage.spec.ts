@@ -68,7 +68,7 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await row.getByRole('button', { name: /Kontingent für Test Member entfernen|Remove the quota for Test Member/ }).click();
   await expect(row.locator('.members-quota')).toHaveText(/Kein Kontingent|No quota/);
   await member.goto('/storage');
-  await expect(member.locator('.storage-figures').first()).toContainText(/kein Kontingent|no quota/);
+  await expect(member.locator('.storage-figures').first()).toContainText(/unbegrenzt|no quota/);
   await expect(shardBar(member)).toHaveCount(0);
   expect(dialogs).toEqual([]);
   await member.context().close();

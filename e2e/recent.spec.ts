@@ -25,7 +25,7 @@ test('upload a file, find it in Recent, and open its folder from there', async (
   await expect(page.getByRole('status').first()).toContainText(/1 von 1|1 of 1/);
 
   await openPlaces(page);
-  await nav(page).getByRole('link', { name: /^(Zuletzt|Recent)$/ }).click();
+  await nav(page).getByRole('link', { name: /^(Zuletzt geändert|Recent)$/ }).click();
   await expect(page).toHaveURL(/\/recent$/);
   await expect(page.getByRole('heading', { name: /Zuletzt geändert|Recent/ })).toBeVisible();
   // Newest first: the upload is the top row.
@@ -47,5 +47,5 @@ test('an empty Recent view shows its own empty-state text, not the folder one (#
   await expect(page.getByText(/Dieser Ordner ist leer\.|This folder is empty\./)).toHaveCount(0);
   await expect(page.locator('table')).toHaveCount(0);
   await openPlaces(page);
-  await expect(nav(page).getByRole('link', { name: /^(Zuletzt|Recent)$/ })).toHaveClass(/active/);
+  await expect(nav(page).getByRole('link', { name: /^(Zuletzt geändert|Recent)$/ })).toHaveClass(/active/);
 });
