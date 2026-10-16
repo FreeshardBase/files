@@ -162,3 +162,68 @@ test('the share dialog works with the keyboard alone, and the member picker filt
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
 });
+
+/** Opens the share dialog of `name` through the row's menu with the mouse. */
+async function openShare(page: Page, name: string) {
+  await menuButton(page, name).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Teilen|Share)$/ }).click();
+  const d = shareDialog(page);
+  await expect(d).toBeVisible();
+  return d;
+}
+
+test('#223: clicks land while the member list is open; the list overlays the form and never moves it', async ({ page, browser, baseURL }, info) => {
+  for (const login of ['member', 'member2']) await (await signedIn(browser, info, baseURL!, login)).context().close();
+  const dir = `share-click-${tag(info)}`;
+  await setup(page, dir, { 'a.txt': 'a' });
+  const d = await openShare(page, dir);
+  const picker = d.getByRole('combobox', { name: /Mitglied|Member/ });
+  const edit = d.getByRole('radio', { name: /bearbeiten|edit/ });
+  const submit = d.getByRole('button', { name: /^(Teilen|Share)$/ });
+
+  // The open list does not push the access radios or "Share" down.
+  await picker.click();
+  await page.keyboard.type('Test Mem');
+  await expect(d.getByRole('option', { name: 'Test Member' })).toBeVisible();
+  const open = await submit.boundingBox();
+  await page.keyboard.press('Escape');
+  await expect(d.getByRole('option')).toHaveCount(0);
+  expect(await submit.boundingBox()).toEqual(open);
+
+  // The full name typed, then the mouse: "Can edit" takes the click and "Share" sends the share.
+  await picker.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('Test Member');
+  await edit.click();
+  await expect(edit).toBeChecked();
+  await submit.click();
+  const who = d.getByRole('list', { name: /Wer hat Zugriff|Who has access/ });
+  await expect(who).toContainText('Test Member');
+  await expect(who).toContainText(/Darf bearbeiten|Can edit/);
+});
+
+test('#223: the member picker lists the members on focus; an unknown name keeps its inline note', async ({ page, browser, baseURL }, info) => {
+  for (const login of ['member', 'member2']) await (await signedIn(browser, info, baseURL!, login)).context().close();
+  const dir = `share-focus-${tag(info)}`;
+  await setup(page, dir, { 'a.txt': 'a' });
+  const d = await openShare(page, dir);
+  const picker = d.getByRole('combobox', { name: /Mitglied|Member/ });
+  await expect(picker).toBeFocused();
+  // Nothing typed yet: every member is offered.
+  await expect(d.getByRole('option', { name: 'Test Member' })).toBeVisible();
+  await expect(d.getByRole('option', { name: 'Second Member' })).toBeVisible();
+  await expect(picker).toHaveAttribute('aria-expanded', 'true');
+  await d.getByRole('option', { name: 'Second Member' }).click();
+  await expect(picker).toHaveValue('Second Member');
+  await expect(d.getByRole('option')).toHaveCount(0);
+
+  // An unknown name: the note stays when the field loses the focus, and "Share" says to choose from the list.
+  await picker.fill('');
+  await picker.pressSequentially('Nobody Here');
+  await expect(d).toContainText(/Kein Mitglied passt zu „Nobody Here“|No member matches “Nobody Here”/);
+  await d.getByRole('radio', { name: /ansehen|view/ }).click();
+  await expect(d).toContainText(/Kein Mitglied passt zu „Nobody Here“|No member matches “Nobody Here”/);
+  await d.getByRole('button', { name: /^(Teilen|Share)$/ }).click();
+  await expect(d.getByRole('alert')).toHaveText(/Wähle ein Mitglied|Wählen Sie ein Mitglied|Choose a member/);
+  await expect(d).toContainText(/Nur du|Nur Sie|Only you/);
+});

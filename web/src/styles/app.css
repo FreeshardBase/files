@@ -185,8 +185,11 @@ body {
 }
 
 /* ---- Share dialog and details drawer (#146); see DESIGN.md ---- */
-.share-picker { position: relative; }
+/* The list overlays what follows the field, so opening or closing it never moves a control (#223). */
+.share-combo { position: relative; }
+.share-combo .fs-input { width: 100%; box-sizing: border-box; }
 .share-options {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 1;
   list-style: none; margin: 0; padding: var(--space-1) 0; max-height: 220px; overflow-y: auto;
   background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-tile);
 }
