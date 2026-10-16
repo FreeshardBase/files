@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
 import type { Element } from '@xmldom/xmldom';
-import type { Entry } from '@files/shared';
+import type { Entry, HomeUsage } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireDavUser } from '../auth/guard.ts';
 import { homeOf } from '../storage/resolveSource.ts';
@@ -33,7 +33,8 @@ const LIVE: PropName[] = ['creationdate', 'displayname', 'getcontentlength', 'ge
 const QUOTA = ['quota-available-bytes', 'quota-used-bytes'];
 const PROTECTED = new Set([...LIVE.map((p) => p.name), ...QUOTA]);
 
-type Ctx = { user: User; home: LocalBackend; locks: LockStore; req: FastifyRequest };
+// `usage` walks the whole home, so a request measures it at most once, however many entries it answers (#255).
+type Ctx = { user: User; home: LocalBackend; locks: LockStore; req: FastifyRequest; usage: () => Promise<HomeUsage> };
 
 async function statOrUndefined(home: LocalBackend, path: string): Promise<Entry | undefined> {
   return home.stat(path).catch((e: unknown) => {
@@ -72,10 +73,10 @@ async function liveValue(c: Ctx, e: Entry, name: string): Promise<string | undef
     case 'supportedlock': return ['exclusive', 'shared'].map((s) =>
       `<D:lockentry><D:lockscope><D:${s}/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockentry>`).join('');
     case 'lockdiscovery': return c.locks.protecting(c.user.id, e.path, false).map(activeLock).join('');
-    case 'quota-used-bytes': return dir ? String((await c.home.usage()).total) : undefined;
+    case 'quota-used-bytes': return dir ? String((await c.usage()).total) : undefined;
     case 'quota-available-bytes': {
       const quota = c.home.quotaBytes();
-      return dir && quota !== null ? String(Math.max(0, quota - (await c.home.usage()).total)) : undefined;
+      return dir && quota !== null ? String(Math.max(0, quota - (await c.usage()).total)) : undefined;
     }
     default: return undefined;
   }
@@ -120,7 +121,9 @@ export async function registerDavRoutes(app: FastifyInstance): Promise<void> {
 
     const ctxOf = (req: FastifyRequest): Ctx => {
       const user = requireDavUser(req);
-      return { user, home: homeOf(app.deps, user.id), locks, req };
+      const home = homeOf(app.deps, user.id);
+      let usage: Promise<HomeUsage> | undefined;
+      return { user, home, locks, req, usage: () => (usage ??= home.usage()) };
     };
     const body = (req: FastifyRequest) => req.body as Readable | undefined;
     const hasBody = (req: FastifyRequest) => req.headers['transfer-encoding'] !== undefined

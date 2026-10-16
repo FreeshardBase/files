@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cookieNames } from '../src/auth/cookies.ts';
+import { LOGIN_ATTEMPTS_MAX, LOGIN_TTL_MS } from '../src/auth/sessions.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 let t: TestApp;
@@ -136,6 +137,8 @@ describe('OIDC login', () => {
     ['https://evil.example/'], ['//evil.example'], ['/\\evil.example'], ['/\t/evil.example/'], ['/\r/evil.example/'],
     ['/..//evil.example/'], ['/.//evil.example'], ['/a/../..//evil.example'], ['/%2e%2e//evil.example/'],
     ['//'], ['///'], ['//['], ['/' + 'a'.repeat(3000)],
+    // #255: under the limit as sent, ninefold over it once percent-encoded; the stored row stays small.
+    ['/' + '中'.repeat(1000)],
   ])('rejects returnTo %s', async (rt) => {
     const r = await t.app.inject(`/auth/login?returnTo=${encodeURIComponent(rt)}`);
     const attempt = t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string };
@@ -150,6 +153,33 @@ describe('OIDC login', () => {
     const cb = await t.app.inject({ url: back.pathname + back.search, headers: { cookie } });
     expect(cb.statusCode).toBe(302);
     expect(cb.headers.location).toBe('/');
+  });
+  it('sends a login back to the app as failed, without a cookie or a row, while the most live attempts exist (#255)', async () => {
+    const live = () => t.db.prepare('SELECT count(*) FROM login_attempts WHERE expires_at > ?').pluck().get(new Date().toISOString()) as number;
+    const insert = t.db.prepare(`INSERT INTO login_attempts (id_hash, state, nonce, verifier, return_to, expires_at)
+      VALUES (?, 's', 'n', 'v', '/', ?)`);
+    const expires = new Date(Date.now() + LOGIN_TTL_MS).toISOString();
+    const fill = LOGIN_ATTEMPTS_MAX - live();
+    t.db.transaction(() => { for (let i = 0; i < fill; i++) insert.run(`flood-${i}`, expires); })();
+    try {
+      const r = await t.app.inject(`/auth/login?returnTo=${encodeURIComponent('/' + 'a'.repeat(2000))}`);
+      expectLoginFailed(r);
+      expect(r.headers['set-cookie']).toBeUndefined();
+      expect(live()).toBe(LOGIN_ATTEMPTS_MAX);
+    } finally {
+      t.db.prepare("DELETE FROM login_attempts WHERE id_hash LIKE 'flood-%'").run();
+    }
+    expect((await t.app.inject('/auth/login')).statusCode).toBe(302);
+  });
+  it('bounds returnTo at 2,048 characters as stored, after percent-encoding (#255)', async () => {
+    const stored = async (rt: string) => {
+      await t.app.inject(`/auth/login?returnTo=${encodeURIComponent(rt)}`);
+      return (t.db.prepare('SELECT return_to FROM login_attempts ORDER BY rowid DESC LIMIT 1').get() as { return_to: string }).return_to;
+    };
+    // "ä" is stored as %C3%A4: 2 + 341 * 6 = 2,048 characters is kept, one character more is not.
+    const atLimit = '/x' + 'ä'.repeat(341);
+    expect(await stored(atLimit)).toBe('/x' + '%C3%A4'.repeat(341));
+    expect(await stored(atLimit + 'y')).toBe('/');
   });
   it('keeps a same-origin relative returnTo', async () => {
     await t.app.inject(`/auth/login?returnTo=${encodeURIComponent('/Fotos?x=1')}`);
