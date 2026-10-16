@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Settings: language and theme (#159, PreferencesSection), how to mount the shard home as a network drive over
-// WebDAV, and the member's app passwords for it (#157).
+// WebDAV, the member's app passwords for it (#157), and the account with sign-out (#222).
 // A new password is shown once in a dialog; the list never holds it. A create the server refuses (the limit) is shown
 // in the alert line and the form keeps what was typed (#122).
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AppPassword, CreatedAppPassword } from '@files/shared';
 import { useAppPasswordsStore } from '../stores/appPasswords.ts';
+import { useSessionStore } from '../stores/session.ts';
 import { ApiFailure } from '../api/client.ts';
 import { formatDate, intlLocale } from '../format.ts';
 import AppDialog from '../components/AppDialog.vue';
@@ -25,7 +26,8 @@ const created = ref<CreatedAppPassword | null>(null);
 const revoking = ref<AppPassword | null>(null);
 const createButton = ref<HTMLButtonElement>();
 const passwordInput = ref<HTMLInputElement>();
-const ids = { webdav: useId(), passwords: useId(), label: useId(), labelError: useId(), address: useId(), password: useId() };
+const session = useSessionStore();
+const ids = { account: useId(), webdav: useId(), passwords: useId(), label: useId(), labelError: useId(), address: useId(), password: useId() };
 onMounted(() => { void store.load(); });
 
 const date = (iso: string) => formatDate(iso, intlLocale(locale.value));
@@ -247,6 +249,29 @@ async function revoke() {
           </tr>
         </tbody>
       </table>
+    </section>
+
+    <section
+      v-if="session.me"
+      class="settings-section"
+      :aria-labelledby="ids.account"
+    >
+      <h2
+        :id="ids.account"
+        class="settings-heading"
+      >
+        {{ $t('settings.account.heading') }}
+      </h2>
+      <p class="trash-note">
+        {{ $t('settings.account.signedInAs', { name: session.me.displayName }) }}
+      </p>
+      <button
+        type="button"
+        class="button"
+        @click="session.signOut()"
+      >
+        {{ $t('app.signOut') }}
+      </button>
     </section>
 
     <AppDialog

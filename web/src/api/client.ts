@@ -92,6 +92,19 @@ export function sendXhr(method: string, url: string, headers: Record<string, str
   return { abort: () => xhr.abort(), done };
 }
 
+/**
+ * Ends the session on the server (#222). An already ended session (401) counts as signed out; it never sends the browser
+ * to the login, which the shard's single sign-on would answer by signing the member in again.
+ */
+export async function signOutOfServer(): Promise<void> {
+  let res: Response;
+  try { res = await fetch('/auth/logout', { method: 'POST', headers: { 'x-csrf-token': csrf }, credentials: 'same-origin' }); }
+  catch { throw new ApiFailure('NETWORK'); } // handled: any fetch rejection is a network failure
+  if (res.status === 204 || res.status === 401) return;
+  const body = parseBody(await res.text());
+  throw new ApiFailure(body?.code ?? 'INTERNAL', body?.params);
+}
+
 export const api = {
   get: <T>(path: string, query?: Record<string, string>) => request<T>('GET', path, query ? { query } : {}),
   post: <T>(path: string, json: unknown) => request<T>('POST', path, { json }),

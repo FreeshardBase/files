@@ -1,5 +1,8 @@
 // Where things live, for both the API and the SPA. A source is `home`, `share:<id>` (#146), later `conn:<id>`.
 
+/** Where sign-out lands (#222): a page outside the signed-in shell that never redirects to the login. */
+export const SIGNED_OUT_PATH = '/signed-out';
+
 /** API base for one source: `/api/v1/sources/<source>`. */
 export const sourceApi = (source: string): string => `/api/v1/sources/${encodeURIComponent(source)}`;
 

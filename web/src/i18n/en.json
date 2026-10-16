@@ -3,6 +3,8 @@
     "name": "Files",
     "retry": "Try again",
     "signInAgain": "Sign in again",
+    "signOut": "Sign out",
+    "signOutFailed": "Signing out didn't work: {reason} You're still signed in.",
     "offline": "You're offline. Files and folders load again once the connection is back."
   },
   "shareTarget": {
@@ -29,9 +31,18 @@
     "members": "Members",
     "settings": "Settings"
   },
+  "signedOut": {
+    "title": "Signed out",
+    "text": "You've signed out of Files on this device. Your shard keeps you signed in to its other apps.",
+    "signIn": "Sign in"
+  },
   "settings": {
     "title": "Settings",
     "saved": "Settings saved",
+    "account": {
+      "heading": "Account",
+      "signedInAs": "Signed in as {name}."
+    },
     "preferences": {
       "heading": "Language and appearance",
       "intro": "Applies on all your devices."

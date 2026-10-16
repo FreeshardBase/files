@@ -12,9 +12,12 @@ import StorageView from './views/StorageView.vue';
 import MembersView from './views/MembersView.vue';
 import SettingsView from './views/SettingsView.vue';
 import ShareTargetView from './views/ShareTargetView.vue';
+import SignedOutView from './views/SignedOutView.vue';
+import { SIGNED_OUT_PATH } from './api/paths.ts';
 
-/** A public link's share page: no session is loaded and no login is asked for there. */
-export const isPublicPage = (pathname: string): boolean => /^\/s\/[A-Za-z0-9_-]{22}$/.test(pathname);
+/** A public link's share page and the signed-out page: no session is loaded and no login is asked for there. */
+export const isPublicPage = (pathname: string): boolean =>
+  pathname === SIGNED_OUT_PATH || /^\/s\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
 // `/favourites`, `/shared`, `/connections`, `/storage`, `/members`, `/settings` and `/share-target` can never clash with a folder, since folders live
@@ -39,6 +42,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/share-target/:id([0-9a-f-]{36})?', component: ShareTargetView },
   // A public link's share page (#147): for visitors, outside the signed-in shell (App.vue).
   { path: '/s/:token([A-Za-z0-9_-]{22})', component: PublicLinkView },
+  // After sign-out (#222): outside the signed-in shell, and it never redirects to the login.
+  { path: SIGNED_OUT_PATH, component: SignedOutView },
   { path: '/:pathMatch(.*)*', redirect: '/home' },
 ];
 
