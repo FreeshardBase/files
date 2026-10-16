@@ -31,11 +31,12 @@ export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i
   const targets = (i: number): Entry[] => chosen.value.has(props.entries[i]!.path)
     ? props.entries.filter((e) => chosen.value.has(e.path)) : [props.entries[i]!];
 
-  // The destructive action stays last; favourite, share and details sit between the file actions and it.
+  // The guide's dropdown order (PDF p.18, #241): what opens or looks at the item, then what changes it, then the
+  // destructive action alone under a hairline.
   const menuItems = computed(() => ([
-    'download', ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite',
-    ...(props.shareable ? ['share'] as const : []), 'details', ...(props.editable ? ['trash'] as const : []),
-  ] as const).map((id) => ({ id, label: t(`actions.${id}`) })));
+    'download', ...(props.shareable ? ['share'] as const : []), 'details',
+    ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite', ...(props.editable ? ['trash'] as const : []),
+  ] as const).map((id) => ({ id, label: t(`actions.${id}`), danger: id === 'trash' })));
   // The favourite entry says what choosing it does to this item (#155).
   const starredSet = computed(() => new Set(props.starred));
   const isFavourite = (e: Entry) => starredSet.value.has(e.path);

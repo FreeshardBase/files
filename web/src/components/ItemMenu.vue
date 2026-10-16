@@ -4,7 +4,8 @@
 // so the list can put focus back on the row before an action opens a dialog.
 import { nextTick, onBeforeUnmount, ref } from 'vue';
 
-export type MenuItem = { id: string; label: string };
+// A `danger` item (the destructive one, last) sits under a hairline and takes the danger colour (#241).
+export type MenuItem = { id: string; label: string; danger?: boolean };
 const props = defineProps<{ label: string; items: MenuItem[] }>();
 const emit = defineEmits<{ select: [string]; closed: [] }>();
 const open = ref(false);
@@ -88,21 +89,28 @@ defineExpose({ show });
       @click.stop
       @dblclick.stop
     >
-      <li
+      <template
         v-for="item in items"
         :key="item.id"
-        role="none"
       >
-        <button
-          :ref="(el) => { if (el) entries[items.indexOf(item)] = el as HTMLElement }"
-          type="button"
-          role="menuitem"
-          tabindex="-1"
-          @click="choose(item.id)"
-        >
-          {{ item.label }}
-        </button>
-      </li>
+        <li
+          v-if="item.danger"
+          class="menu-separator"
+          role="separator"
+        />
+        <li role="none">
+          <button
+            :ref="(el) => { if (el) entries[items.indexOf(item)] = el as HTMLElement }"
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            :class="{ 'menu-danger': item.danger }"
+            @click="choose(item.id)"
+          >
+            {{ item.label }}
+          </button>
+        </li>
+      </template>
     </ul>
   </div>
 </template>

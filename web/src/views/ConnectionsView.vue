@@ -154,7 +154,10 @@ async function unlink() {
               class="origin connection-status"
               :data-status="c.status"
             >
-              {{ $t(`connections.status.${c.status}`) }}
+              <span
+                class="fs-pill"
+                :data-tone="c.status === 'ok' ? 'ok' : c.status === 'reauth' ? 'danger' : undefined"
+              >{{ $t(`connections.status.${c.status}`) }}</span>
             </td>
             <td class="actions">
               <RouterLink

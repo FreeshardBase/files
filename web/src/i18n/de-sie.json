@@ -532,8 +532,11 @@
     "restoreLabel": "Version vom {date} wiederherstellen",
     "restored": "Die Version vom {date} ist wiederhergestellt. Der ersetzte Inhalt bleibt als Version erhalten."
   },
+  "toast": {
+    "close": "Meldung schließen"
+  },
   "view": {
-    "label": "Ansicht",
+    "label":"Ansicht",
     "list": "Liste",
     "gallery": "Galerie"
   },

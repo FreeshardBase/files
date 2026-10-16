@@ -83,14 +83,14 @@ onMounted(async () => {
     >
       <li v-if="!own">
         <span class="share-name">{{ t('details.you') }}</span>
-        <span class="share-level">{{ t(`share.${access}`) }}</span>
+        <span class="share-level fs-pill">{{ t(`share.${access}`) }}</span>
       </li>
       <li
         v-for="s in shares ?? []"
         :key="s.id"
       >
         <span class="share-name">{{ s.grantee.displayName }}</span>
-        <span class="share-level">{{ t(`share.${s.access}`) }}</span>
+        <span class="share-level fs-pill">{{ t(`share.${s.access}`) }}</span>
       </li>
     </ul>
     <p

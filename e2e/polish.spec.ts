@@ -193,8 +193,8 @@ test('phone: no horizontal scroll, touch targets of at least 44 px, every action
   // The menu has every action the selection bar and the keyboard offer.
   await open(page, screens(dir)[0]!);
   await menuButton(page, 'notes.txt').click();
-  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['Download', 'Rename', 'Move', 'Copy',
-    'Add to favourites', 'Share', 'Details', 'Move to trash']);
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['Download', 'Share', 'Details', 'Rename',
+    'Move', 'Copy', 'Add to favourites', 'Move to trash']);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
 
@@ -257,11 +257,11 @@ test('in the trash and in a read-only share, no menu offers rename, move or uplo
   for (const name of ['notes.txt', 'Inner']) {
     const items = member.getByRole('menu').getByRole('menuitem');
     await row(member, name).locator('td.name').click({ button: 'right' });
-    await expect(items).toHaveText(['Download', 'Add to favourites', 'Details']);
+    await expect(items).toHaveText(['Download', 'Details', 'Add to favourites']);
     await member.keyboard.press('Escape');
     await expect(items).toHaveCount(0);
     await menuButton(member, name).click();
-    await expect(items).toHaveText(['Download', 'Add to favourites', 'Details']);
+    await expect(items).toHaveText(['Download', 'Details', 'Add to favourites']);
     await member.keyboard.press('Escape');
   }
   // F2 and Delete do nothing there, and there is no upload anywhere.
