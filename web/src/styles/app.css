@@ -689,6 +689,8 @@ a:where(:hover) { text-decoration: underline; }
 }
 .share-target-name { min-width: 0; overflow-wrap: anywhere; }
 .share-target-size { flex: none; font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--ink-muted); }
+/* Where the files came from (#281): in ink, not muted, since the member should read it before saving. */
+.share-target-outside { margin: 0 0 var(--space-3); }
 @media (max-width: 600px) { .offline-banner { padding: var(--space-2) var(--space-4); } }
 .migrate-state[data-state='completed_with_errors'] { color: var(--danger); }
 .migrate-failures { margin: 0 0 var(--space-3); }

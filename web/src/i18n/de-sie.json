@@ -21,7 +21,11 @@
     "target": "Speichert in: {folder}",
     "save": "Hier speichern",
     "discard": "Verwerfen",
-    "missing": "Hier gibt es nichts zu speichern. Entweder wurden die Dateien schon gespeichert, oder das Teilen ist nicht bei „Dateien“ angekommen: Öffnen Sie „Dateien“ einmal und teilen Sie dann noch einmal."
+    "missing": "Hier gibt es nichts zu speichern. Entweder wurden die Dateien schon gespeichert, oder das Teilen ist nicht bei „Dateien“ angekommen: Öffnen Sie „Dateien“ einmal und teilen Sie dann noch einmal.",
+    "outside": "Diese Dateien kommen von außerhalb von „Dateien“: Eine andere App oder eine Website kann sie geschickt haben. Prüfen Sie Name und Größe jeder Datei (den Typ gibt der Absender an); gespeichert wird erst mit „Hier speichern“.",
+    "meta": "{type} · {size}",
+    "unknownType": "unbekannter Typ",
+    "refused": "Dieses Teilen kam von einer Website, nicht aus dem Teilen-Menü Ihres Geräts, deshalb hat „Dateien“ es nicht angenommen. Es wurde nichts gespeichert."
   },
   "nav": {
     "home": "Mein Speicher",

@@ -16,6 +16,8 @@ const route = useRoute();
 const router = useRouter();
 const uploads = useUploadsStore();
 const id = typeof route.params.id === 'string' ? route.params.id : '';
+// The service worker refused a share another website posted (#281).
+const refused = computed(() => !id && 'refused' in route.query);
 const share = ref<Share | null>(null);
 const loading = ref(id !== '');
 const busy = ref(false);
@@ -62,12 +64,19 @@ async function discard() {
       v-else-if="!share"
       class="recent-empty"
     >
-      {{ t('shareTarget.missing') }}
+      {{ refused ? t('shareTarget.refused') : t('shareTarget.missing') }}
       <RouterLink to="/home">
         {{ t('nav.home') }}
       </RouterLink>
     </p>
     <template v-else>
+      <!-- A share sheet and another website's form look the same here (#281): the member checks before saving. -->
+      <p
+        class="share-target-outside"
+        role="note"
+      >
+        {{ t('shareTarget.outside') }}
+      </p>
       <p class="trash-note">
         {{ t('shareTarget.intro', { count: share.files.length }, share.files.length) }}
       </p>
@@ -80,7 +89,7 @@ async function discard() {
           :key="i"
         >
           <span class="share-target-name">{{ f.name }}</span>
-          <span class="share-target-size">{{ formatSize(f.size, intlLocale(locale)) }}</span>
+          <span class="share-target-size">{{ t('shareTarget.meta', { type: f.type || t('shareTarget.unknownType'), size: formatSize(f.size, intlLocale(locale)) }) }}</span>
         </li>
       </ul>
       <FolderPicker

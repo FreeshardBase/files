@@ -84,6 +84,9 @@ async function asset(req) {
 
 /** The share sheet's POST: the files go into the inbox, then the member picks a folder on the share page. */
 async function receiveShare(req) {
+  // #281: a share sheet sends no referrer; a form on another website does unless it suppresses it. Such a POST is
+  // refused unread, so another site cannot put files on the share page (one that hides its referrer still can).
+  if (req.referrer && new URL(req.referrer).origin !== self.location.origin) return Response.redirect('/share-target?refused', 303);
   const form = await req.formData();
   const files = form.getAll('files').filter((f) => f instanceof File);
   const id = crypto.randomUUID();
