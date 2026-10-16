@@ -37,9 +37,18 @@ const path = computed(() => {
 // What the last batch could not do, under the heading of that batch (upload or move/copy/trash).
 const failures = ref<{ heading: string; items: string[] } | null>(null);
 const selected = ref<string[]>([]);
-watch([source, path], ([s, p]) => {
+// Focus across navigation (#228): when the focus was in this folder view (a row, a tile, a breadcrumb), it waits on the
+// content region while the next folder loads, then goes to the row of the folder we came from (going up) or the first
+// row, or stays on the region when there is nothing to focus. A navigation from elsewhere (the sidebar) leaves it.
+const section = ref<HTMLElement>();
+const content = ref<HTMLElement>();
+let refocus: { source: string; path: string } | null = null; // where the navigation came from
+watch([source, path], ([s, p], [os, op]) => {
+  const active = document.activeElement;
+  refocus = os !== undefined && op !== undefined && active && section.value?.contains(active) ? { source: os, path: op } : null;
   status.value = ''; failures.value = null; selected.value = [];
   void folder.open(p, { source: s });
+  if (refocus) void nextTick(() => content.value?.focus()); // the rows are inert while loading
 }, { immediate: true });
 // A relist drops whatever is gone from the selection.
 watch(() => folder.entries, (entries) => {
@@ -136,6 +145,19 @@ watch(() => route.query.select, (s) => {
   void applySelect();
 }, { immediate: true });
 watch([() => folder.entries, () => folder.loading], () => { void applySelect(); });
+watch(() => folder.loading, async (loading) => {
+  const from = refocus;
+  if (loading || !from || folder.path !== path.value || folder.source !== source.value) return;
+  refocus = null;
+  if (typeof route.query.select === 'string') return; // applySelect focuses the item asked for
+  await nextTick();
+  if (document.activeElement !== content.value && document.activeElement !== document.body) return; // moved on meanwhile
+  const dir = folder.path === '/' ? '/' : folder.path + '/';
+  const child = from.source === folder.source && from.path.startsWith(dir) ? join(folder.path, from.path.slice(dir.length).split('/')[0]!) : null;
+  const target = folder.error ? undefined : folder.entries.find((e) => e.path === child) ?? folder.entries[0];
+  if (target) (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(target.path);
+  else content.value?.focus();
+});
 const ask = (name: string, remaining: number, returnFocus?: HTMLElement | null) => new Promise<CollisionChoice>((resolve) => {
   conflict.value = { name, remaining, returnFocus, answer: (c) => { conflict.value = null; resolve(c); } };
 });
@@ -372,6 +394,7 @@ function onDrop(paths: string[], dir: string) {
 
 <template>
   <section
+    ref="section"
     class="folder"
     :class="{ 'drop-active': dropActive }"
     :style="{ '--selection-bar-height': `${selectionBarHeight}px` }"
@@ -553,40 +576,57 @@ function onDrop(paths: string[], dir: string) {
         </li>
       </ul>
     </div>
-    <p v-if="folder.loading">
-      {{ $t('folder.loading') }}
-    </p>
-    <p
-      v-else-if="folder.error"
-      role="alert"
+    <div
+      ref="content"
+      class="folder-content"
+      role="region"
+      tabindex="-1"
+      :aria-label="$t('a11y.folderContent', { folder: folderName })"
+      :aria-busy="folder.loading"
     >
-      {{ $t(`errors.${folder.error.code}`) }}
-    </p>
-    <p v-else-if="folder.entries.length === 0">
-      {{ $t('folder.empty') }}
-    </p>
-    <GalleryGrid
-      v-else-if="view === 'gallery'"
-      ref="gallery"
-      :entries="folder.entries"
-      :folder-name="folderName"
-      :source="source"
-      @open="open"
-    />
-    <FileList
-      v-else
-      ref="list"
-      v-model:selected="selected"
-      :entries="folder.entries"
-      :folder-name="folderName"
-      :source="source"
-      :editable="editable"
-      :shareable="shareable"
-      :starred="starred"
-      @open="open"
-      @action="onAction"
-      @paste="paste"
-      @drop="onDrop"
-    />
+      <p
+        v-if="folder.loading"
+        class="folder-loading"
+      >
+        {{ $t('folder.loading') }}
+      </p>
+      <div
+        class="folder-items"
+        :inert="folder.loading"
+      >
+        <p
+          v-if="folder.error"
+          role="alert"
+        >
+          {{ $t(`errors.${folder.error.code}`) }}
+        </p>
+        <p v-else-if="folder.entries.length === 0 && !folder.loading">
+          {{ $t('folder.empty') }}
+        </p>
+        <GalleryGrid
+          v-else-if="view === 'gallery'"
+          ref="gallery"
+          :entries="folder.entries"
+          :folder-name="folderName"
+          :source="source"
+          @open="open"
+        />
+        <FileList
+          v-else
+          ref="list"
+          v-model:selected="selected"
+          :entries="folder.entries"
+          :folder-name="folderName"
+          :source="source"
+          :editable="editable"
+          :shareable="shareable"
+          :starred="starred"
+          @open="open"
+          @action="onAction"
+          @paste="paste"
+          @drop="onDrop"
+        />
+      </div>
+    </div>
   </section>
 </template>

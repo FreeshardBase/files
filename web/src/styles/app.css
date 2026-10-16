@@ -303,6 +303,14 @@ body {
   gap: var(--space-3); margin-bottom: var(--space-4);
 }
 .status { min-height: 1.5em; margin: 0 0 var(--space-3); font-size: var(--fs-small); color: var(--ink-muted); }
+/* While a folder loads (#228) the list stays in place, dimmed and inert, under the loading note. */
+.folder-content { position: relative; }
+.folder-content:focus-visible { outline-offset: var(--space-2); }
+.folder-loading {
+  position: absolute; inset-block-start: var(--space-6); inset-inline: 0; z-index: 1; margin: 0;
+  text-align: center; color: var(--ink-muted);
+}
+.folder-items[inert] { opacity: 0.4; }
 
 .breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--fs-body); }
 .breadcrumbs a { color: var(--line); text-decoration: none; overflow-wrap: anywhere; }
