@@ -3,6 +3,8 @@
     "name": "Dateien",
     "retry": "Erneut versuchen",
     "signInAgain": "Erneut anmelden",
+    "signOut": "Abmelden",
+    "signOutFailed": "Das Abmelden hat nicht geklappt: {reason} Sie sind noch angemeldet.",
     "offline": "Sie sind offline. Dateien und Ordner laden wieder, sobald die Verbindung zurück ist."
   },
   "shareTarget": {
@@ -29,9 +31,18 @@
     "members": "Mitglieder",
     "settings": "Einstellungen"
   },
+  "signedOut": {
+    "title": "Abgemeldet",
+    "text": "Sie haben sich auf diesem Gerät von Dateien abgemeldet. In den anderen Apps Ihres Shards bleiben Sie angemeldet.",
+    "signIn": "Anmelden"
+  },
   "settings": {
     "title": "Einstellungen",
     "saved": "Einstellungen gespeichert",
+    "account": {
+      "heading": "Konto",
+      "signedInAs": "Angemeldet als {name}."
+    },
     "preferences": {
       "heading": "Sprache und Darstellung",
       "intro": "Gilt auf allen Ihren Geräten."

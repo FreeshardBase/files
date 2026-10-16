@@ -19,7 +19,8 @@ const transfers = useTransfersStore();
 const router = useRouter();
 const route = useRoute();
 const showLoginFailed = loginFailed();
-// A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me.
+// A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me. So does the
+// signed-out page (#222), which must not send the browser to the login.
 const publicPage = isPublicPage(location.pathname);
 // Offline the service worker still starts the shell (#158), but no data loads; the banner says why.
 const online = ref(navigator.onLine);
@@ -88,8 +89,27 @@ onMounted(async () => {
             aria-hidden="true"
           />
         </button>
+        <button
+          type="button"
+          class="icon-button"
+          :aria-label="$t('app.signOut')"
+          :title="$t('app.signOut')"
+          @click="session.signOut()"
+        >
+          <span
+            class="icon icon-sign-out"
+            aria-hidden="true"
+          />
+        </button>
       </template>
     </header>
+    <p
+      v-if="session.signOutError"
+      class="offline-banner"
+      role="alert"
+    >
+      {{ $t('app.signOutFailed', { reason: $t(`errors.${session.signOutError.code}`, session.signOutError.params ?? {}) }) }}
+    </p>
     <ShortcutsDialog
       v-if="shortcutsOpen"
       @close="shortcutsOpen = false"

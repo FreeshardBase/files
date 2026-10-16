@@ -24,3 +24,5 @@ function run<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRe
 /** The share the service worker received under this id, or undefined once it was saved, discarded or expired. */
 export const getShare = (id: string): Promise<Share | undefined> => run<Share | undefined>('readonly', (s) => s.get(id));
 export const deleteShare = async (id: string): Promise<void> => { await run('readwrite', (s) => s.delete(id)); };
+/** Drops every waiting share: after sign-out (#222) the next person on the device must not find them. */
+export const clearShares = async (): Promise<void> => { await run('readwrite', (s) => s.clear()); };
