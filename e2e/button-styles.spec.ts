@@ -101,8 +101,12 @@ test('buttons and list rows answer hover and press; the change is a short transi
     await openFolder(page, dir);
     await page.mouse.move(0, 0);
 
-    const neutral = page.locator('label.button.upload:not(.primary)');
-    const primary = page.locator('label.button.primary.upload');
+    // The phone has no upload labels in the toolbar (#245): its neutral button is the selection bar's "Rename", its
+    // forward action the "Upload" menu button.
+    if (mobile(info)) await row(page, 'ledger.csv').getByRole('checkbox').check();
+    const neutral = mobile(info) ? page.locator('.selection-bar .button', { hasText: /^\s*(Umbenennen|Rename)\s*$/ })
+      : page.locator('label.button.upload:not(.primary)');
+    const primary = page.locator(mobile(info) ? '.add-menu .button.primary' : 'label.button.primary.upload');
     expect(await style(neutral, 'transition-property')).toMatch(/border-color.*background-color|background-color.*border-color/);
     expect(await style(neutral, 'transition-duration')).toMatch(/^0\.15s/);
     expect(await style(neutral, 'background-color')).toBe('rgba(0, 0, 0, 0)');
@@ -127,6 +131,10 @@ test('buttons and list rows answer hover and press; the change is a short transi
 
     // A list row takes a 3 % ink tint under the pointer.
     const r = row(page, 'ledger.csv');
+    if (mobile(info)) {
+      await r.getByRole('checkbox').uncheck();
+      await page.mouse.move(0, 0); // off the row the uncheck left the pointer on
+    }
     expect(await style(r, 'background-color')).toBe('rgba(0, 0, 0, 0)');
     await r.locator('.num').first().hover();
     await expect.poll(() => style(r, 'background-color'))
@@ -306,7 +314,8 @@ test('buttons and fields share one height: 36 px, 44 px on the phone (#238 B9)',
   for (const scheme of SCHEMES) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/home');
-    const upload = page.locator('label.button.primary.upload');
+    // On the phone the toolbar's "Upload" is the menu button that stands in for the upload labels (#245).
+    const upload = page.locator(mobile(info) ? '.add-menu .button.primary' : 'label.button.primary.upload');
     await expect(upload).toBeVisible();
     expect((await box(upload)).height).toBeCloseTo(want, 0);
     const search = page.locator('.search-input');

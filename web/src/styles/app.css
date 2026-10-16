@@ -251,6 +251,9 @@ a:where(:hover) { text-decoration: underline; }
 @media (max-width: 600px) {
   .app-dialog-scrim { align-items: flex-end; padding: var(--space-2); }
   .app-dialog-actions .button { flex: 1 1 auto; justify-content: center; }
+  /* Three answers do not fit one row (#245): the collision dialog stacks them full width, the forward action on top. */
+  .app-dialog-actions:has(> .collision-action) { flex-direction: column-reverse; }
+  .app-dialog-actions .collision-action { flex: none; width: 100%; }
 }
 
 /* ---- Share dialog and details drawer (#146); see DESIGN.md ---- */
@@ -578,6 +581,16 @@ a:where(:hover) { text-decoration: underline; }
 }
 
 .upload-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* The phone toolbar (#245): sort menu, view switch and one "Upload" menu (files, folder, new folder) on one row, so the
+   list starts right under it; the three buttons it stands in for stay on the desktop. */
+.item-menu.add-menu { display: none; }
+.menu-trigger .icon { width: 16px; height: 16px; background: currentColor; }
+@media (max-width: 600px) {
+  .toolbar-actions:has(.add-menu) { flex-wrap: nowrap; width: 100%; }
+  .toolbar-actions:has(.add-menu) .sort-menu { flex: 1 1 auto; min-width: 0; }
+  .toolbar-actions .new-folder-button, .toolbar-actions .upload-buttons { display: none; }
+  .item-menu.add-menu { display: flex; flex: none; }
+}
 /* Desktop drop: the folder area takes the dashed teal hairline of a drop target. */
 .folder.drop-active { outline: 1.5px dashed var(--line); outline-offset: var(--space-2); border-radius: var(--radius-tile); }
 .drop-hint { margin: 0 0 var(--space-3); color: var(--line); font-size: var(--fs-small); }
@@ -793,6 +806,10 @@ a:where(:hover) { text-decoration: underline; }
   background: var(--ink-muted);
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='5.5' cy='12' r='1.25'/%3E%3Ccircle cx='12' cy='12' r='1.25'/%3E%3Ccircle cx='18.5' cy='12' r='1.25'/%3E%3C/svg%3E");
 }
+/* A button that opens a menu (#245). */
+.icon-chevron-down {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
+}
 .icon { flex: none; width: 20px; height: 20px; background: var(--line); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .icon-close {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
@@ -879,6 +896,8 @@ a:where(:hover) { text-decoration: underline; }
 .settings-choices legend { padding: 0; margin-bottom: var(--space-2); float: left; width: 100%; }
 .settings-radio { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; }
 .settings-radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
+/* One choice per line on the phone (#245): a wrapped row left one choice alone under the others. */
+@media (max-width: 600px) { .settings-choices { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; } }
 
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
 .icon-star, .icon-star-filled {
@@ -944,9 +963,11 @@ a:where(:hover) { text-decoration: underline; }
   .members-list td.num.date { margin-left: 0; }
   .members-list td.actions { padding-left: 0; }
 }
+/* On the phone a row's actions share it at equal width (#245), so "Unlink" or "Delete permanently" never outweighs the
+   action beside it. */
 @media (max-width: 600px) {
   .trash-list td.actions { padding-left: 0; }
-  .trash-list td.actions .button { flex: 1 1 auto; justify-content: center; }
+  .trash-list td.actions .button { flex: 1 1 0; min-width: 0; justify-content: center; }
 }
 
 /* Touch targets on the phone (#160): every control is at least 44 × 44 px. Small native checkboxes and radios keep their

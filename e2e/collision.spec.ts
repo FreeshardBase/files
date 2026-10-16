@@ -53,7 +53,10 @@ test('the collision dialog traps focus, locks the page scroll, and Esc closes it
 
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
-  await expect(page.getByTestId('upload-input')).toBeFocused();
+  // On the phone the toolbar's "Upload" is the menu button that stands in for the hidden picker (#245).
+  await expect(info.project.name.startsWith('mobile')
+    ? page.getByRole('button', { name: /^(Hochladen|Upload)$/ }).and(page.locator('[aria-haspopup="menu"]'))
+    : page.getByTestId('upload-input')).toBeFocused();
   await expect(status(page)).toContainText(/0 von 1|0 of 1/);
   expect(await download(page, name)).toBe('old'); // Esc skips
   // Without the dialog the same wheel scrolls, so the zero above was the lock and not a page that cannot scroll.

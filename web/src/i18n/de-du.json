@@ -265,6 +265,7 @@
   },
   "upload": {
     "button": "Hochladen",
+    "files": "Dateien hochladen",
     "folderButton": "Ordner hochladen",
     "done": "{name} hochgeladen",
     "summary": "{done} von {total} hochgeladen",

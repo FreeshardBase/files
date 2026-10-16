@@ -74,6 +74,8 @@ The header carries, after the search, the member's display name in small muted t
 
 On phone width the sidebar collapses behind a "Places" row (line "menu" icon, three strokes) under the header, on the surface tone with the hairline underneath. Open, the places list below it in 44 px rows; the current place keeps the teal hairline at its left edge. There is no overlay and no scrim: the list pushes the page down, so nothing is covered and nothing needs a shadow.
 
+On phone width (#245) a folder's toolbar is one row under the title: the sort menu (it takes what is left), the "List / Gallery" control and "Upload ⌄", the forward action's amber outline with a line chevron. That button opens the guide's dropdown with "Upload files", "Upload folder" and "New folder", which stand in for the desktop's three buttons and open the same pickers and dialog. Two buttons in a list row ("Open" and "Unlink", "Restore" and "Delete permanently") share the row at equal width, so the destructive one never outweighs the other. The settings' language and theme radios stand one per line. The collision dialog stacks its three answers full width, "Keep both" on top, then "Replace", then "Skip".
+
 Touch targets on phone width are at least 44 × 44 px. Outline buttons and fields grow to 44 px height; icon buttons, breadcrumbs and a row's name fill 44 px; a row's native checkbox keeps its 18 px box and gets a 44 px label around it, which reaches into the row's padding so the row does not grow. A long press on a row opens the same action menu as "⋮".
 
 ## Buttons, rows and links

@@ -265,6 +265,7 @@
   },
   "upload": {
     "button": "Upload",
+    "files": "Upload files",
     "folderButton": "Upload folder",
     "done": "{name} uploaded",
     "summary": "{done} of {total} uploaded",

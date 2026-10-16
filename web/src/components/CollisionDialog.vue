@@ -32,25 +32,25 @@ const choose = (policy: CollisionChoice['policy']) => emit('choose', { policy, a
       >
       {{ t('collision.applyAll', { count: remaining }) }}
     </label>
-    <!-- The forward action last, on the right, as in every dialog (#238). -->
+    <!-- The forward action last, on the right, as in every dialog (#238); on the phone the three stack, it on top (#245). -->
     <template #actions>
       <button
         type="button"
-        class="button"
+        class="button collision-action"
         @click="choose('skip')"
       >
         {{ t('collision.skip') }}
       </button>
       <button
         type="button"
-        class="button danger"
+        class="button danger collision-action"
         @click="choose('replace')"
       >
         {{ t('collision.replace') }}
       </button>
       <button
         type="button"
-        class="button primary"
+        class="button primary collision-action"
         data-autofocus
         @click="choose('keep-both')"
       >

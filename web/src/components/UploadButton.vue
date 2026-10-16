@@ -11,7 +11,9 @@ function picked(el: HTMLInputElement | undefined) {
   if (files.length) emit('files', files);
   if (el) el.value = '';
 }
-defineExpose({ input }); // the focus target a dialog opened by an upload returns to
+// `input` is the focus target a dialog opened by an upload returns to; both pickers also open from the phone toolbar's
+// Upload menu (#245), which stands in for these two buttons there.
+defineExpose({ input, folderInput });
 </script>
 <template>
   <div class="upload-buttons">
