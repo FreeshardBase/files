@@ -3,6 +3,8 @@
 // by name, focus stays in the field, the active option is aria-activedescendant), the access level as two radios,
 // "Share", and the list of who has access with "Remove access" per member. Esc in the open picker list closes only
 // the list; otherwise it closes the dialog. Public links of the item are managed below (LinkManager, #147).
+// The list overlays the form, so closing it on focusout never moves the control being clicked (#223). Focus opens it
+// with every member (a shard has few), and a name typed in full that only one member matches picks that member.
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, CreateShareRequest, Entry, Member, MemberList, Share, ShareList } from '@files/shared';
@@ -31,7 +33,8 @@ const matches = computed(() => {
   return (members.value ?? []).filter((m) => m.displayName.toLocaleLowerCase().includes(q));
 });
 const showList = computed(() => open.value && matches.value.length > 0);
-const noMatch = computed(() => open.value && text.value.trim() !== '' && matches.value.length === 0 && (members.value?.length ?? 0) > 0);
+// Not tied to `open`: the note stays when the field loses the focus, until the name changes.
+const noMatch = computed(() => !chosen.value && text.value.trim() !== '' && matches.value.length === 0 && (members.value?.length ?? 0) > 0);
 
 const fail = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
@@ -50,6 +53,8 @@ onMounted(async () => {
 function onInput() {
   chosen.value = null; error.value = '';
   open.value = true; active.value = -1;
+  const [only, ...more] = matches.value;
+  if (only && more.length === 0 && only.displayName.toLocaleLowerCase() === text.value.trim().toLocaleLowerCase()) pick(only);
 }
 function pick(m: Member) {
   chosen.value = m; text.value = m.displayName;
@@ -125,47 +130,49 @@ async function revoke(s: Share) {
           class="fs-label"
           :for="pickerId"
         >{{ t('share.member') }}</label>
-        <input
-          :id="pickerId"
-          ref="picker"
-          v-model="text"
-          class="fs-input"
-          type="text"
-          role="combobox"
-          aria-autocomplete="list"
-          :aria-controls="listId"
-          :aria-expanded="showList"
-          :aria-activedescendant="showList && active >= 0 ? optionId(active) : undefined"
-          :aria-invalid="error !== ''"
-          :aria-describedby="error ? errorId : undefined"
-          :placeholder="t('share.memberPlaceholder')"
-          autocomplete="off"
-          spellcheck="false"
-          data-autofocus
-          @input="onInput"
-          @keydown="onKey"
-          @focus="open = text.trim() !== '' && !chosen"
-        >
-        <ul
-          v-show="showList"
-          :id="listId"
-          role="listbox"
-          class="share-options"
-          :aria-label="t('share.options')"
-        >
-          <li
-            v-for="(m, i) in matches"
-            :id="optionId(i)"
-            :key="m.id"
-            role="option"
-            class="share-option"
-            :aria-selected="i === active"
-            @mousedown.prevent
-            @click="pick(m)"
+        <div class="share-combo">
+          <input
+            :id="pickerId"
+            ref="picker"
+            v-model="text"
+            class="fs-input"
+            type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            :aria-controls="listId"
+            :aria-expanded="showList"
+            :aria-activedescendant="showList && active >= 0 ? optionId(active) : undefined"
+            :aria-invalid="error !== ''"
+            :aria-describedby="error ? errorId : undefined"
+            :placeholder="t('share.memberPlaceholder')"
+            autocomplete="off"
+            spellcheck="false"
+            data-autofocus
+            @input="onInput"
+            @keydown="onKey"
+            @focus="open = !chosen"
           >
-            {{ m.displayName }}
-          </li>
-        </ul>
+          <ul
+            v-show="showList"
+            :id="listId"
+            role="listbox"
+            class="share-options"
+            :aria-label="t('share.options')"
+          >
+            <li
+              v-for="(m, i) in matches"
+              :id="optionId(i)"
+              :key="m.id"
+              role="option"
+              class="share-option"
+              :aria-selected="i === active"
+              @mousedown.prevent
+              @click="pick(m)"
+            >
+              {{ m.displayName }}
+            </li>
+          </ul>
+        </div>
         <p
           v-if="noMatch"
           class="share-note"

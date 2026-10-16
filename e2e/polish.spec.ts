@@ -114,6 +114,8 @@ test('axe finds no serious or critical violation on the main screens and dialogs
       await page.getByRole('menu').getByRole('menuitem', { name: action }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
       await axe(page, `${theme} ${action}`);
+      // The share dialog's member list opens on focus once the shard has members (#223); Esc closes it first.
+      if (await page.getByRole('listbox').isVisible()) await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
