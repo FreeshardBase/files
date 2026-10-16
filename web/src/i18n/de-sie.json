@@ -514,7 +514,8 @@
     "SOURCE_CHANGED": "Seit dem Umzug in der Cloud geändert, deshalb behalten.",
     "COPY_CHANGED": "Die Kopie auf dem Shard wurde geändert, verschoben oder gelöscht, deshalb bleibt das Original.",
     "NOT_SUPPORTED": "Diese Quelle bietet das nicht an.",
-    "APP_PASSWORD_LIMIT": "Sie können höchstens {max} App-Passwörter haben. Widerrufen Sie zuerst eines, das Sie nicht mehr brauchen."
+    "APP_PASSWORD_LIMIT": "Sie können höchstens {max} App-Passwörter haben. Widerrufen Sie zuerst eines, das Sie nicht mehr brauchen.",
+    "LOCK_LIMIT": "Ihre WebDAV-Programme halten {max} Sperren, mehr geht nicht. Entsperren Sie zuerst Dateien, die Sie nicht mehr bearbeiten."
   },
   "versions": {
     "title": "Versionen",
