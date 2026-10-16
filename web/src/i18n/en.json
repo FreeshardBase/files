@@ -549,6 +549,7 @@
     "pdfNext": "Next page"
   },
   "a11y": {
+    "folderContent": "Contents of {folder}",
     "fileList": "Files in {folder}",
     "gallery": "Gallery of {folder}",
     "breadcrumbs": "Path"
