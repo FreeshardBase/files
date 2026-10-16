@@ -5,7 +5,9 @@
     "signInAgain": "Erneut anmelden",
     "signOut": "Abmelden",
     "signOutFailed": "Das Abmelden hat nicht geklappt: {reason} Du bist noch angemeldet.",
-    "offline": "Du bist offline. Dateien und Ordner laden wieder, sobald die Verbindung zurück ist."
+    "offline": "Du bist offline. Dateien und Ordner laden wieder, sobald die Verbindung zurück ist.",
+    "actionLost": "Deine Sitzung war abgelaufen, du bist wieder angemeldet. Deine letzte Aktion wurde nicht ausgeführt; bitte wiederhole sie.",
+    "dismiss": "Schließen"
   },
   "shareTarget": {
     "title": "Geteilte Dateien speichern",
@@ -312,7 +314,9 @@
     "label": "Neuer Name",
     "submit": "Umbenennen",
     "cancel": "Abbrechen",
-    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten."
+    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten.",
+    "tooLong": "Der Name ist zu lang: höchstens 255 Zeichen, Umlaute und Sonderzeichen zählen doppelt oder mehr.",
+    "failed": "Umbenennen hat nicht geklappt: {reason}"
   },
   "transfer": {
     "markedMove": "{count} zum Verschieben vorgemerkt. Öffne den Zielordner und wähle „Hierher verschieben“.",

@@ -80,16 +80,17 @@ test('rename through the item menu; Esc cancels without a change', async ({ page
   expect(await names(page)).toEqual(['Ordner', 'b.txt']);
 });
 
-test('renaming onto a taken name opens the collision dialog; skip keeps both files as they were', async ({ page }, info) => {
+test('renaming onto a taken name says so in the open dialog; Esc keeps both files as they were (#230)', async ({ page }, info) => {
   const dir = `rename-taken-${tag(info)}`;
   await setup(page, dir, { 'a.txt': 'A', 'b.txt': 'B' });
   await row(page, 'a.txt').focus();
   await page.keyboard.press('F2');
   await renameDialog(page).getByRole('textbox').fill('b.txt');
   await page.keyboard.press('Enter');
-  await expect(collision(page)).toContainText('b.txt');
-  await collision(page).getByRole('button', { name: /^(Überspringen|Skip)$/ }).click();
-  await expect(status(page)).toContainText(/0 von 1 verschoben, 1 übersprungen|0 of 1 moved, 1 skipped/);
+  await expect(renameDialog(page).getByRole('textbox')).toHaveAccessibleDescription(/existiert bereits|already exists/);
+  await expect(collision(page)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(renameDialog(page)).toHaveCount(0);
   expect(await download(page, 'a.txt')).toBe('A');
   expect(await download(page, 'b.txt')).toBe('B');
 });

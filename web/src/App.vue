@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSessionStore } from './stores/session.ts';
-import { loginFailed } from './api/client.ts';
+import { loginFailed, takeInterruptedAction } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
 import TransferPanel from './components/TransferPanel.vue';
 import { useTransfersStore } from './stores/transfers.ts';
@@ -30,6 +30,9 @@ window.addEventListener('offline', onConnectivity);
 // On a phone the places collapse behind one toggle (#160); choosing a place closes them again. On a wide screen the
 // toggle is hidden and the places always show (CSS).
 const placesOpen = ref(false);
+// An expired session sent the member through the login in the middle of an action (#230); once back, they are told it
+// did not happen, until they dismiss the note.
+const actionLost = ref(false);
 watch(() => route.fullPath, () => { placesOpen.value = false; });
 // "?" opens the keyboard shortcuts, except while typing or while another dialog is open.
 const shortcutsOpen = ref(false);
@@ -53,6 +56,7 @@ onMounted(async () => {
     void connections.load(); // the member's clouds in the sidebar (#148)
     void favourites.load(); // the star of every item (#155)
     transfers.connect(); // the member's transfer jobs, live (#152)
+    actionLost.value = takeInterruptedAction();
   }
   if (!showLoginFailed) return;
   // The alert is decided; drop the flag from the URL so a reload or bookmark does not repeat it.
@@ -110,6 +114,20 @@ onMounted(async () => {
     >
       {{ $t('app.signOutFailed', { reason: $t(`errors.${session.signOutError.code}`, session.signOutError.params ?? {}) }) }}
     </p>
+    <div
+      v-if="actionLost"
+      class="offline-banner action-lost"
+      role="alert"
+    >
+      <p>{{ $t('app.actionLost') }}</p>
+      <button
+        type="button"
+        class="button"
+        @click="actionLost = false"
+      >
+        {{ $t('app.dismiss') }}
+      </button>
+    </div>
     <ShortcutsDialog
       v-if="shortcutsOpen"
       @close="shortcutsOpen = false"

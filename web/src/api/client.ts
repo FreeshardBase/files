@@ -10,8 +10,18 @@ export const setCsrf = (t: string) => { csrf = t; };
 /** The server sends a failed login back with `?loginError=1`; the shell then shows the error instead of looping into login. */
 export const loginFailed = (): boolean => new URLSearchParams(location.search).get('loginError') === '1';
 
-function redirectToLogin() {
+// Set when an expired session cut off an action (a mutating request) on its way to the login; the shell reads it once
+// the member is back and says the action did not happen (#230).
+const INTERRUPTED_KEY = 'files.actionLost';
+export function takeInterruptedAction(): boolean {
+  const lost = sessionStorage.getItem(INTERRUPTED_KEY) !== null;
+  sessionStorage.removeItem(INTERRUPTED_KEY);
+  return lost;
+}
+
+function redirectToLogin(method: string) {
   if (loginFailed()) return;
+  if (method !== 'GET' && method !== 'HEAD') sessionStorage.setItem(INTERRUPTED_KEY, '1');
   location.href = '/auth/login?returnTo=' + encodeURIComponent(location.pathname + location.search);
 }
 
@@ -26,7 +36,7 @@ async function request<T>(method: string, path: string, init: { query?: Record<s
   } catch {
     throw new ApiFailure('NETWORK'); // handled: any fetch rejection is a network failure
   }
-  if (res.status === 401) { redirectToLogin(); throw new ApiFailure('UNAUTHENTICATED'); }
+  if (res.status === 401) { redirectToLogin(method);throw new ApiFailure('UNAUTHENTICATED'); }
   if (!res.ok) {
     const body = await res.json().catch(() => ({} as ErrorBody)) as ErrorBody; // handled: non-JSON error body becomes INTERNAL
     throw new ApiFailure(body.code ?? 'INTERNAL', body.params);
@@ -55,7 +65,7 @@ export async function rawRequest(method: string, url: string, headers: Record<st
   let res: Response;
   try { res = await fetch(url, { method, headers: h, credentials: 'same-origin' }); }
   catch { throw new ApiFailure('NETWORK'); } // handled: any fetch rejection is a network failure
-  if (res.status === 401) { redirectToLogin(); throw new ApiFailure('UNAUTHENTICATED'); }
+  if (res.status === 401) { redirectToLogin(method);throw new ApiFailure('UNAUTHENTICATED'); }
   if (!res.ok) {
     const body = method === 'HEAD' ? null : parseBody(await res.text());
     throw new ApiFailure(body?.code ?? codeOfStatus(res.status), body?.params);
@@ -80,7 +90,7 @@ export function sendXhr(method: string, url: string, headers: Record<string, str
     xhr.onabort = () => reject(new ApiFailure('NETWORK'));
     xhr.ontimeout = () => reject(new ApiFailure('NETWORK'));
     xhr.onload = () => {
-      if (xhr.status === 401) { redirectToLogin(); return reject(new ApiFailure('UNAUTHENTICATED')); }
+      if (xhr.status === 401) { redirectToLogin(method);return reject(new ApiFailure('UNAUTHENTICATED')); }
       if (xhr.status >= 200 && xhr.status < 300) {
         return resolve({ status: xhr.status, header: (n) => xhr.getResponseHeader(n), text: xhr.responseText });
       }

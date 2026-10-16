@@ -250,7 +250,11 @@ async function transfer(op: 'move' | 'copy', items: Item[], dir: string, from = 
   }
 }
 
+// A trash or paste in flight (#230): their buttons are disabled and a second click (a double click) sends nothing.
+const acting = ref(false);
 async function trash(entries: Entry[]) {
+  if (acting.value) return;
+  acting.value = true;
   const at = { source: folder.source, dir: folder.path };
   failures.value = null;
   try {
@@ -262,6 +266,7 @@ async function trash(entries: Entry[]) {
     failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] };
   } finally {
     await settle(at);
+    acting.value = false;
   }
 }
 
@@ -300,14 +305,27 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKey));
 onUnmounted(() => window.removeEventListener('keydown', onKey));
 
-const renaming = ref<Entry | null>(null);
+// Rename (#230) is one request of its own, not a move batch: a refusal (a taken name, a name the server rejects, no
+// connection) stays inline in the dialog with the typed name, and the dialog holds its button while the request runs.
+const renaming = ref<{ entry: Entry; error: string | null; busy: boolean } | null>(null);
 async function rename(name: string) {
-  const e = renaming.value!;
+  const r = renaming.value!;
+  const e = r.entry;
+  if (name === e.name) { renaming.value = null; return; }
+  r.error = null; r.busy = true;
+  const at = { source: folder.source, dir: folder.path };
+  let placed: Entry;
+  try {
+    placed = await folder.transfer('move', at.source, e.path, join(parentOf(e.path), name), 'fail');
+  } catch (err) {
+    if (!(err instanceof ApiFailure)) throw err;
+    r.error = t('rename.failed', { reason: t(`errors.${err.code}`) }); r.busy = false;
+    return;
+  }
   renaming.value = null;
-  if (name === e.name) return;
-  const r = await transfer('move', [{ from: e.path, name }], parentOf(e.path));
-  const placed = r?.placed[0];
-  if (placed && r.failed.length === 0) status.value = t('transfer.renamed', { name: placed.name });
+  failures.value = null;
+  status.value = t('transfer.renamed', { name: placed.name });
+  await settle(at);
 }
 
 // The server sends an attachment; a link with `download` keeps the page even if the request fails.
@@ -337,7 +355,7 @@ function onAction(action: ItemAction, entries: Entry[]) {
   else if (action === 'favourite') void toggleFavourite(entries[0]!);
   else if (action === 'share') sharing.value = entries[0]!;
   else if (action === 'details') details.value = entries[0]!;
-  else if (action === 'rename') renaming.value = entries[0]!;
+  else if (action === 'rename') renaming.value = { entry: entries[0]!, error: null, busy: false };
   else if (action === 'trash') void trash(entries);
   else {
     const mode = action === 'cut' ? 'move' : 'copy';
@@ -349,10 +367,15 @@ function onAction(action: ItemAction, entries: Entry[]) {
 const canPaste = computed(() => editable.value && folder.clipboard !== null);
 async function paste() {
   const clip = folder.clipboard;
-  if (!clip || !canPaste.value) return;
+  if (!clip || !canPaste.value || acting.value) return;
   if (clip.mode === 'move') folder.clipboard = null; // a moved item is gone from where it was marked
-  if (clip.source !== folder.source) return pasteAcross(clip);
-  await transfer(clip.mode, clip.entries.map((e) => ({ from: e.path, name: e.name })), folder.path, clip.source);
+  acting.value = true;
+  try {
+    if (clip.source !== folder.source) await pasteAcross(clip);
+    else await transfer(clip.mode, clip.entries.map((e) => ({ from: e.path, name: e.name })), folder.path, clip.source);
+  } finally {
+    acting.value = false;
+  }
 }
 // The open folder's listing tells which names are taken; each one asks the collision question before the job starts, so
 // the job runs without asking. The job reports in the transfer panel; this folder relists once it has ended.
@@ -489,6 +512,7 @@ function onDrop(paths: string[], dir: string) {
           <button
             type="button"
             class="button danger"
+            :disabled="acting"
             @click="onAction('trash', selectedEntries)"
           >
             {{ $t('actions.trash') }}
@@ -499,6 +523,7 @@ function onDrop(paths: string[], dir: string) {
         <button
           type="button"
           class="button primary"
+          :disabled="acting"
           @click="paste"
         >
           {{ $t(folder.clipboard.mode === 'move' ? 'actions.pasteMove' : 'actions.pasteCopy', { count: folder.clipboard.entries.length }) }}
@@ -521,8 +546,10 @@ function onDrop(paths: string[], dir: string) {
     />
     <RenameDialog
       v-if="renaming"
-      :name="renaming.name"
-      :is-folder="renaming.type === 'directory'"
+      :name="renaming.entry.name"
+      :is-folder="renaming.entry.type === 'directory'"
+      :error="renaming.error"
+      :busy="renaming.busy"
       @submit="rename"
       @cancel="renaming = null"
     />

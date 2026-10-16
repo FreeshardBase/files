@@ -5,7 +5,9 @@
     "signInAgain": "Sign in again",
     "signOut": "Sign out",
     "signOutFailed": "Signing out didn't work: {reason} You're still signed in.",
-    "offline": "You're offline. Files and folders load again once the connection is back."
+    "offline": "You're offline. Files and folders load again once the connection is back.",
+    "actionLost": "Your session had expired and you're signed in again. Your last action was not carried out; please do it again.",
+    "dismiss": "Dismiss"
   },
   "shareTarget": {
     "title": "Save shared files",
@@ -312,7 +314,9 @@
     "label": "New name",
     "submit": "Rename",
     "cancel": "Cancel",
-    "invalid": "A name can't be empty, contain “/” or be “.” or “..”."
+    "invalid": "A name can't be empty, contain “/” or be “.” or “..”.",
+    "tooLong": "The name is too long: at most 255 characters, and accented letters and symbols count twice or more.",
+    "failed": "Renaming didn't work: {reason}"
   },
   "transfer": {
     "markedMove": "{count} ready to move. Open the target folder and choose “Move here”.",
