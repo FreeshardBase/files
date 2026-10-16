@@ -817,3 +817,16 @@ Decision:
 - **100 %.** An upload shows 100 % only once it is done. A running transfer or migration shows 99 % at most. Each is floored.
 
 Why: each choice is the narrowest one that fixes the defect the review names. Words for the formats the server actually lists cover what a member sees, and the fallback still names the extension. Keeping "Restore" as a word and the list's navigation as it was avoids changing behaviour the issue did not ask about. `e2e/drawer-upload-design.spec.ts` checks the drawer, the versions, the lightbox and the upload panel on desktop and phone in both themes. `web/test/progressHonesty.test.ts` checks the floored percentages of the upload panel, the transfer panel and the migration page.
+
+## 2026-10-16: Phone layout (#245)
+
+Question: the review's T11 (M1–M6) and N list was written on e764cf6. Which parts are still open on main, where does "New folder" (added by #221 after the review) go in a one-row phone toolbar, in which order do the collision dialog's stacked buttons stand, and what of N needs a change here?
+
+Decision:
+- **Already done.** M1 (the item menu opens upward when there is too little room below) is #224's flip in `ItemMenu.vue`; M6 and the root cause of M2 (a link styled as a button) are #238; N1 ("New folder") is #221. They are not changed again. The icon stroke (1.5 vs 1.6 px) is the guide bundle's to settle and stays 1.5 px here.
+- **Toolbar (M3).** At ≤600 px the toolbar's actions are one row: the sort menu (it shrinks), the view switch and one "Upload ⌄" menu button with "Upload files", "Upload folder" and "New folder". The menu is `ItemMenu` with a text button (`text` prop), so it flips and closes like every item menu and returns the focus to its button; its entries click the toolbar's own file inputs, so there is still one upload path. "New folder" goes into the same menu because a 380 px row has no room for a fourth control beside the sort menu, which the phone needs in place of the column headers. The desktop keeps its three buttons.
+- **Row actions (M2).** At ≤600 px two buttons in a stacked list row take equal width (`flex: 1 1 0`). This holds for every `.trash-list` row, not only cloud accounts.
+- **Settings (M4).** At ≤600 px each radio group is a column.
+- **Collision (M5).** At ≤600 px the three buttons stack full width with "Keep both" on top (`column-reverse`). The DOM order stays Skip, Replace, Keep both, so the desktop's order (#238) and Tab order are unchanged; the focus starts on "Keep both" as before.
+
+Why: each is the narrowest change that fixes what the review shows on the phone without moving the desktop. A menu for the add actions follows the issue's own fix and the guide's dropdown recipe instead of an icon-only control without a visible label. `e2e/mobile-layout.spec.ts` checks each on desktop and phone in both themes.

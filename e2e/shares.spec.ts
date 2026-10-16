@@ -23,19 +23,24 @@ async function signedIn(browser: Browser, info: TestInfo, baseURL: string, login
   return p;
 }
 
-/** Creates `/<dir>` with files through the API as the page's user, then opens it in the SPA. */
+/** Creates `<dir>` with files through the API as the page's user, then opens the folder that holds it in the SPA. `<dir>`
+ *  sits in a parent of its own: the shared home root grows past 200 entries over a run, and the phone's window over such a
+ *  list (#225) renders only the rows near the top. */
 async function setup(page: Page, dir: string, files: Record<string, string>) {
   await page.goto('/');
   await expect(crumbs(page)).toBeVisible();
   const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
   const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
-  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  const parent = `/zz-shares-${dir}`;
+  for (const path of [parent, `${parent}/${dir}`]) {
+    expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path } })).status()).toBe(201);
+  }
   for (const [name, text] of Object.entries(files)) {
-    const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/${name}`)}&onCollision=fail`,
+    const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`${parent}/${dir}/${name}`)}&onCollision=fail`,
       { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from(text) });
     expect(r.status()).toBe(201);
   }
-  await page.goto('/home');
+  await page.goto(`/home${parent}`);
   await expect(row(page, dir)).toBeVisible();
 }
 

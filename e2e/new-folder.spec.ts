@@ -9,6 +9,15 @@ const row = (page: Page, name: string): Locator =>
   page.locator('tbody tr', { has: page.locator('.name').getByText(name, { exact: true }) });
 const names = (page: Page) => page.locator('tbody tr .name').allInnerTexts();
 const newFolderButton = (page: Page) => page.getByRole('button', { name: /^(Neuer Ordner|New folder)$/ });
+// On the phone "New folder" is in the toolbar's Upload menu (#245).
+const addMenu = (page: Page) => page.getByRole('button', { name: /^(Hochladen|Upload)$/ }).and(page.locator('[aria-haspopup="menu"]'));
+async function openNewFolder(page: Page) {
+  await expect(addMenu(page).or(newFolderButton(page))).toBeVisible();
+  if (await addMenu(page).isVisible()) {
+    await addMenu(page).click();
+    await page.getByRole('menuitem', { name: /^(Neuer Ordner|New folder)$/ }).click();
+  } else await newFolderButton(page).click();
+}
 const newFolderDialog = (page: Page) => page.getByRole('dialog', { name: /Neuer Ordner|New folder/ });
 const focusedRowName = (page: Page) => page.evaluate(() => document.activeElement?.closest('tr')?.querySelector('.name')?.textContent?.trim());
 
@@ -28,7 +37,7 @@ async function setup(page: Page, dir: string, folders: string[] = []) {
   await expect(crumbs(page)).toContainText(dir);
 }
 async function create(page: Page, name: string) {
-  await newFolderButton(page).click();
+  await openNewFolder(page);
   const d = newFolderDialog(page);
   await expect(d.getByRole('textbox')).toBeFocused();
   await d.getByRole('textbox').fill(name);
@@ -54,7 +63,7 @@ test('the name is checked; a taken name says so and keeps the dialog open; Esc c
   const dir = `new-folder-check-${tag(info)}`;
   await setup(page, dir, ['Ordner']);
   await expect(row(page, 'Ordner')).toBeVisible();
-  await newFolderButton(page).click();
+  await openNewFolder(page);
   const d = newFolderDialog(page);
   const input = d.getByRole('textbox');
   await expect(input).toBeFocused();
@@ -122,6 +131,7 @@ test('a member creates a folder in an edit share; a read-only share offers no "N
   await member.goto(`/${opened.read}`);
   await expect(member.getByText(/Dieser Ordner ist leer|This folder is empty/)).toBeVisible();
   await expect(newFolderButton(member)).toHaveCount(0);
+  await expect(addMenu(member)).toHaveCount(0);
   await member.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await member.keyboard.press('Shift+N');
   await expect(newFolderDialog(member)).toHaveCount(0);

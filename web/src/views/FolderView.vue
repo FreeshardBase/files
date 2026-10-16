@@ -12,6 +12,7 @@ import FileList from '../components/FileList.vue';
 import type { ItemAction } from '../itemActions.ts';
 import Breadcrumbs from '../components/Breadcrumbs.vue';
 import UploadButton from '../components/UploadButton.vue';
+import ItemMenu, { type MenuItem } from '../components/ItemMenu.vue';
 import UploadPanel from '../components/UploadPanel.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
@@ -172,6 +173,7 @@ const gallery = ref<InstanceType<typeof GalleryGrid>>();
 // The open collision question; answering it resolves the promise the batch loop waits on.
 const conflict = ref<{ name: string; remaining: number; returnFocus?: HTMLElement | null; answer: (c: CollisionChoice) => void } | null>(null);
 const uploadButton = ref<InstanceType<typeof UploadButton>>();
+const addMenu = ref<InstanceType<typeof ItemMenu>>();
 const list = ref<InstanceType<typeof FileList>>();
 
 // `?select=<path>` (a search result, #145): once this folder's list is in, that item is selected and focused.
@@ -257,7 +259,7 @@ async function settle(at: { source: string; dir: string }) {
 function upload(files: PickedFile[]) {
   const at = { source: folder.source, dir: folder.path }; // captured: navigating away mid-batch must not redirect the remaining files
   failures.value = null;
-  uploads.enqueue(files, at, { returnFocus: uploadButton.value?.input, settled: (r) => {
+  uploads.enqueue(files, at, { returnFocus: uploadFocus(), settled: (r) => {
     say(r.skipped ? t('upload.summarySkipped', { done: r.done, total: r.total, skipped: r.skipped })
       : t('upload.summary', { done: r.done, total: r.total }), r.failed ? 'error' : 'success');
     void settle(at);
@@ -339,6 +341,23 @@ async function createFolder(name: string) {
   selected.value = [created.path];
   await nextTick(); // after AppDialog restored focus to where the dialog was opened
   (view.value === 'gallery' ? gallery.value : list.value)?.focusPath(created.path);
+}
+// The phone toolbar's Upload menu (#245): the toolbar's own two pickers and "New folder".
+const addItems = computed<MenuItem[]>(() => [
+  { id: 'files', label: t('upload.files') },
+  { id: 'folder', label: t('upload.folderButton') },
+  { id: 'mkdir', label: t('folder.newFolder') },
+]);
+// A dialog opened by an upload returns to the upload control the member can see: the file input of the desktop's
+// "Upload", or on the phone the menu button that stands in for it.
+function uploadFocus(): HTMLElement | undefined {
+  const input = uploadButton.value?.input;
+  return input?.parentElement?.checkVisibility() ? input : addMenu.value?.trigger ?? input;
+}
+function onAdd(id: string) {
+  if (id === 'files') uploadButton.value!.input!.click();
+  else if (id === 'folder') uploadButton.value!.folderInput!.click();
+  else creating.value = { error: null, busy: false };
 }
 // Shift+N opens it, except while typing or while another dialog is open (as "?" does in App.vue).
 function onKey(e: KeyboardEvent) {
@@ -530,7 +549,7 @@ function onDrop(paths: string[], dir: string) {
         <button
           v-if="canUpload"
           type="button"
-          class="button"
+          class="button new-folder-button"
           @click="creating = { error: null, busy: false }"
         >
           {{ $t('folder.newFolder') }}
@@ -539,6 +558,16 @@ function onDrop(paths: string[], dir: string) {
           v-if="canUpload"
           ref="uploadButton"
           @files="upload"
+        />
+        <!-- On the phone this menu stands in for the three buttons above, so the toolbar keeps one row (#245). -->
+        <ItemMenu
+          v-if="canUpload"
+          ref="addMenu"
+          class="add-menu"
+          :label="$t('upload.button')"
+          :text="$t('upload.button')"
+          :items="addItems"
+          @select="onAdd"
         />
       </div>
       <!-- While a selection exists the bar takes the place of the toolbar's actions (#239), so the list never moves. -->

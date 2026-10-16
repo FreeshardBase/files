@@ -6,12 +6,15 @@ import { nextTick, onBeforeUnmount, ref } from 'vue';
 
 // A `danger` item (the destructive one, last) sits under a hairline and takes the danger colour (#241).
 export type MenuItem = { id: string; label: string; danger?: boolean };
-const props = defineProps<{ label: string; items: MenuItem[] }>();
+// With `text` the button is a labelled forward-action button in the tab order (the phone toolbar's "Upload", #245)
+// instead of a row's "…", and Esc or choosing puts the focus back on it.
+const props = defineProps<{ label: string; items: MenuItem[]; text?: string }>();
 const emit = defineEmits<{ select: [string]; closed: [] }>();
 const open = ref(false);
 const up = ref(false);
 const right = ref(false);
 const root = ref<HTMLElement>();
+const trigger = ref<HTMLButtonElement>();
 const menu = ref<HTMLElement>();
 const entries = ref<HTMLElement[]>([]);
 
@@ -39,6 +42,7 @@ function close(refocus: boolean) {
   if (!open.value) return;
   open.value = false;
   document.removeEventListener('pointerdown', onOutside, true);
+  if (refocus && props.text) trigger.value?.focus();
   if (refocus) emit('closed');
 }
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, true));
@@ -55,7 +59,7 @@ function onKey(e: KeyboardEvent) {
   else if (e.key === 'End') to(n - 1);
   else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); close(true); }
 }
-defineExpose({ show });
+defineExpose({ show, trigger });
 </script>
 
 <template>
@@ -64,16 +68,25 @@ defineExpose({ show });
     class="item-menu"
   >
     <button
+      ref="trigger"
       type="button"
-      class="icon-button"
-      tabindex="-1"
-      :aria-label="label"
+      :class="text ? 'button primary menu-trigger' : 'icon-button'"
+      :tabindex="text ? undefined : -1"
+      :aria-label="text ? undefined : label"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click.stop="open ? close(true) : show()"
       @dblclick.stop
     >
+      <template v-if="text">
+        {{ text }}
+        <span
+          class="icon icon-chevron-down"
+          aria-hidden="true"
+        />
+      </template>
       <span
+        v-else
         class="icon icon-more"
         aria-hidden="true"
       />
