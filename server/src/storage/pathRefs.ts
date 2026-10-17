@@ -36,6 +36,8 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'file_requests', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', orphanColumn: 'orphaned_at' },
   // #212, asserted in server/test/tags.test.ts
   { table: 'tags', ownerColumn: 'user_id', pathColumn: 'path', sourceColumn: 'source', trashColumn: 'trash_id', goneColumn: 'gone_at' },
+  // #213, asserted in server/test/comments.test.ts. The owner is the item's owner, not the author.
+  { table: 'comments', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', trashColumn: 'trash_id' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
@@ -71,6 +73,7 @@ export type TrashTable = { table: string; column: string; pathColumn?: string };
 export const TRASH_TABLES: readonly TrashTable[] = [
   { table: 'versions', column: 'trash_id', pathColumn: 'path' }, // #154, asserted in server/test/versions.test.ts
   { table: 'tags', column: 'trash_id', pathColumn: 'path' }, // #212, asserted in server/test/tags.test.ts
+  { table: 'comments', column: 'trash_id', pathColumn: 'path' }, // #213, asserted in server/test/comments.test.ts
 ];
 
 const checkedTrash = (t: TrashTable): TrashTable => {

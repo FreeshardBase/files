@@ -11,6 +11,7 @@ import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { zipStream, type ZipRoot } from '../storage/zip.ts';
 import { deleteFavourites, moveFavourites } from '../storage/favourites.ts';
 import { deleteTags, moveTags } from '../storage/tags.ts';
+import { deleteComments, keysOf, moveComments } from '../storage/comments.ts';
 import { requireUser } from '../auth/guard.ts';
 
 const PathQ = z.object({ path: z.string().min(1) });
@@ -135,14 +136,18 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
 
   // Rename is a move within the same folder. In the home the caller's favourites and tags follow inside the move's
   // transaction (PATH_TABLES); in another source the provider has no transaction, so they follow once the move is done
-  // (#155, #212).
+  // (#155, #212). Comment threads (#213) hang off the owner's item: in the owner's home (also through a share) they are
+  // in PATH_TABLES, in a cloud they follow here, also when a grantee moves inside a share.
   app.post('/api/v1/sources/:source/move', async (req) => {
     const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = TransferRequest.parse(req.body);
+    const userId = requireUser(req).user.id;
+    const keyOf = keysOf(app.deps.db, userId, source);
     const entry = await b.move(body.from, body.to, body.onCollision);
+    const from = normalizeUserPath(body.from);
+    moveComments(app.deps.db, keyOf(from), keyOf(entry.path));
     if (source !== 'home') {
-      const userId = requireUser(req).user.id; const from = normalizeUserPath(body.from);
       moveFavourites(app.deps.db, userId, source, from, entry.path);
       moveTags(app.deps.db, userId, source, from, entry.path);
     }
@@ -156,14 +161,18 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // Moves every path to the trash in one transaction: all or nothing. Favourites and tags go as with a move (#155, #212);
-  // in the home the tags wait in the trash with their item.
+  // in the home the tags wait in the trash with their item. So do comment threads in the owner's home; a cloud's are
+  // deleted with the item (#213).
   app.post('/api/v1/sources/:source/delete', async (req, reply) => {
     const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = DeleteRequest.parse(req.body);
+    const userId = requireUser(req).user.id;
+    const keyOf = keysOf(app.deps.db, userId, source);
     await b.delete(body.paths);
+    const paths = body.paths.map(normalizeUserPath);
+    deleteComments(app.deps.db, paths.map(keyOf));
     if (source !== 'home') {
-      const userId = requireUser(req).user.id; const paths = body.paths.map(normalizeUserPath);
       deleteFavourites(app.deps.db, userId, source, paths);
       deleteTags(app.deps.db, userId, source, paths);
     }

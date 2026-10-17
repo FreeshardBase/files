@@ -28,6 +28,7 @@ import { useTransfersStore } from '../stores/transfers.ts';
 import { useFavouritesStore } from '../stores/favourites.ts';
 import { useSortStore } from '../stores/sort.ts';
 import { useTagsStore } from '../stores/tags.ts';
+import { useCommentsStore } from '../stores/comments.ts';
 import AddTagDialog from '../components/AddTagDialog.vue';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 import { sortEntries } from '../sort.ts';
@@ -403,6 +404,11 @@ watch(() => folder.entries, () => { if (!folder.error) void tagStore.loadFolder(
 const folderTags = computed(() => tagStore.folder.source === source.value && tagStore.folder.path === path.value
   ? tagStore.folder.byPath : {});
 const tagging = ref<{ entries: Entry[]; error: string | null; busy: boolean } | null>(null);
+// Comments (#213): the badges of this folder's items come with every listing; the drawer's thread keeps them current.
+const commentStore = useCommentsStore();
+watch(() => folder.entries, () => { if (!folder.error) void commentStore.loadFolder(folder.source, folder.path); });
+const folderComments = computed(() => commentStore.folder.source === source.value && commentStore.folder.path === path.value
+  ? commentStore.folder.byPath : {});
 async function addTag(name: string) {
   const g = tagging.value!;
   g.error = null; g.busy = true;
@@ -828,6 +834,7 @@ function onDrop(paths: string[], dir: string) {
           @action="onAction"
           @paste="paste"
         />
+        <!-- The comment badges (#213) are only in the list, where each row has room for them. -->
         <FileList
           v-else
           ref="list"
@@ -840,6 +847,7 @@ function onDrop(paths: string[], dir: string) {
           :shareable="shareable"
           :starred="starred"
           :tags="folderTags"
+          :comments="folderComments"
           @open="open"
           @action="onAction"
           @paste="paste"
