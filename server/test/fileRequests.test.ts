@@ -1,10 +1,13 @@
+import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import pino from 'pino';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Entry, FileRequest, FileRequestInfo, ReceivedFileList } from '@files/shared';
 import type { ConnectedBackend, StorageBackend, WriteOptions } from '../src/storage/backend.ts';
 import { homeRoot } from '../src/paths.ts';
+import { expireUploads } from '../src/storage/uploads.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
 // #217: file requests, upload-only public links at /r/<token>. `testuser` owns the requests; visitors have no session,
@@ -30,8 +33,10 @@ const cloud: StorageBackend = {
     cloudWrites.push({ path: p, bytes: Buffer.concat(chunks).toString(), opts });
     return { name: p.slice(p.lastIndexOf('/') + 1), path: p, type: 'file', size: opts.size ?? 0, modified: '2026-10-02T00:00:00.000Z' } satisfies Entry;
   },
-  quota: async () => ({ used: 0, total: 1000 }),
+  quota: async () => { await duringQuota?.(); return { used: 0, total: 1000 }; },
 };
+// Runs while a visitor's creation waits for the provider's free space (#304: a revocation in between).
+let duringQuota: (() => Promise<unknown>) | undefined;
 const connections = async (user: { id: string }): Promise<ConnectedBackend[]> => user.id === ownerId ? [{ id: 'cloud', backend: cloud }] : [];
 const logLines: string[] = [];
 const logStream = new Writable({ write(chunk, _enc, cb) { logLines.push(String(chunk)); cb(); } });
@@ -378,4 +383,152 @@ it('the visitor\'s session sees nothing of another request', async () => {
   await ok(upload(a.token, v, 'x.txt', 'x'));
   const x = await t.app.inject({ url: `/r/${b.token}/info`, headers: { cookie: v.cookie } });
   expect(x.json().uploads).toEqual([]);
+});
+
+// #304: a visitor's unfinished uploads hold the owner's quota; revoking, expiring or orphaning a request, or the owner's
+// discard, releases them, and a request caps how many may be open at once.
+describe('a visitor\'s unfinished uploads (#304)', () => {
+  const ownerCreate = (path: string, length: number) => t.app.inject({ method: 'POST', url: '/api/v1/uploads',
+    headers: { ...mutating(owner), 'tus-resumable': '1.0.0', 'upload-length': String(length), 'upload-metadata': meta({ source: 'home', path }) } });
+  const uploadRows = (ids: string[]) => ids.filter((id) => t.db.prepare('SELECT 1 FROM uploads WHERE id = ? AND user_id = ?').get(id, ownerId) !== undefined);
+  const staged = (ids: string[]) => ids.filter((id) => existsSync(join(root, '.files', 'uploads', id)));
+  const requestRows = (id: string) => t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ? AND placed_at IS NULL').pluck().get(id);
+  const idOf = (location: unknown) =>String(location).split('/').pop()!;
+  const pendingOf = async (id: string) => (await listOwn()).find((x) => x.id === id)!.pending;
+
+  it('revoking the request terminates them at once: the owner\'s quota is free again', async () => {
+    const dir = await folder();
+    const r = await request(dir);
+    const v = await visitor(r.token);
+    t.db.prepare('UPDATE users SET quota_bytes = ? WHERE id = ?').run(1_000_000, ownerId);
+    try {
+      const c = await create(r.token, v, 'hold.bin', 900_000);
+      expect(c.statusCode, c.body).toBe(201);
+      const held = idOf(c.headers.location);
+      expect(await pendingOf(r.id)).toBe(1);
+      expect((await ownerCreate(`${dir}/mine.bin`, 200_000)).json()).toEqual({ code: 'QUOTA_EXCEEDED' });
+      await ok(t.app.inject({ method: 'DELETE', url: `/api/v1/requests/${r.id}`, headers: mutating(owner) }));
+      expect(uploadRows([held])).toEqual([]);
+      expect(staged([held])).toEqual([]);
+      expect(requestRows(r.id)).toBe(0);
+      expect(await pendingOf(r.id)).toBe(0);
+      const mine = await ownerCreate(`${dir}/mine.bin`, 200_000);
+      expect(mine.statusCode, mine.body).toBe(201);
+      await ok(t.app.inject({ method: 'DELETE', url: String(mine.headers.location), headers: { ...mutating(owner), 'tus-resumable': '1.0.0' } }));
+    } finally { t.db.prepare('UPDATE users SET quota_bytes = NULL WHERE id = ?').run(ownerId); }
+  });
+
+  it('a visitor may hold 10 open uploads at once; the 11th is REQUEST_UPLOADS_OPEN, a finished one frees its place', async () => {
+    const r = await request(await folder());
+    const v = await visitor(r.token);
+    const res = await Promise.all(Array.from({ length: 11 }, (_, i) => create(r.token, v, `o${i}.bin`, 1)));
+    expect(res.filter((x) => x.statusCode === 201)).toHaveLength(10);
+    expect(res.filter((x) => x.statusCode !== 201).map((x) => [x.statusCode, x.json().code])).toEqual([[409, 'REQUEST_UPLOADS_OPEN']]);
+    expect(t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ?').pluck().get(r.id)).toBe(10);
+    // Finishing one makes room for one more.
+    expect((await patch(String(res.find((x) => x.statusCode === 201)!.headers.location), v, 'x')).statusCode).toBe(204);
+    expect((await create(r.token, v, 'next.bin', 1)).statusCode).toBe(201);
+    expect((await create(r.token, v, 'over.bin', 1)).json()).toEqual({ code: 'REQUEST_UPLOADS_OPEN' });
+  });
+
+  it('a request holds at most 100 open uploads, whatever the number of visitors', async () => {
+    const r = await request(await folder());
+    const visitors = await Promise.all(Array.from({ length: 11 }, () => visitor(r.token)));
+    const res = await Promise.all(visitors.flatMap((v, i) => Array.from({ length: 10 }, (_, j) => create(r.token, v, `v${i}-${j}.bin`, 1))));
+    expect(res.filter((x) => x.statusCode === 201)).toHaveLength(100);
+    expect(res.filter((x) => x.statusCode !== 201).map((x) => x.json().code)).toEqual(Array(10).fill('REQUEST_UPLOADS_OPEN'));
+    expect(await pendingOf(r.id)).toBe(100);
+    await ok(t.app.inject({ method: 'DELETE', url: `/api/v1/requests/${r.id}`, headers: mutating(owner) }));
+  });
+
+  it('the owner discards them without closing the request', async () => {
+    const dir = await folder();
+    const r = await request(dir);
+    const v = await visitor(r.token);
+    const c = await create(r.token, v, 'half.txt', 4);
+    expect((await patch(String(c.headers.location), v, 'ha')).statusCode).toBe(204);
+    const id = idOf(c.headers.location);
+    expect(await pendingOf(r.id)).toBe(1);
+    expect((await t.app.inject({ method: 'DELETE', url: `/api/v1/requests/${r.id}/uploads`, headers: mutating(other) })).statusCode).toBe(404);
+    expect(uploadRows([id])).toEqual([id]);
+    expect((await t.app.inject({ method: 'DELETE', url: `/api/v1/requests/${r.id}/uploads`, headers: mutating(owner) })).statusCode).toBe(204);
+    expect(uploadRows([id])).toEqual([]);
+    expect(staged([id])).toEqual([]);
+    expect(requestRows(r.id)).toBe(0);
+    expect(await pendingOf(r.id)).toBe(0);
+    expect((await patch(String(c.headers.location), v, 'lf', 2)).statusCode).toBe(404);
+    expect((await info(r.token, v)).uploads).toEqual([]);
+    // The request still takes files.
+    expect((await upload(r.token, v, 'whole.txt', 'whole')).statusCode).toBe(204);
+    expect(namesIn(dir)).toEqual(['whole.txt']);
+  });
+
+  it('a creation revoked before its reservation is refused before any upload opens', async () => {
+    const r = await request('/Inbox', { source: 'conn:cloud' });
+    const v = await visitor(r.token);
+    duringQuota = () => ok(t.app.inject({ method: 'DELETE', url: `/api/v1/requests/${r.id}`, headers: mutating(owner) }));
+    // A home with no room left: an upload that opened would answer QUOTA_EXCEEDED, not the revocation.
+    t.db.prepare('UPDATE users SET quota_bytes = ? WHERE id = ?').run(1, ownerId);
+    try {
+      const c = await create(r.token, v, 'late.bin', 10);
+      expect([c.statusCode, c.json().code]).toEqual([410, 'LINK_REVOKED']);
+    } finally { duringQuota = undefined; t.db.prepare('UPDATE users SET quota_bytes = NULL WHERE id = ?').run(ownerId); }
+    expect(t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ?').pluck().get(r.id)).toBe(0);
+    expect(t.db.prepare('SELECT COUNT(*) FROM uploads WHERE user_id = ? AND source = ?').pluck().get(ownerId, 'conn:cloud')).toBe(0);
+  });
+
+  it('a creation revoked between its reservation and its upload terminates the upload itself', async () => {
+    const r = await request(await folder());
+    const v = await visitor(r.token);
+    const before = new Set(readdirSync(join(root, '.files', 'uploads')));
+    // The revocation lands right when the upload is attached to its reservation, after the revocation's discard
+    // could have seen it.
+    const prepare = t.db.prepare.bind(t.db);
+    const spy = vi.spyOn(t.db, 'prepare').mockImplementation((sql: string) => {
+      if (sql.startsWith('UPDATE file_request_uploads SET upload_id')) {
+        prepare('UPDATE file_requests SET revoked_at = ? WHERE id = ?').run(new Date().toISOString(), r.id);
+      }
+      return prepare(sql);
+    });
+    try {
+      const c = await create(r.token, v, 'late.bin', 10);
+      expect([c.statusCode, c.json().code]).toEqual([410, 'LINK_REVOKED']);
+    } finally { spy.mockRestore(); }
+    expect(t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ?').pluck().get(r.id)).toBe(0);
+    expect(readdirSync(join(root, '.files', 'uploads')).filter((x) => !before.has(x))).toEqual([]);
+  });
+
+  it('reservations whose upload is still opening count as open', async () => {
+    const r = await request(await folder());
+    const insert = t.db.prepare(`INSERT INTO file_request_uploads (id, request_id, visitor, upload_id, name, length, uploader, created_at)
+      VALUES (?, ?, ?, NULL, 'x', 1, NULL, ?)`);
+    for (let i = 0; i < 100; i++) insert.run(randomBytes(16).toString('hex'), r.id, randomBytes(16).toString('hex'), new Date().toISOString());
+    try {
+      expect((await create(r.token, await visitor(r.token), 'more.bin', 1)).json()).toEqual({ code: 'REQUEST_UPLOADS_OPEN' });
+    } finally { t.db.prepare('DELETE FROM file_request_uploads WHERE request_id = ?').run(r.id); }
+  });
+
+  it('the upload expiry job terminates them for an expired, orphaned or revoked request', async () => {
+    const expiring = await request(await folder(), { expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const orphanDir = await folder();
+    const orphaning = await request(orphanDir);
+    const revoking = await request(await folder());
+    const live = await request(await folder());
+    const ids: string[] = [];
+    for (const r of [expiring, orphaning, revoking, live]) {
+      const c = await create(r.token, await visitor(r.token), 'wait.bin', 10);
+      expect(c.statusCode, c.body).toBe(201);
+      ids.push(idOf(c.headers.location));
+    }
+    t.db.prepare('UPDATE file_requests SET expires_at = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', expiring.id);
+    await ok(op('delete', { paths: [orphanDir] }));
+    expect((await listOwn()).find((x) => x.id === orphaning.id)).toMatchObject({ orphaned: true });
+    // Revoked while its upload was receiving bytes: the revocation's discard left it (busy), the job takes it.
+    t.db.prepare('UPDATE file_requests SET revoked_at = ? WHERE id = ?').run(new Date().toISOString(), revoking.id);
+    const result = await expireUploads(t.app.deps, pino({ level: 'silent' }));
+    expect(result.removed).toEqual(expect.arrayContaining([ids[0], ids[1], ids[2]]));
+    expect(uploadRows(ids)).toEqual([ids[3]]);
+    expect(staged(ids)).toEqual([ids[3]]);
+    expect(await pendingOf(live.id)).toBe(1);
+  });
 });

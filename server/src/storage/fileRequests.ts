@@ -3,7 +3,8 @@ import { extname } from 'node:path';
 import type { FileRequest, ReceivedFile, VisitorUpload } from '@files/shared';
 import { AppError } from '../errors.ts';
 import type { Db } from '../db.ts';
-import { truncateBytes } from './local.ts';
+import { truncateBytes, type LocalBackend } from './local.ts';
+import { isExpired } from './publicLinks.ts';
 
 /** A file request row (#217). `path` is the target folder in `source`, kept current by the PATH_TABLES cascade for `home`. */
 export type RequestRow = { id: string; token: string; owner_id: string; source: string; path: string; label: string;
@@ -14,6 +15,11 @@ const COLUMNS = 'id, token, owner_id, source, path, label, password_hash, expire
 // A visitor's file that counts against the limits: reserved, in progress (its tus upload still open) or received. One
 // whose upload expired, was cut off or failed to open no longer counts.
 const COUNTS = '(u.placed_at IS NOT NULL OR u.upload_id IS NULL OR u.upload_id IN (SELECT id FROM uploads))';
+// A visitor's file not placed yet that still holds the owner's quota: reserved, or its tus upload still open (#304).
+const OPEN = '(u.placed_at IS NULL AND (u.upload_id IS NULL OR u.upload_id IN (SELECT id FROM uploads)))';
+/** At most this many open uploads per visitor and per request, whatever the limits (#304). */
+export const MAX_OPEN_PER_VISITOR = 10;
+export const MAX_OPEN_PER_REQUEST = 100;
 
 // Control characters and bidi marks, as `normalizeUserPath` refuses them; here they are dropped instead.
 const UNSAFE = /[\p{Cc}\p{Bidi_Control}]/gu;
@@ -53,9 +59,11 @@ export const toFileRequest = (db: Db, r: RequestRow): FileRequest => {
   const received = db.prepare(`SELECT COUNT(*) AS files, COALESCE(SUM(length), 0) AS bytes,
     COALESCE(SUM(seen_at IS NULL), 0) AS fresh FROM file_request_uploads WHERE request_id = ? AND placed_at IS NOT NULL`)
     .get(r.id) as Usage & { fresh: number };
+  const pending = db.prepare(`SELECT COUNT(*) FROM file_request_uploads u WHERE u.request_id = ? AND u.placed_at IS NULL
+    AND u.upload_id IN (SELECT id FROM uploads)`).pluck().get(r.id) as number;
   return { id: r.id, token: r.token, label: r.label, source: r.source, path: r.path, expiresAt: r.expires_at, maxFiles: r.max_files,
     maxBytes: r.max_bytes, askName: r.ask_name === 1, hasPassword: r.password_hash !== null, createdAt: r.created_at,
-    revoked: r.revoked_at !== null, orphaned: r.orphaned_at !== null, files: received.files, bytes: received.bytes, newFiles: received.fresh };
+    revoked: r.revoked_at !== null, orphaned: r.orphaned_at !== null, files: received.files, bytes: received.bytes, newFiles: received.fresh, pending };
 };
 
 /** What is left of the limits right now; null for no limit. */
@@ -96,10 +104,23 @@ export function updateRequest(db: Db, id: string, ownerId: string, c: { label?: 
   return ownRequest(db, id, ownerId);
 }
 
-/** Revokes a request: the token answers LINK_REVOKED from the next request on, uploads in progress included. */
+/**
+ * Revokes a request: the token answers LINK_REVOKED from the next request on, uploads in progress included. The caller
+ * then terminates its open uploads (`discardOpenUploads`).
+ */
 export function revokeRequest(db: Db, id: string, ownerId: string): void {
   ownRequest(db, id, ownerId);
   db.prepare('UPDATE file_requests SET revoked_at = ? WHERE id = ? AND owner_id = ? AND revoked_at IS NULL').run(new Date().toISOString(), id, ownerId);
+}
+
+/** Why the request `id` is no longer live as it is now (revoked, orphaned, expired), or null while it is. */
+export function closedCode(db: Db, id: string): 'NOT_FOUND' | 'LINK_REVOKED' | 'SHARE_ORPHANED' | 'LINK_EXPIRED' | null {
+  const row = db.prepare('SELECT revoked_at, orphaned_at, expires_at FROM file_requests WHERE id = ?').get(id) as
+    Pick<RequestRow, 'revoked_at' | 'orphaned_at' | 'expires_at'> | undefined;
+  if (!row) return 'NOT_FOUND';
+  if (row.revoked_at !== null) return 'LINK_REVOKED';
+  if (row.orphaned_at !== null) return 'SHARE_ORPHANED';
+  return isExpired(row) ? 'LINK_EXPIRED' : null;
 }
 
 export function requestByToken(db: Db, token: string): RequestRow | undefined {
@@ -113,9 +134,16 @@ export function requestByToken(db: Db, token: string): RequestRow | undefined {
 export function reserveUpload(db: Db, r: RequestRow, u: { visitor: string; name: string; length: number; uploader: string | null }): string {
   const id = randomBytes(16).toString('hex');
   db.transaction(() => {
+    // Read again under the write lock: a request revoked since the handler checked it takes no new upload (#304).
+    const closed = closedCode(db, r.id);
+    if (closed) throw new AppError(closed);
     const used = usage(db, r.id);
     if (r.max_files !== null && used.files + 1 > r.max_files) throw new AppError('REQUEST_FILE_LIMIT');
     if (r.max_bytes !== null && used.bytes + u.length > r.max_bytes) throw new AppError('REQUEST_SIZE_LIMIT');
+    // Each open upload holds the owner's quota, a row and a staged file: bounded even without limits (#304).
+    const open = db.prepare(`SELECT COUNT(*) AS request, COALESCE(SUM(u.visitor = ?), 0) AS visitor FROM file_request_uploads u
+      WHERE u.request_id = ? AND ${OPEN}`).get(u.visitor, r.id) as { request: number; visitor: number };
+    if (open.visitor >= MAX_OPEN_PER_VISITOR || open.request >= MAX_OPEN_PER_REQUEST) throw new AppError('REQUEST_UPLOADS_OPEN');
     db.prepare(`INSERT INTO file_request_uploads (id, request_id, visitor, upload_id, name, length, uploader, created_at)
       VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`).run(id, r.id, u.visitor, u.name, u.length, u.uploader, new Date().toISOString());
   }).immediate();
@@ -128,6 +156,34 @@ export function attachUpload(db: Db, reservation: string, uploadId: string): voi
 
 export function dropReservation(db: Db, reservation: string): void {
   db.prepare('DELETE FROM file_request_uploads WHERE id = ? AND upload_id IS NULL').run(reservation);
+}
+
+/**
+ * Terminates the request's open uploads in the owner's home `home` (#304): the staged bytes and the `uploads` row go, so
+ * the reservation is freed at once, and so does the request's row of each. One receiving bytes right now is left
+ * (`busy`); the upload expiry job takes it once the request is no longer live, or after `UPLOAD_TTL_MS`.
+ */
+export async function discardOpenUploads(db: Db, home: LocalBackend, requestId: string): Promise<{ removed: string[]; busy: string[] }> {
+  const ids = db.prepare(`SELECT upload_id FROM file_request_uploads WHERE request_id = ? AND placed_at IS NULL
+    AND upload_id IN (SELECT id FROM uploads)`).pluck().all(requestId) as string[];
+  const result = { removed: [] as string[], busy: [] as string[] };
+  for (const id of ids) {
+    try { await home.terminateUpload(id); } catch (e) {
+      // handled: a busy upload is left for the expiry job and reported as busy; one gone meanwhile only loses its row
+      if (e instanceof AppError && e.code === 'UPLOAD_LOCKED') { result.busy.push(id); continue; }
+      if (!(e instanceof AppError && e.code === 'NOT_FOUND')) throw e;
+    }
+    db.prepare('DELETE FROM file_request_uploads WHERE upload_id = ? AND placed_at IS NULL').run(id);
+    result.removed.push(id);
+  }
+  return result;
+}
+
+/** Requests that are no longer live (revoked, orphaned or expired) yet still have open uploads, for the expiry job. */
+export function closedWithOpenUploads(db: Db, now: Date): RequestRow[] {
+  const rows = db.prepare(`SELECT ${COLUMNS} FROM file_requests r WHERE EXISTS (SELECT 1 FROM file_request_uploads u
+    WHERE u.request_id = r.id AND u.placed_at IS NULL AND u.upload_id IN (SELECT id FROM uploads))`).all() as RequestRow[];
+  return rows.filter((r) => r.revoked_at !== null || r.orphaned_at !== null || isExpired(r, now.getTime()));
 }
 
 /** Reservations that never got their upload (the process stopped in between) hold no place after a restart. */

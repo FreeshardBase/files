@@ -46,6 +46,8 @@ export const FileRequestSchema = z.object({
   orphaned: z.boolean(),
   /** Files received so far, their bytes, and how many of them the owner has not looked at yet (the badge). */
   files: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(), newFiles: z.number().int().nonnegative(),
+  /** Visitors' uploads still open: each holds the owner's quota until it is finished, discarded or expires (#304). */
+  pending: z.number().int().nonnegative(),
 });
 export type FileRequest = z.infer<typeof FileRequestSchema>;
 

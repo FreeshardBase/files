@@ -11,7 +11,7 @@ import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { homeOf, ownerSource, parseSource, resolveSource } from '../storage/resolveSource.ts';
 import { UPLOAD_ID, type UploadPlacement } from '../storage/local.ts';
 import { hashPassword, isExpired, parseExpiry, passwordStamp, verifyPassword } from '../storage/publicLinks.ts';
-import { attachUpload, cleanUploader, createRequest, dropReservation, isVisitorsOpenUpload, markPlaced, markSeen, ownRequest,
+import { attachUpload, cleanUploader, closedCode, createRequest, discardOpenUploads, dropReservation, isVisitorsOpenUpload, markPlaced, markSeen, ownRequest,
   receivedFiles, remaining, requestByToken, requestsOf, reserveUpload, revokeRequest, sanitizeUploadName, toFileRequest,
   updateRequest, visitorUploads, type RequestRow } from '../storage/fileRequests.ts';
 import { bodyStream, declaredLength, Digits, httpDate, offsetStream, parseMetadata, tus } from './uploads.ts';
@@ -27,7 +27,7 @@ const VISITOR = /^[0-9a-f]{32}$/;
 const VISITOR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['NOT_FOUND', 'SHARE_ORPHANED', 'LINK_EXPIRED', 'LINK_REVOKED',
   'PASSWORD_REQUIRED', 'PASSWORD_WRONG', 'TOO_MANY_ATTEMPTS', 'CSRF', 'VALIDATION', 'PRECONDITION_FAILED', 'UNSUPPORTED_MEDIA_TYPE',
   'PAYLOAD_TOO_LARGE', 'SIZE_MISMATCH', 'OFFSET_MISMATCH', 'UPLOAD_LOCKED', 'REQUEST_FILE_LIMIT', 'REQUEST_SIZE_LIMIT',
-  'QUOTA_EXCEEDED', 'STORAGE_FULL']);
+  'REQUEST_UPLOADS_OPEN', 'QUOTA_EXCEEDED', 'STORAGE_FULL']);
 
 // File requests (#217): the owner's management API under /api/v1/requests (session and CSRF like every route), and the
 // visitor's side under /r/<token>/…, a public route family that only ever accepts files: info, unlock and tus (creation,
@@ -72,7 +72,20 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
 
   app.delete('/api/v1/requests/:id', async (req, reply) => {
     const { user } = requireUser(req);
-    revokeRequest(db, RequestId.parse(req.params).id, user.id);
+    const { id } = RequestId.parse(req.params);
+    revokeRequest(db, id, user.id);
+    // Revoked first, so no new reservation is taken (`reserveUpload` reads it again); then the open ones stop holding the
+    // owner's quota (#304). One opening right now is terminated by its own creation once attached.
+    await discardOpenUploads(db, homeOf(app.deps, user.id), id);
+    return reply.status(204).send();
+  });
+
+  // The owner drops the visitors' unfinished uploads and keeps the request open (#304). One receiving bytes right now
+  // is left; it finishes or expires.
+  app.delete('/api/v1/requests/:id/uploads', async (req, reply) => {
+    const { user } = requireUser(req);
+    const row = ownRequest(db, RequestId.parse(req.params).id, user.id);
+    await discardOpenUploads(db, homeOf(app.deps, user.id), row.id);
     return reply.status(204).send();
   });
 
@@ -172,9 +185,10 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
     }
     const reservation = reserveUpload(db, row, { visitor: v.visitor, name, length,
       uploader: row.ask_name === 1 ? cleanUploader(m.uploader) : null });
+    const home = homeOf(app.deps, row.owner_id);
     let id: string;
     try {
-      const u = await homeOf(app.deps, row.owner_id).createUpload({ source: row.source, path: childPath(row.path, name), length,
+      const u = await home.createUpload({ source: row.source, path: childPath(row.path, name), length,
         onCollision: 'keep-both', maxBytes: config.maxUploadBytes });
       id = u.id;
       attachUpload(db, reservation, id);
@@ -182,6 +196,15 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
     } catch (e) {
       dropReservation(db, reservation);
       throw e;
+    }
+    // Revoked while the upload opened: a revocation's discard may have run before it was attached, so it goes here (#304).
+    const closed = closedCode(db, row.id);
+    if (closed) {
+      await home.terminateUpload(id).catch((e: unknown) => {
+        if (!(e instanceof AppError && e.code === 'NOT_FOUND')) throw e; // handled: the revocation's discard got it first
+      });
+      db.prepare('DELETE FROM file_request_uploads WHERE id = ?').run(reservation);
+      throw new AppError(closed);
     }
     return reply.status(201).header('location', `/r/${row.token}/uploads/${id}`).header('upload-offset', 0).send();
   }
