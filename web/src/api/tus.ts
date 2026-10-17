@@ -19,6 +19,7 @@ const b64 = (s: string) => btoa(Array.from(new TextEncoder().encode(s), (b) => S
 const retryable = (e: unknown) => e instanceof ApiFailure
   && (e.code === 'NETWORK' || e.code === 'UPLOAD_LOCKED' || e.code === 'OFFSET_MISMATCH' || e.code === 'INTERNAL');
 
+const KEY_PREFIX = 'files.upload:';
 // localStorage can be unavailable (storage disabled); resuming after a reload is then not offered, nothing else changes.
 const storage = {
   get(key: string): string | null {
@@ -33,7 +34,29 @@ const storage = {
     try { localStorage.removeItem(key); }
     catch { /* handled: nothing was stored */ }
   },
+  /** Every stored key that holds `url`. */
+  keysOf(url: string): string[] {
+    try { return Object.keys(localStorage).filter((k) => k.startsWith(KEY_PREFIX) && localStorage.getItem(k) === url); }
+    catch { return []; } // handled: no storage means nothing is remembered
+  },
 };
+
+const keyOf = (target: Target, file: File) => `${KEY_PREFIX}${target.source}:${target.path}:${file.size}:${file.lastModified}`;
+export const uploadUrl = (id: string) => `${UPLOADS}/${encodeURIComponent(id)}`;
+
+/**
+ * Whether this browser sent the upload at `url` from exactly this file (same target, size and modification time), so
+ * a `ResumableUpload` of it continues there (#233). A file that only has the same name and size may hold other bytes.
+ */
+export const isRememberedFor = (url: string, file: File, target: Target) => storage.get(keyOf(target, file)) === url;
+
+/** Drops an unfinished upload on the server (tus termination) and what this browser remembers of it (#233). */
+export async function discardUpload(url: string): Promise<void> {
+  await rawRequest('DELETE', url, TUS).catch((e: unknown) => {
+    if (!(e instanceof ApiFailure && e.code === 'NOT_FOUND')) throw e; // handled: already gone (completed or expired)
+  });
+  for (const k of storage.keysOf(url)) storage.remove(k);
+}
 
 export class ResumableUpload {
   private xhr: { abort(): void } | null = null;
@@ -42,8 +65,11 @@ export class ResumableUpload {
   private readonly key: string;
 
   constructor(readonly file: File, readonly target: Target, private onProgress: (sent: number) => void) {
-    this.key = `files.upload:${target.source}:${target.path}:${file.size}:${file.lastModified}`;
+    this.key = keyOf(target, file);
   }
+
+  /** The server's address of this upload once it has been opened (also by an earlier page), else null. */
+  get url(): string | null { return storage.get(this.key); }
 
   /**
    * Sends whatever the server does not have yet and places the file with `policy`. Resolves 'paused' after `pause()`.
@@ -74,11 +100,7 @@ export class ResumableUpload {
   async discard(): Promise<void> {
     this.pause();
     const url = storage.get(this.key);
-    if (!url) return;
-    await rawRequest('DELETE', url, TUS).catch((e: unknown) => {
-      if (!(e instanceof ApiFailure && e.code === 'NOT_FOUND')) throw e; // handled: already gone (completed or expired)
-    });
-    storage.remove(this.key);
+    if (url) await discardUpload(url);
   }
 
   private async attempt(policy: CollisionPolicy): Promise<RunResult> {

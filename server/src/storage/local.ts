@@ -5,7 +5,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
-import type { CollisionPolicy, Entry, HomeUsage, LargeFolder, ThumbSize, TrashItem } from '@files/shared';
+import type { CollisionPolicy, Entry, HomeUsage, LargeFolder, OpenUpload, ThumbSize, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from './backend.ts';
@@ -778,6 +778,17 @@ export class LocalBackend implements StorageBackend {
       throw e;
     }
     return { id, offset: 0, length: u.length, expiresAt };
+  }
+
+  /**
+   * The member's own open uploads into this home, oldest first (#233): what the upload panel offers to resume or discard
+   * after a reload. A visitor's upload through one of the member's file requests is staged here too, but is not theirs.
+   */
+  openUploads(): OpenUpload[] {
+    const rows = this.index.db.prepare(`SELECT id, path, length, received, expires_at FROM uploads
+      WHERE user_id = ? AND source = 'home' AND id NOT IN (SELECT upload_id FROM file_request_uploads WHERE upload_id IS NOT NULL)
+      ORDER BY created_at, id`).all(this.index.userId) as Pick<UploadRow, 'id' | 'path' | 'length' | 'received' | 'expires_at'>[];
+    return rows.map((r) => ({ id: r.id, path: r.path, length: r.length, offset: r.received, expiresAt: r.expires_at }));
   }
 
   /** HEAD: how many bytes are safely stored. */

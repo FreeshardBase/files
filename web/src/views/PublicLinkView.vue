@@ -2,6 +2,7 @@
 // The share page of a public link (#147), for visitors without an account. Everything about the item comes from
 // `/s/<token>/info` as data and is shown as text (no v-html), under the app's strict CSP. A locked link asks for its
 // password first. A download is a plain link to the content route; a refused one comes back here with `?error=<code>`.
+// The count of downloads left follows every download and preview (#232); the note about the limit shows only with one.
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -55,6 +56,25 @@ const opensInline = (mime: string | undefined) =>
 const href = (p: string, inline = false) => linkContentHref(token.value, p, inline);
 // No downloads left (#240): the page offers no download or preview it would refuse, only the refusal.
 const exhausted = computed(() => info.value?.downloadsLeft === 0);
+const limited = computed(() => info.value?.downloadsLeft !== null && info.value?.downloadsLeft !== undefined);
+// A download or preview leaves the page in place (an attachment, a new tab), so the count is asked for again until the
+// server has counted it (#232): it counts once its answer starts, which the page cannot see.
+const RECOUNT_MS = [250, 500, 1000, 2000, 4000];
+let recountRun = 0;
+async function recount() {
+  if (!limited.value) return;
+  const run = ++recountRun;
+  const before = info.value!.downloadsLeft;
+  for (const ms of RECOUNT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    if (run !== recountRun) return; // a newer click recounts
+    try {
+      const now = await linkInfo(token.value);
+      info.value = now;
+      if (now.downloadsLeft !== before) return;
+    } catch (e) { failure.value = code(e); return; }
+  }
+}
 const parent = computed(() => path.value.slice(0, path.value.lastIndexOf('/')) || '/');
 const fmtDate = (iso: string) => formatDate(iso, intlLocale(locale.value));
 const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
@@ -168,6 +188,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
             <a
               class="button primary"
               :href="href('/')"
+              @click="recount"
             >{{ t('link.page.download') }}</a>
             <a
               v-if="opensInline(info.mime)"
@@ -175,6 +196,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
               :href="href('/', true)"
               target="_blank"
               rel="noopener noreferrer"
+              @click="recount"
             >{{ t('link.page.preview') }}</a>
           </div>
           <template v-else-if="entries">
@@ -222,6 +244,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
                       class="button"
                       :href="href(e.path)"
                       :aria-label="t('link.page.downloadLabel', { name: e.name })"
+                      @click="recount"
                     >{{ t('link.page.download') }}</a>
                     <a
                       v-if="opensInline(e.mime)"
@@ -230,6 +253,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
                       :aria-label="t('link.page.previewLabel', { name: e.name })"
                       target="_blank"
                       rel="noopener noreferrer"
+                      @click="recount"
                     >{{ t('link.page.preview') }}</a>
                   </template>
                 </template>
@@ -237,7 +261,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
             </ul>
           </template>
           <p
-            v-if="!exhausted"
+            v-if="limited && !exhausted"
             class="share-note"
           >
             {{ t('link.page.countNote') }}

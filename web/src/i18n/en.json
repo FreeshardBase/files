@@ -394,7 +394,15 @@
     "pauseLabel": "Pause upload of {name}",
     "resumeLabel": "Resume upload of {name}",
     "retryLabel": "Retry upload of {name}",
-    "cancelLabel": "Cancel upload of {name}"
+    "cancelLabel": "Cancel upload of {name}",
+    "unfinished": {
+      "title": "Unfinished uploads",
+      "hint": "These uploads stopped when the page was left. Pick the same file again to resume. Until then, each keeps its size reserved in your storage, for at most a day.",
+      "progress": "{sent} of {total}",
+      "resumeLabel": "Resume upload of {name}: pick the file again",
+      "discardLabel": "Discard upload of {name}",
+      "otherFile": "That is not the file “{name}” ({size}). Pick the same file again to resume."
+    }
   },
   "collision": {
     "title": "Name already taken",
@@ -557,6 +565,8 @@
     "revoke": "Revoke",
     "revokeLabel": "Revoke {name}",
     "revoked": "“{name}” revoked",
+    "revokeTitle": "Revoke “{name}”?",
+    "revokeMessage": "Anyone who has the address can no longer open it, and this cannot be undone. A new link gets a new address.",
     "withPassword": "With password",
     "noPassword": "No password",
     "expires": "expires {date}",

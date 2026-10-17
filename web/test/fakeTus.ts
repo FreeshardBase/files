@@ -42,6 +42,10 @@ export function installFakeTus(opts: FakeTusOptions = {}) {
     const method = init.method ?? 'GET';
     const headers = (init.headers ?? {}) as Record<string, string>;
     if (u.pathname.endsWith('/list')) { log.lists++; return json({ entries: opts.list?.() ?? [] }); }
+    if (u.pathname === '/api/v1/uploads' && method === 'GET') { // the unfinished uploads (#233)
+      return json({ items: [...uploads.values()].map((x) => ({ id: x.id, path: x.path, length: x.length, offset: x.offset,
+        expiresAt: '2026-10-16T00:00:00.000Z' })) });
+    }
     if (u.pathname === '/api/v1/uploads' && method === 'POST') {
       const m = meta(headers['upload-metadata']!);
       log.created.push(`${m.path}:${m.onCollision}`);

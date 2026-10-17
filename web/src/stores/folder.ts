@@ -52,6 +52,10 @@ const defineFolderStore = (id: string) => defineStore(id, {
         if (id === this.seq) { this.loading = false; this.refreshing = false; }
       }
     },
+    /** Puts a changed item (a restored version, #231) in place of the listed one at its path. */
+    replaceEntry(entry: Entry) {
+      this.entries = this.entries.map((e) => (e.path === entry.path ? entry : e));
+    },
     /** Move (also rename) or copy within one source. The caller relists. */
     async transfer(op: 'move' | 'copy', source: string, from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
       return api.post<Entry>(`${sourceApi(source)}/${op}`, { from, to, onCollision } satisfies TransferRequest);

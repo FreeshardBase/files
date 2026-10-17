@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Public links of one item (#147), inside the share dialog: the list (address, password, expiry, downloads; copy,
-// edit, revoke) and one form for a new link or the one being edited (label, expiry, download limit, password).
+// edit, revoke after a confirmation) and one form for a new link or the one being edited (label, expiry, download limit, password).
 // The server decides about the expiry: a value the browser cannot read is sent as typed and answered INVALID_EXPIRY.
 import { nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { CreateLinkRequest, Entry, PublicLink, PublicLinkList, UpdateLinkRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import ConfirmDialog from './ConfirmDialog.vue';
 
 const props = defineProps<{ source: string; entry: Entry }>();
 const { t, locale } = useI18n();
@@ -70,7 +71,12 @@ async function submit() {
     await close();
   } catch (e) { fail(e); } finally { busy.value = false; }
 }
-async function revoke(l: PublicLink) {
+// Revoking cannot be undone (the address is gone for good), so it asks first (#232); Cancel and Esc keep the link.
+const revoking = ref<PublicLink | null>(null);
+async function revoke() {
+  const l = revoking.value!;
+  revoking.value = null;
+  await nextTick(); // the question is gone and has put the focus back on the row's button
   error.value = ''; status.value = '';
   try {
     await api.delete(`/api/v1/links/${encodeURIComponent(l.id)}`);
@@ -160,7 +166,7 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
             type="button"
             class="button danger"
             :aria-label="t('link.revokeLabel', { name: nameOf(l) })"
-            @click="revoke(l)"
+            @click="revoking = l"
           >
             {{ t('link.revoke') }}
           </button>
@@ -325,5 +331,13 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
     >
       {{ status }}
     </p>
+    <ConfirmDialog
+      v-if="revoking"
+      :title="t('link.revokeTitle', { name: nameOf(revoking) })"
+      :message="t('link.revokeMessage')"
+      :confirm-label="t('link.revoke')"
+      @confirm="revoke"
+      @cancel="revoking = null"
+    />
   </section>
 </template>

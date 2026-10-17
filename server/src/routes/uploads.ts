@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
-import { CollisionPolicy } from '@files/shared';
+import { CollisionPolicy, type OpenUploadList } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { homeBackend, resolveSource } from '../storage/resolveSource.ts';
@@ -67,6 +67,10 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(204).header('tus-resumable', TUS_VERSION).header('tus-version', TUS_VERSION)
       .header('tus-extension', 'creation,termination,expiration').header('tus-max-size', app.deps.config.maxUploadBytes).send();
   });
+
+  // Not tus: the caller's unfinished uploads into their home (#233), for the upload panel after a reload. Each can be
+  // resumed (HEAD + PATCH, once the member picks the file again) or discarded (DELETE).
+  app.get('/api/v1/uploads', async (req): Promise<OpenUploadList> => ({ items: homeBackend(req).openUploads() }));
 
   // Creation. Size limit, quota, path and a taken name are all refused here, before a byte is stored.
   app.post('/api/v1/uploads', { onRequest: tus }, async (req, reply) => {

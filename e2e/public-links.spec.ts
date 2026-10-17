@@ -85,8 +85,10 @@ test('a link with password and limit 1: the visitor unlocks, downloads once, and
   expect(download.suggestedFilename()).toBe('report.txt');
   expect(readFileSync(await download.path()).toString()).toBe('quarterly numbers');
 
-  // The page still offers the button; the server counts and refuses, and the page says why in the visitor's language.
-  await v.getByRole('link', { name: 'Download' }).click();
+  // The page counts down and offers no more downloads (#232); one sent anyway (an old tab) is counted and refused by
+  // the server, and the page says why in the visitor's language.
+  await expect(v.getByRole('link', { name: 'Download' })).toHaveCount(0);
+  await v.goto(`${address}/content?path=%2F`);
   await expect(v).toHaveURL(/\/s\/[A-Za-z0-9_-]{22}\?error=DOWNLOAD_LIMIT_REACHED$/);
   await expect(v.getByRole('alert').first()).toHaveText('This link has no downloads left.');
   await expect(v.getByTestId('link-name')).toHaveText('report.txt');
@@ -105,7 +107,8 @@ test('a link to a home folder: the visitor browses into a subfolder, previews an
   const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/Plans/floor.txt`)}&onCollision=fail`,
     { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from('ground floor') });
   expect(r.status()).toBe(201);
-  await page.goto('/home');
+  // `?select=` brings the row into view: the shared home's root holds more folders than the list renders at once.
+  await page.goto(`/home?select=${encodeURIComponent(`/${dir}`)}`);
   const d = await openShareDialog(page, dir);
   await d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ }).click();
   const form = d.getByRole('form', { name: /Neuer öffentlicher Link|New public link/ });
@@ -170,7 +173,7 @@ test('a file named like markup is shown as text on the share page and the passwo
 test('the owner edits label, expiry, limit and password of a link, and revokes it', async ({ page, browser, baseURL }, info) => {
   const dir = `link-manage-${tag(info)}`;
   await setup(page, dir, {});
-  await page.goto('/home');
+  await page.goto(`/home?select=${encodeURIComponent(`/${dir}`)}`);
   const d = await openShareDialog(page, dir);
   await d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ }).click();
   let form = d.getByRole('form', { name: /Neuer öffentlicher Link|New public link/ });
@@ -207,6 +210,7 @@ test('the owner edits label, expiry, limit and password of a link, and revokes i
   await expect(v.getByLabel('Password')).toBeVisible();
 
   await d.getByRole('button', { name: /(Electrician widerrufen|Revoke Electrician)/ }).click();
+  await page.getByRole('dialog', { name: /Electrician/ }).getByRole('button', { name: /^(Widerrufen|Revoke)$/ }).click();
   await expect(links).toHaveCount(0);
   await expect(d).toContainText(/Noch kein öffentlicher Link|No public link yet/);
   await expect(d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ })).toBeFocused();
