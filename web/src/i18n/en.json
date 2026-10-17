@@ -8,7 +8,8 @@
     "offline": "You’re offline. Files and folders load again once the connection is back.",
     "actionLost": "Your session had expired and you’re signed in again. Your last action was not carried out; do it again.",
     "dismiss": "Dismiss",
-    "loadFailed": "“Files” could not be loaded"
+    "loadFailed": "“Files” could not be loaded",
+    "pageTitle": "{page} – {app}"
   },
   "notFound": {
     "title": "Page not found",
@@ -516,6 +517,11 @@
   "shared": {
     "title": "Shared with me",
     "empty": "Nothing has been shared with you yet.",
+    "gone": {
+      "title": "Share no longer available",
+      "text": "The person who shared this with you has ended the share. What is still shared with you is under “Shared with me”.",
+      "back": "Go to “Shared with me”"
+    },
     "columns": {
       "name": "Name",
       "owner": "Shared by",
@@ -767,7 +773,8 @@
     "RENAME_CONFLICT": "Some new names are taken or not allowed. Choose what to do with each flagged name.",
     "SCAN_RUNNING": "A search for duplicates is already running.",
     "DUPLICATE_CHANGED": "Changed since the search, so it was kept.",
-    "DUPLICATE_LAST_COPY": "At least one copy has to stay."
+    "DUPLICATE_LAST_COPY": "At least one copy has to stay.",
+    "CONNECT_DENIED": "You did not allow access, so no account was connected."
   },
   "batchRename": {
     "button": "Rename…",
@@ -926,7 +933,20 @@
     },
     "nothingToDo": "Nothing pasted: every item was skipped.",
     "summary": "Summary",
-    "summaryLabel": "Summary of {name}"
+    "summaryLabel": "Summary of {name}",
+    "labelMany": {
+      "copy": "Copy {count} items to {target}",
+      "move": "Move {count} items to {target}"
+    },
+    "items": "{count} items",
+    "names": "Show names",
+    "moreNames": "and {count} more",
+    "dismiss": "Remove",
+    "dismissLabel": "Remove {name} from the list",
+    "folded": "One transfer ended | {count} transfers ended",
+    "foldedFailed": "one with errors | {count} with errors",
+    "show": "Show",
+    "hide": "Hide"
   },
   "migrate": {
     "title": "Move to the shard",

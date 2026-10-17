@@ -6,8 +6,12 @@ import { lookupMime } from './mime.ts';
 /** One file or folder of a home as the index keeps it; `path` is home-relative. */
 export type IndexedItem = { path: string; type: 'file' | 'directory'; size: number; modified: string };
 
-/** How names and queries are compared: NFC, lower case. A query matches anywhere in the name. */
-export const foldName = (s: string): string => s.normalize('NFC').toLowerCase();
+/**
+ * How names and queries are compared: without accents (#235: "umlaut" finds "Ümlaut", "cafe" finds "Café"), NFC, lower
+ * case. Only combining marks go; a letter of its own such as ø or ß stays. A query matches anywhere in the name.
+ * Migration 026 refolds the stored index through the SQL function `files_name_fold` (db.ts), so change both together.
+ */
+export const foldName = (s: string): string => s.normalize('NFD').replace(/\p{Mn}/gu, '').normalize('NFC').toLowerCase();
 
 export const indexedItem = (path: string, st: { isDirectory(): boolean; size: number; mtime: Date }): IndexedItem => ({
   path, type: st.isDirectory() ? 'directory' : 'file', size: st.isDirectory() ? 0 : st.size, modified: st.mtime.toISOString(),

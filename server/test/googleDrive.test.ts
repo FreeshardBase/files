@@ -158,8 +158,10 @@ describe('browsing and downloading', () => {
   it('lists Google-native documents with an office extension and exports them on download', async () => {
     const id = await connect(a);
     const root = (await list(id, '/')).json().entries as { name: string; mime?: string; size: number }[];
-    expect(root).toContainEqual(expect.objectContaining({ name: 'Budget.xlsx', type: 'file', mime: XLSX, size: 0 }));
-    expect(root).toContainEqual(expect.objectContaining({ name: 'Survey', type: 'file' }));
+    // Drive cannot tell an export's size before it is made (#236 P4): the entry says so instead of claiming 0 bytes.
+    expect(root).toContainEqual(expect.objectContaining({ name: 'Budget.xlsx', type: 'file', mime: XLSX, size: 0, sizeUnknown: true }));
+    expect(root).toContainEqual(expect.objectContaining({ name: 'Survey', type: 'file', sizeUnknown: true }));
+    expect((await as(a, 'GET', `${src(id)}/stat?path=${encodeURIComponent('/Budget.xlsx')}`)).json()).toMatchObject({ sizeUnknown: true });
     const before = fake.requests.length;
     const r = await content(id, '/Budget.xlsx', { range: 'bytes=0-3' });
     expect(r.statusCode).toBe(200); // an export has no ranges: the whole document
@@ -285,6 +287,7 @@ describe('changing files', () => {
     const r = await put(id, '/Empty/blank.txt', Buffer.alloc(0));
     expect(r.statusCode, r.body).toBe(201);
     expect(r.json()).toEqual(expect.objectContaining({ name: 'blank.txt', path: '/Empty/blank.txt', size: 0 }));
+    expect(r.json()).not.toHaveProperty('sizeUnknown'); // a stored empty file has a size: 0 bytes (#236 P4)
     const f = fake.drive.byPath('/Empty/blank.txt')!;
     expect(f.mimeType).toBe('text/plain');
     expect(fake.drive.bytes(f.id).length).toBe(0);

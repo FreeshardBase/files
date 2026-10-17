@@ -4,6 +4,10 @@ export function formatSize(bytes: number, locale: string): string {
   while (v >= 1000 && i < UNITS.length - 1) { v /= 1000; i++; }
   return new Intl.NumberFormat(locale, { style: 'unit', unit: UNITS[i], unitDisplay: 'short', maximumFractionDigits: i === 0 ? 0 : 1 }).format(v);
 }
+/** An entry's size, or "–" where the source cannot tell it before the download (a Google-native document, #236 P4). */
+export function formatEntrySize(e: { size: number; sizeUnknown?: true }, locale: string): string {
+  return e.sizeUnknown ? '–' : formatSize(e.size, locale);
+}
 export function formatDate(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 }

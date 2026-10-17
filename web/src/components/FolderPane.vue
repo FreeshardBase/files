@@ -150,6 +150,14 @@ const atHome = computed(() => source.value === 'home' && path.value === '/');
 // previous list stays in place, inert and dimmed, under the loading note (#228).
 const skeleton = computed(() => folder.loading && folder.entries.length === 0);
 const notFound = computed(() => folder.error?.code === 'NOT_FOUND' || folder.error?.code === 'SOURCE_NOT_FOUND');
+// A share that is gone for the member (#235): revoked (SOURCE_NOT_FOUND) or its item deleted by the owner (SHARE_ORPHANED).
+// The way on is "Shared with me", not "My storage" and not a retry that can only fail again.
+const shareGone = computed(() => source.value.startsWith('share:')
+  && (folder.error?.code === 'SOURCE_NOT_FOUND' || folder.error?.code === 'SHARE_ORPHANED'));
+const errorTitle = computed(() => (shareGone.value ? 'shared.gone.title' : notFound.value ? 'folder.notFound' : 'folder.failed'));
+const errorText = computed(() => (shareGone.value
+  ? (folder.error?.code === 'SHARE_ORPHANED' ? 'errors.SHARE_ORPHANED' : 'shared.gone.text')
+  : notFound.value ? 'folder.notFoundText' : `errors.${folder.error!.code}`));
 const sharing = ref<Entry | null>(null);
 const details = ref<Entry | null>(null);
 // The drawer shows the item as the newest listing has it (#231), so an overwrite or restore that relists while it is
@@ -922,11 +930,18 @@ defineExpose({
       >
         <StateAlert
           v-if="folder.error"
-          :title="$t(notFound ? 'folder.notFound' : 'folder.failed')"
-          :text="$t(notFound ? 'folder.notFoundText' : `errors.${folder.error.code}`)"
+          :title="$t(errorTitle)"
+          :text="$t(errorText)"
         >
           <RouterLink
-            v-if="notFound"
+            v-if="shareGone"
+            class="button primary"
+            to="/shared"
+          >
+            {{ $t('shared.gone.back') }}
+          </RouterLink>
+          <RouterLink
+            v-else-if="notFound"
             class="button primary"
             to="/home"
           >

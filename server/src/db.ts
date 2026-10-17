@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import { readdirSync, readFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { foldName } from './storage/nameIndex.ts';
 
 export type Db = Database.Database;
 export const DEFAULT_MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
@@ -12,6 +13,8 @@ export function openDb(file: string, migrationsDir = DEFAULT_MIGRATIONS): Db {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
+  // The name index's fold of a path's own name (#235), for a migration that rewrites the stored folds.
+  db.function('files_name_fold', { deterministic: true }, (path: unknown) => foldName(posix.basename(String(path))));
   migrate(db, migrationsDir);
   return db;
 }

@@ -2,10 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { DEFAULT_SORT, SORT_KEYS, type Entry, type Sort, type SortKey } from '@files/shared';
-import { formatDate, formatSize, intlLocale } from '../format.ts';
+import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
 import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
-import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
@@ -136,7 +136,7 @@ function onAuxClick(e: MouseEvent, entry: Entry) {
 
 // A thumbnail that could not be loaded falls back to the line icon instead of a broken image.
 const thumbFailed = reactive(new Set<string>());
-const sizeText = (e: Entry) => (e.type === 'file' ? formatSize(e.size, intlLocale(locale.value)) : '');
+const sizeText = (e: Entry) => (e.type === 'file' ? formatEntrySize(e, intlLocale(locale.value)) : '');
 const fileHref = (e: Entry) => downloadHref(props.source, [e]);
 </script>
 
@@ -257,6 +257,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                 <img
                   v-if="hasThumbnail(e) && !thumbFailed.has(e.path)"
                   class="row-thumb"
+                  :data-page="pageThumb(e)"
                   :src="thumbnailHref(source, e, 128)"
                   alt=""
                   loading="lazy"

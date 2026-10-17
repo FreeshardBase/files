@@ -55,7 +55,97 @@ test('copy a file from a cloud connection, paste it into the home, watch the tra
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
 
-  // "Clear finished" empties the panel.
-  await panel(page).getByRole('button', { name: /Erledigte entfernen|Clear finished/ }).click();
+  // The done job leaves the panel by itself once it has been seen (#234).
+  await expect(panel(page)).toHaveCount(0, { timeout: 15_000 });
+});
+
+/** Connects the Fake Cloud through its consent page; answers the connection's source. */
+async function connectFake(page: Page): Promise<string> {
+  await page.getByRole('button', { name: /Fake Cloud verbinden|Connect Fake Cloud/ }).click();
+  await page.getByRole('button', { name: 'Allow' }).click();
+  await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  return decodeURIComponent(new URL(page.url()).pathname.slice(1));
+}
+type Job = { id: string; status: string };
+async function settledJob(page: Page, id: string): Promise<Job> {
+  let job: Job | undefined;
+  await expect.poll(async () => (job = await (await page.request.get(`/api/v1/transfers/${id}`)).json() as Job).status,
+    { timeout: 15_000 }).not.toBe('running');
+  return job!;
+}
+const listedJobs = async (page: Page) => ((await (await page.request.get('/api/v1/transfers')).json()).items as Job[]).map((j) => j.id);
+
+test('#234: a job of two items is labelled by its count with the names in its details, and leaves once seen', async ({ page }, info) => {
+  const headers = await signedIn(page);
+  const dir = `transfer-many-${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  const from = await connectFake(page);
+  const r = await page.request.post('/api/v1/transfers', { headers, data: { mode: 'copy', from, to: 'home', dir: `/${dir}`,
+    items: [{ path: '/report.txt', onCollision: 'fail' }, { path: '/Notes', onCollision: 'fail' }] } });
+  expect(r.status(), await r.text()).toBe(201);
+  const job = await settledJob(page, (await r.json() as Job).id);
+  expect(job.status).toBe('completed');
+
+  // The panel's timers run on the test's clock, so "a few seconds" is exact.
+  await page.clock.install();
+  await page.goto(`/home/${dir}`);
+  await expect(panel(page)).toContainText(new RegExp(`^.*(2 Elemente nach Mein Speicher/${dir} kopieren|Copy 2 items to My storage/${dir})`));
+  await expect(panel(page)).not.toContainText(/„report\.txt“|“report\.txt”/);
+  await panel(page).getByText(/^(Namen anzeigen|Show names)$/).click();
+  await expect(panel(page).getByRole('listitem').filter({ hasText: /^report\.txt$/ })).toBeVisible();
+  await expect(panel(page).getByRole('listitem').filter({ hasText: /^Notes$/ })).toBeVisible();
+  await expect(panel(page).getByRole('progressbar', { name: /(Fortschritt von|Progress of) (2 Elemente|2 items)/ })).toBeVisible();
+
+  // Still there just before the few seconds are up; gone after them, on the server too, so a new page does not show it.
+  await page.clock.runFor(4000);
+  await expect(panel(page)).toBeVisible();
+  await page.clock.runFor(1500);
   await expect(panel(page)).toHaveCount(0);
+  await expect.poll(() => listedJobs(page)).not.toContain(job.id);
+  await page.reload();
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText(dir);
+  await expect(panel(page)).toHaveCount(0);
+});
+
+test('#234: a failed job folds into one summary line after a few seconds and stays until it is removed', async ({ page }, info) => {
+  const headers = await signedIn(page);
+  const dir = `transfer-failed-${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  // The name is taken in the target and the job was told to fail on a collision.
+  expect((await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/report.txt`)}&onCollision=fail`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from('mine') })).status()).toBe(201);
+  const from = await connectFake(page);
+  const r = await page.request.post('/api/v1/transfers', { headers, data: { mode: 'copy', from, to: 'home', dir: `/${dir}`,
+    items: [{ path: '/report.txt', onCollision: 'fail' }] } });
+  expect(r.status(), await r.text()).toBe(201);
+  const job = await settledJob(page, (await r.json() as Job).id);
+  expect(job.status).toBe('completed_with_errors');
+
+  await page.clock.install();
+  await page.goto(`/home/${dir}`);
+  const failure = panel(page).getByText(/^\/report\.txt: /);
+  await expect(failure).toBeVisible();
+  const full = (await panel(page).boundingBox())!.height;
+  await page.clock.runFor(5500);
+  // Folded: one short line instead of the row, and nothing removed.
+  await expect(failure).toHaveCount(0);
+  await expect(panel(page)).toContainText(/Eine Übertragung beendet · eine mit Fehlern|One transfer ended · one with errors/);
+  expect(await listedJobs(page)).toContain(job.id);
+  expect((await panel(page).boundingBox())!.height).toBeLessThan(full);
+
+  // Another page shows it again, and folds it again; it is never cleared by itself.
+  await page.reload();
+  await expect(failure).toBeVisible();
+  await page.clock.runFor(60_000);
+  await expect(panel(page)).toContainText(/Eine Übertragung beendet|One transfer ended/);
+  expect(await listedJobs(page)).toContain(job.id);
+
+  const show = panel(page).getByRole('button', { name: /^(Anzeigen|Show)$/ });
+  await expect(show).toHaveAttribute('aria-expanded', 'false');
+  await show.click();
+  await expect(panel(page).getByRole('button', { name: /^(Ausblenden|Hide)$/ })).toHaveAttribute('aria-expanded', 'true');
+  await expect(failure).toBeVisible();
+  await panel(page).getByRole('button', { name: /report\.txt (aus der Liste entfernen|from the list)/ }).click();
+  await expect(panel(page)).toHaveCount(0);
+  expect(await listedJobs(page)).not.toContain(job.id);
 });

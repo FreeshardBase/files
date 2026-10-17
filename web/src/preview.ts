@@ -28,6 +28,11 @@ const THUMBNAILED = new Set([...IMAGES, 'video/mp4', 'video/quicktime', 'video/w
 export const hasThumbnail = (e: Pick<Entry, 'type' | 'mime'>): boolean =>
   e.type === 'file' && THUMBNAILED.has((e.mime ?? '').split(';')[0]!.trim().toLowerCase());
 
+/** A thumbnail that is a document's page gets a hairline frame (#236 P6): a white page would melt into the ground. As
+ *  `data-page` on the image; undefined leaves the attribute off. */
+export const pageThumb = (e: Pick<Entry, 'mime'>): 'true' | undefined =>
+  (e.mime ?? '').split(';')[0]!.trim().toLowerCase() === 'application/pdf' ? 'true' : undefined;
+
 /** The thumbnail route; `v` (the modified time) gives a changed file a new URL, so the browser may cache each one. */
 export const thumbnailHref = (source: string, e: Pick<Entry, 'path' | 'modified'>, size: ThumbSize): string =>
   `${sourceApi(source)}/thumbnail?path=${encodeURIComponent(e.path)}&size=${size}&v=${encodeURIComponent(e.modified ?? '')}`;

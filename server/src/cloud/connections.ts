@@ -173,7 +173,12 @@ export class CloudConnections {
     if (q.state === undefined) return failed('callback without state');
     const attempt = this.takeAttempt(q.state, sessionHash);
     if (!attempt || attempt.user_id !== userId) return failed('no matching connect attempt for this session');
-    if (q.error !== undefined || q.code === undefined) return failed('provider returned no code (consent denied or failed)');
+    // The member said no on the consent page (#236 P10): their choice, told as such, not as a failure to retry.
+    if (q.error === 'access_denied') {
+      log.info({ reason: 'consent denied' }, 'connect denied');
+      throw new AppError('CONNECT_DENIED');
+    }
+    if (q.error !== undefined || q.code === undefined) return failed('provider returned no code (consent failed)');
     const provider = this.byId.get(attempt.provider);
     if (!provider) return failed('provider no longer offered');
     const { clock } = this.deps;

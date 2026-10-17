@@ -10,6 +10,11 @@ export const EntrySchema = z.object({
   /** Absent where the source keeps no time for the item (a Dropbox folder, #150). */
   modified: z.iso.datetime().optional(),
   mime: z.string().optional(),
+  /**
+   * The source cannot tell the size before the download (#236 P4): a Google-native document is exported when it is read.
+   * `size` is then 0 and means nothing; the UI shows "–".
+   */
+  sizeUnknown: z.literal(true).optional(),
 });
 export type Entry = z.infer<typeof EntrySchema>;
 

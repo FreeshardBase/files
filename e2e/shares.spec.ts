@@ -232,3 +232,35 @@ test('#223: the member picker lists the members on focus; an unknown name keeps 
   await expect(d.getByRole('alert')).toHaveText(/Wähle ein Mitglied|Wählen Sie ein Mitglied|Choose a member/);
   await expect(d).toContainText(/Nur du|Nur Sie|Only you/);
 });
+
+test('#235: a share revoked while the member has it open says so and leads back to "Shared with me"', async ({ page, browser, baseURL }, info) => {
+  const member = await signedIn(browser, info, baseURL!, 'member', '/shared');
+  const dir = `share-revoked-${tag(info)}`;
+  await setup(page, dir, { 'plan.txt': 'shared bytes' });
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const grantee = ((await (await page.request.get('/api/v1/members')).json()).items as { id: string; displayName: string }[])
+    .find((m) => m.displayName === 'Test Member')!.id;
+  const made = await page.request.post('/api/v1/shares', { headers, data: { source: 'home', path: `/zz-shares-${dir}/${dir}`, grantee, access: 'read' } });
+  expect(made.status(), await made.text()).toBe(201);
+
+  await member.reload();
+  await member.locator('tbody tr', { has: member.getByText(dir, { exact: true }) })
+    .getByRole('link', { name: new RegExp(`(${dir} öffnen|Open ${dir})`) }).click();
+  await expect(row(member, 'plan.txt')).toBeVisible();
+  const at = member.url();
+
+  expect((await page.request.delete(`/api/v1/shares/${(await made.json()).id as string}`, { headers })).status()).toBe(204);
+  await member.goto(at);
+  const alert = member.getByRole('alert');
+  await expect(alert.getByRole('heading', { name: /Freigabe nicht mehr verfügbar|Share no longer available/ })).toBeVisible();
+  await expect(alert).toContainText(/hat die Freigabe beendet|has ended the share/);
+  // No dead end: no path, no view switches of a folder that is not there, and one way on.
+  await expect(crumbs(member)).toHaveCount(0);
+  await expect(member.getByRole('button', { name: /^(Liste|List)$/ })).toHaveCount(0);
+  await alert.getByRole('link', { name: /Zu „Für mich freigegeben“|Go to “Shared with me”/ }).click();
+  await expect(member).toHaveURL(/\/shared$/);
+  await expect(member.getByRole('heading', { name: /Für mich freigegeben|Shared with me/ })).toBeVisible();
+  await expect(member.getByText(dir, { exact: true })).toHaveCount(0);
+  await member.context().close();
+});

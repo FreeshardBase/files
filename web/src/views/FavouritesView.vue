@@ -9,7 +9,7 @@ import { useFavouritesStore } from '../stores/favourites.ts';
 import { ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import { parentOf, useLocations } from '../location.ts';
-import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t } = useI18n();
@@ -107,6 +107,7 @@ async function remove(f: Favourite) {
               <img
                 v-if="f.available && hasThumbnail(f) && !thumbFailed.has(f.id)"
                 class="row-thumb"
+                :data-page="pageThumb(f)"
                 :src="thumbnailHref(f.source, { path: f.path, modified: f.createdAt }, 128)"
                 alt=""
                 loading="lazy"

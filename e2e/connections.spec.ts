@@ -80,13 +80,16 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   expect(dialogs).toEqual([]);
 });
 
-test('a denied consent comes back to "Cloud accounts" with a message and connects nothing', async ({ page }) => {
+test('a denied consent comes back to "Cloud accounts" with a neutral note and connects nothing (#236 P10)', async ({ page }) => {
   await signedIn(page);
   await page.getByRole('button', { name: /Fake Cloud verbinden|Connect Fake Cloud/ }).click();
   await expect(page.getByRole('heading', { name: 'Fake Cloud' })).toBeVisible();
   await page.getByRole('button', { name: 'Deny' }).click();
-  await expect(page).toHaveURL(/\/connections$/); // the error code is shown, then dropped from the URL
-  await expect(page.getByRole('alert')).toContainText(/konnte nicht verbunden werden|could not be connected/);
+  await expect(page).toHaveURL(/\/connections$/); // the code is shown, then dropped from the URL
+  // The member said no: that is their choice, not a failure, so it is a note and asks for no retry.
+  await expect(page.getByRole('status')).toContainText(/Du hast den Zugriff nicht erlaubt|You did not allow access/);
+  await expect(page.getByRole('status')).not.toContainText(/erneut|noch einmal|again/);
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await openPlaces(page);
   await expect(sidebarConnection(page)).toHaveCount(0);
   expect((await (await page.request.get('/api/v1/connections')).json()).items).toEqual([]);

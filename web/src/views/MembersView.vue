@@ -185,6 +185,7 @@ function submit(m: MemberUsage) {
               v-if="formOf(m.id).invalid"
               :id="`quota-error-${m.id}`"
               class="fs-field__error members-error"
+              role="alert"
             >{{ $t('members.invalid') }}</span>
           </td>
         </tr>
