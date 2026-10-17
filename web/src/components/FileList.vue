@@ -20,14 +20,15 @@ import TagChips from './TagChips.vue';
 // aria-rowcount and every row its aria-rowindex, so assistive technology still counts the whole folder.
 // `tags`: the member's tags by path (#212), shown as chips after the name; each opens the tag view.
 // `comments`: comment counts by path (#213), a badge after the chips; the thread is in the details drawer.
+// `toOther`: a second pane takes items (#218); the item menu then offers to copy (and move) them there.
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
   editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort; tags?: Record<string, string[]>;
-  comments?: Record<string, number> }>(),
+  comments?: Record<string, number>; toOther?: boolean }>(),
 { source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }),
-  tags: () => ({}), comments: () => ({}) });
+  tags: () => ({}), comments: () => ({}), toOther: false });
 const emit = defineEmits<{
-  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
-  sort: [SortKey];
+  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string, string];
+  sort: [SortKey]; openTab: [Entry];
 }>();
 const { locale } = useI18n();
 const active = ref(0);
@@ -123,8 +124,14 @@ function onDragOver(e: DragEvent, entry: Entry) {
 function onDrop(e: DragEvent, entry: Entry) {
   dropTarget.value = null;
   if (!props.editable || entry.type !== 'directory') return;
-  const paths = droppedPaths(e);
-  if (paths) emit('drop', paths.filter((p) => p !== entry.path), entry.path);
+  const items = droppedPaths(e);
+  if (items) emit('drop', items.paths.filter((p) => items.source !== props.source || p !== entry.path), entry.path, items.source);
+}
+// A middle click on a folder (#219) asks for it in a new tab; the folder view decides whether there are tabs.
+function onAuxClick(e: MouseEvent, entry: Entry) {
+  if (e.button !== 1 || entry.type !== 'directory') return;
+  e.preventDefault();
+  emit('openTab', entry);
 }
 
 // A thumbnail that could not be loaded falls back to the line icon instead of a broken image.
@@ -218,7 +225,8 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
             @keydown="onKey($event, i)"
             @dblclick="emit('open', e)"
             @contextmenu="onContextMenu($event, i)"
-            @dragstart="startDrag($event, targets(i).map((x) => x.path))"
+            @dragstart="startDrag($event, source, targets(i).map((x) => x.path))"
+            @auxclick="onAuxClick($event, e)"
             @dragover="onDragOver($event, e)"
             @dragleave="dropTarget = dropTarget === e.path ? null : dropTarget"
             @drop="onDrop($event, e)"

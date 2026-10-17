@@ -82,6 +82,14 @@
       "dark": "Dunkel",
       "system": "Wie auf dem Gerät"
     },
+    "layout": {
+      "heading": "Ordneransicht",
+      "intro": "Gilt auf allen deinen Geräten.",
+      "dualPane": "Zwei Bereiche nebeneinander",
+      "dualPaneHint": "Zum Verschieben und Kopieren zwischen zwei Orten. Nur auf breiten Bildschirmen.",
+      "tabs": "Tabs",
+      "tabsHint": "Mehrere Ordner offen halten, jeden in einem eigenen Tab."
+    },
     "webdav": {
       "heading": "Netzlaufwerk (WebDAV)",
       "intro": "Binde deinen Speicher auf dem Shard als Netzlaufwerk ein: im Finder, im Windows-Explorer oder mit anderen Programmen. Melde dich dort mit einem App-Passwort an, nicht mit deinem Shard-Passwort.",
@@ -413,7 +421,20 @@
     "pasteCopy": "Hierher kopieren ({count})",
     "clearClipboard": "Verschieben oder Kopieren abbrechen",
     "trash": "In den Papierkorb",
-    "favourite": "Favorit"
+    "favourite": "Favorit",
+    "copyToOther": "In den anderen Bereich kopieren",
+    "moveToOther": "In den anderen Bereich verschieben"
+  },
+  "dualPane": {
+    "left": "Linker Bereich",
+    "right": "Rechter Bereich",
+    "nothingSelected": "Wähle zuerst aus, was du kopieren oder verschieben möchtest.",
+    "notAllowed": "Das geht nicht: Einer der beiden Ordner kann nicht geändert werden."
+  },
+  "tabs": {
+    "label": "Offene Ordner",
+    "new": "Neuer Tab",
+    "close": "Tab „{name}“ schließen"
   },
   "rename": {
     "title": "Umbenennen",
@@ -975,7 +996,13 @@
       "menu": "Umschalt + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
-      "help": "?"
+      "help": "?",
+      "switchPane": "Tab",
+      "copyOther": "F5",
+      "moveOther": "F6",
+      "newTab": "Strg + T",
+      "closeTab": "Strg + W",
+      "openTab": "Mittlere Maustaste"
     },
     "actions": {
       "arrows": "Zwischen den Einträgen der Liste wechseln",
@@ -993,7 +1020,13 @@
       "menu": "Aktionsmenü des Eintrags öffnen",
       "close": "Dialog oder Menü schließen",
       "history": "Im Ordnerverlauf zurück oder vor, auch mit den Seitentasten der Maus",
-      "help": "Diese Hilfe anzeigen"
+      "help": "Diese Hilfe anzeigen",
+      "switchPane": "Zwei Bereiche: aus der Liste in den anderen Bereich wechseln",
+      "copyOther": "Zwei Bereiche: Auswahl in den anderen Bereich kopieren",
+      "moveOther": "Zwei Bereiche: Auswahl in den anderen Bereich verschieben",
+      "newTab": "Tabs: neuer Tab, wo der Browser die Taste durchlässt",
+      "closeTab": "Tabs: Tab schließen, wo der Browser die Taste durchlässt",
+      "openTab": "Tabs: Ordner in einem neuen Tab öffnen"
     }
   }
 }

@@ -1,11 +1,14 @@
-// Drag & drop of list items onto folders and breadcrumbs. The payload is the dragged paths in our own MIME type,
-// so files dragged in from the desktop or text from another page are never taken for a move. Files and folders
-// dragged in from the desktop are an upload instead (`acceptFileDrag`, `droppedFiles`).
+// Drag & drop of list items onto folders and breadcrumbs. The payload is the dragged paths and their source in our own
+// MIME type, so files dragged in from the desktop or text from another page are never taken for a move. The source
+// tells a drop from the other pane (#218) apart. Files and folders dragged in from the desktop are an upload instead
+// (`acceptFileDrag`, `droppedFiles`).
 const TYPE = 'application/x-files-paths';
 
-export function startDrag(ev: DragEvent, paths: string[]): void {
+export type DraggedItems = { source: string; paths: string[] };
+
+export function startDrag(ev: DragEvent, source: string, paths: string[]): void {
   if (!ev.dataTransfer) return;
-  ev.dataTransfer.setData(TYPE, JSON.stringify(paths));
+  ev.dataTransfer.setData(TYPE, JSON.stringify({ source, paths } satisfies DraggedItems));
   ev.dataTransfer.effectAllowed = 'move';
 }
 
@@ -65,11 +68,13 @@ export async function walkEntries(entries: FileSystemEntry[], prefix = ''): Prom
   return out;
 }
 
-export function droppedPaths(ev: DragEvent): string[] | null {
+export function droppedPaths(ev: DragEvent): DraggedItems | null {
   const raw = ev.dataTransfer?.getData(TYPE);
   if (!raw) return null;
   ev.preventDefault();
-  const paths: unknown = JSON.parse(raw);
-  if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) throw new Error('malformed drag payload');
-  return paths;
+  const items = JSON.parse(raw) as Partial<DraggedItems> | null;
+  if (typeof items?.source !== 'string' || !Array.isArray(items.paths) || !items.paths.every((p) => typeof p === 'string')) {
+    throw new Error('malformed drag payload');
+  }
+  return { source: items.source, paths: items.paths };
 }

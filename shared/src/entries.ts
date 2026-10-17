@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ERROR_CODES } from './errors.ts';
-import { SettingsSchema, SortSchema } from './settings.ts';
+import { LayoutSchema, SettingsSchema, SortSchema } from './settings.ts';
 
 export const EntrySchema = z.object({
   name: z.string().min(1),
@@ -47,6 +47,8 @@ export const MeSchema = z.object({
   settings: SettingsSchema,
   /** The member's folder sort (#226). */
   sort: SortSchema,
+  /** The member's optional layouts (#218, #219). */
+  layout: LayoutSchema,
 });
 export type Me = z.infer<typeof MeSchema>;
 

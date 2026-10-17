@@ -82,6 +82,14 @@
       "dark": "Dark",
       "system": "Same as the device"
     },
+    "layout": {
+      "heading": "Folder layout",
+      "intro": "Applies on all your devices.",
+      "dualPane": "Two panes side by side",
+      "dualPaneHint": "For moving and copying between two places. Only on wide screens.",
+      "tabs": "Tabs",
+      "tabsHint": "Keep several folders open, each in its own tab."
+    },
     "webdav": {
       "heading": "Network drive (WebDAV)",
       "intro": "Connect your storage on the shard as a network drive: in Finder, in Windows Explorer or with other programs. Sign in there with an app password, not with your shard password.",
@@ -413,7 +421,20 @@
     "pasteCopy": "Copy here ({count})",
     "clearClipboard": "Cancel moving or copying",
     "trash": "Move to trash",
-    "favourite": "Favourite"
+    "favourite": "Favourite",
+    "copyToOther": "Copy to other pane",
+    "moveToOther": "Move to other pane"
+  },
+  "dualPane": {
+    "left": "Left pane",
+    "right": "Right pane",
+    "nothingSelected": "Select what to copy or move first.",
+    "notAllowed": "That isn’t possible: one of the two folders can’t be changed."
+  },
+  "tabs": {
+    "label": "Open folders",
+    "new": "New tab",
+    "close": "Close tab “{name}”"
   },
   "rename": {
     "title": "Rename",
@@ -975,7 +996,13 @@
       "menu": "Shift + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
-      "help": "?"
+      "help": "?",
+      "switchPane": "Tab",
+      "copyOther": "F5",
+      "moveOther": "F6",
+      "newTab": "Ctrl + T",
+      "closeTab": "Ctrl + W",
+      "openTab": "Middle click"
     },
     "actions": {
       "arrows": "Move between the items of the list",
@@ -993,7 +1020,13 @@
       "menu": "Open the item menu",
       "close": "Close the dialog or menu",
       "history": "Back or forward in the folder history, also with the mouse’s side buttons",
-      "help": "Show this help"
+      "help": "Show this help",
+      "switchPane": "Two panes: go from the list to the other pane",
+      "copyOther": "Two panes: copy the selection to the other pane",
+      "moveOther": "Two panes: move the selection to the other pane",
+      "newTab": "Tabs: new tab, where the browser lets the key through",
+      "closeTab": "Tabs: close the tab, where the browser lets the key through",
+      "openTab": "Tabs: open a folder in a new tab"
     }
   }
 }

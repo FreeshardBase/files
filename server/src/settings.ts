@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS, DEFAULT_SORT, SettingsSchema, SortSchema, type Settings, type Sort } from '@files/shared';
+import { DEFAULT_LAYOUT, DEFAULT_SETTINGS, DEFAULT_SORT, LayoutSchema, SettingsSchema, SortSchema, type Layout, type Settings,
+  type Sort } from '@files/shared';
 import type { Db } from './db.ts';
 
 /** A member's settings (#159); the defaults until their first save. A row that breaks the schema fails loudly. */
@@ -29,4 +30,19 @@ export function saveSort(db: Db, userId: string, s: Sort): Sort {
     ON CONFLICT (user_id) DO UPDATE SET sort_key = excluded.sort_key, sort_dir = excluded.sort_dir, updated_at = excluded.updated_at`)
     .run(userId, DEFAULT_SETTINGS.locale, DEFAULT_SETTINGS.theme, s.key, s.dir, new Date().toISOString());
   return sortOf(db, userId);
+}
+
+/** A member's optional layouts (#218, #219); both off until their first change. */
+export function layoutOf(db: Db, userId: string): Layout {
+  const row = db.prepare('SELECT dual_pane AS dualPane, tabs FROM user_settings WHERE user_id = ?').get(userId) as
+    { dualPane: number; tabs: number } | undefined;
+  return row ? LayoutSchema.parse({ dualPane: row.dualPane === 1, tabs: row.tabs === 1 }) : DEFAULT_LAYOUT;
+}
+
+/** Replaces the member's layouts; language, theme and sort stay as they are (the defaults on a new row). */
+export function saveLayout(db: Db, userId: string, l: Layout): Layout {
+  db.prepare(`INSERT INTO user_settings (user_id, locale, theme, dual_pane, tabs, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (user_id) DO UPDATE SET dual_pane = excluded.dual_pane, tabs = excluded.tabs, updated_at = excluded.updated_at`)
+    .run(userId, DEFAULT_SETTINGS.locale, DEFAULT_SETTINGS.theme, l.dualPane ? 1 : 0, l.tabs ? 1 : 0, new Date().toISOString());
+  return layoutOf(db, userId);
 }

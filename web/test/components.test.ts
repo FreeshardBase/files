@@ -170,7 +170,7 @@ describe('FileList actions', () => {
     await w.findAll('tbody tr')[1]!.trigger('dragstart', { dataTransfer });
     await w.findAll('tbody tr')[1]!.trigger('drop', { dataTransfer });
     await w.findAll('tbody tr')[0]!.trigger('drop', { dataTransfer });
-    expect(w.emitted('drop')).toEqual([[['/a b.txt'], '/Fotos']]);
+    expect(w.emitted('drop')).toEqual([[['/a b.txt'], '/Fotos', 'home']]); // with the source the items came from (#218)
   });
 });
 

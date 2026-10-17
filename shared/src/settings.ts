@@ -29,3 +29,11 @@ export const SortSchema = z.strictObject({ key: SortKeySchema, dir: z.enum(['asc
 export type Sort = z.infer<typeof SortSchema>;
 
 export const DEFAULT_SORT: Sort = { key: 'name', dir: 'asc' };
+
+// The optional layouts (#218, #219): two folder panes side by side and browser-style tabs, each off by default. One
+// choice per member, written on its own (`PUT /api/v1/settings/layout`) like the sort. Which tabs are open is not here:
+// that is per device (the browser's local storage).
+export const LayoutSchema = z.strictObject({ dualPane: z.boolean(), tabs: z.boolean() });
+export type Layout = z.infer<typeof LayoutSchema>;
+
+export const DEFAULT_LAYOUT: Layout = { dualPane: false, tabs: false };
