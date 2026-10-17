@@ -68,6 +68,11 @@ const sourceLabel = (source: string) => {
 const starred = (source: string) => favourites.items.filter((f) => f.source === source).map((f) => f.path);
 
 const details = ref<{ source: string; entry: Entry } | null>(null);
+// A restored version (#231): the open drawer shows the restored file at once; the results are fetched again.
+function onRestored(entry: Entry) {
+  if (details.value) details.value = { source: details.value.source, entry };
+  void load();
+}
 const sharing = ref<{ source: string; entry: Entry } | null>(null);
 const preview = ref<{ source: string; files: Entry[]; start: number } | null>(null);
 function open(source: string, e: Entry, items: Entry[]) {
@@ -254,7 +259,7 @@ async function remove() {
       :root-label="sourceName(details.source)"
       @close="details = null"
       @share="sharing = details; details = null"
-      @restored="load"
+      @restored="onRestored"
     />
     <ShareDialog
       v-if="sharing"

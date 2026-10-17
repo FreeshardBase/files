@@ -682,6 +682,11 @@ a:where(:hover) { text-decoration: underline; }
 .upload-rows .upload-item .upload-bar { grid-column: 1 / -1; grid-row: 2; }
 .upload-bar > span { display: block; height: 100%; background: var(--data); }
 .upload-item[data-state='failed'] .upload-bar > span { background: var(--danger); }
+/* Uploads an earlier page left unfinished (#233), over the running ones; "Resume" is a file picker in an icon button. */
+.upload-unfinished + .upload-panel-head { margin-top: var(--space-3); padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }
+.upload-unfinished > :is(h3, p) { margin: 0 0 var(--space-1); }
+.upload-resume { cursor: pointer; }
+.upload-resume:has(:focus-visible) { outline: 2px solid var(--line); outline-offset: 2px; }
 /* Storage overview (#156): one block per source, its figures over a usage gauge (red from 90 %), then the breakdown. */
 .storage-heading { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .storage-source { margin: 0 0 var(--space-4); }

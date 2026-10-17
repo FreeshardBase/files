@@ -6,6 +6,7 @@ import { loginFailed, takeInterruptedAction } from './api/client.ts';
 import UploadPanel from './components/UploadPanel.vue';
 import TransferPanel from './components/TransferPanel.vue';
 import { useTransfersStore } from './stores/transfers.ts';
+import { useUploadsStore } from './stores/uploads.ts';
 import SearchBox from './components/SearchBox.vue';
 import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
@@ -58,9 +59,15 @@ function onKey(e: KeyboardEvent) {
   shortcutsOpen.value = true;
 }
 window.addEventListener('keydown', onKey);
+// Leaving the page while uploads run asks first (#233): what was sent of a tus upload stays, but the browser forgets the
+// file, so it has to be picked again to go on. The browser words the question itself.
+const uploads = useUploadsStore();
+function onBeforeUnload(e: BeforeUnloadEvent) { if (uploads.active) e.preventDefault(); }
+window.addEventListener('beforeunload', onBeforeUnload);
 onUnmounted(() => {
   window.removeEventListener('online', onConnectivity); window.removeEventListener('offline', onConnectivity);
   window.removeEventListener('keydown', onKey);
+  window.removeEventListener('beforeunload', onBeforeUnload);
 });
 onMounted(async () => {
   if (publicPage) return;
@@ -420,7 +427,10 @@ onMounted(async () => {
       </nav>
       <main class="app-main">
         <template v-if="session.me">
-          <UploadPanel v-if="!route.meta.folder" />
+          <UploadPanel
+            v-if="!route.meta.folder"
+            @resume="(files, at) => uploads.enqueue(files, at, { settled: () => {} })"
+          />
           <TransferPanel />
           <RouterView />
         </template>

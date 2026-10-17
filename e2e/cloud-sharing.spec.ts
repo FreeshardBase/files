@@ -217,7 +217,9 @@ test('a public link to a Google Drive file with a password and limit 1: unlocked
   await v.getByRole('button', { name: 'Open' }).click();
   const [download] = await Promise.all([v.waitForEvent('download'), v.getByRole('link', { name: 'Download' }).click()]);
   expect(readFileSync(await download.path()).toString()).toBe('signed contract');
-  await v.getByRole('link', { name: 'Download' }).click();
+  // The page counts down and offers no more (#232); a download sent anyway is refused by the server.
+  await expect(v.getByRole('link', { name: 'Download' })).toHaveCount(0);
+  await v.goto(`${address}/content?path=%2F`);
   await expect(v).toHaveURL(/\/s\/[A-Za-z0-9_-]{22}\?error=DOWNLOAD_LIMIT_REACHED$/);
   await expect(v.getByRole('alert').first()).toHaveText('This link has no downloads left.');
   expect(fromVisitor).toEqual([]);

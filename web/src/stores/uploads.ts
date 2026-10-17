@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
-import type { CollisionPolicy, ErrorCode } from '@files/shared';
-import { ApiFailure } from '../api/client.ts';
-import { ResumableUpload } from '../api/tus.ts';
+import type { CollisionPolicy, ErrorCode, OpenUpload, OpenUploadList } from '@files/shared';
+import { api, ApiFailure } from '../api/client.ts';
+import { discardUpload, isRememberedFor, ResumableUpload, UPLOADS, uploadUrl } from '../api/tus.ts';
 import { DirectUpload } from '../api/directUpload.ts';
 import { join } from './folder.ts';
 import type { CollisionChoice } from '../components/CollisionDialog.vue';
@@ -19,6 +19,10 @@ export type Question = { id: number; name: string; remaining: number; returnFocu
 export type PickedFile = { file: File; rel: string };
 
 const FINAL: ReadonlySet<UploadState> = new Set(['done', 'skipped', 'failed', 'cancelled']);
+/** A batch that finished without a failure leaves the panel this long after its last item (#233). */
+export const FINISHED_BATCH_MS = 5000;
+const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
+const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 
 // Outside the reactive state: File objects and upload handles are not data for the view.
 type Batch = { forAll: CollisionChoice['policy'] | null; returnFocus?: HTMLElement | null; settled(s: BatchSummary): void };
@@ -28,7 +32,9 @@ let nextId = 1;
 let pumping = false;
 
 export const useUploadsStore = defineStore('uploads', {
-  state: () => ({ items: [] as UploadItem[], question: null as Question | null }),
+  state: () => ({ items: [] as UploadItem[], question: null as Question | null,
+    // The member's uploads an earlier page left unfinished (#233), with the error of asking for or discarding them.
+    unfinished: [] as OpenUpload[], unfinishedError: null as ErrorCode | 'NETWORK' | null, unfinishedLoaded: false }),
   getters: {
     failed: (s) => s.items.filter((i) => i.state === 'failed'),
     active: (s) => s.items.some((i) => i.state === 'queued' || i.state === 'uploading'),
@@ -155,6 +161,58 @@ export const useUploadsStore = defineStore('uploads', {
       if (!own.every((i) => FINAL.has(i.state))) return;
       const count = (s: UploadState) => own.filter((i) => i.state === s).length;
       batches.get(batchId)?.settled({ total: own.length, done: count('done'), skipped: count('skipped'), failed: count('failed') });
+      if (count('failed') === 0) setTimeout(() => this.collapse(batchId), FINISHED_BATCH_MS);
+    },
+    /** Takes a batch that finished without a failure out of the panel; one with a failure stays for its retry. */
+    collapse(batchId: number) {
+      const own = this.items.filter((i) => i.batch === batchId);
+      if (!own.every((i) => FINAL.has(i.state) && i.state !== 'failed')) return;
+      for (const i of own) jobs.delete(i.id);
+      batches.delete(batchId);
+      this.items = this.items.filter((i) => i.batch !== batchId);
+    },
+
+    /**
+     * Once per page (#233): the member's uploads that an earlier page left unfinished, i.e. those no item of this page
+     * is sending. Each reserves the rest of its size in the quota until it is resumed, discarded or expires.
+     */
+    async loadUnfinished() {
+      if (this.unfinishedLoaded) return;
+      this.unfinishedLoaded = true;
+      try {
+        const { items } = await api.get<OpenUploadList>(UPLOADS);
+        const sending = new Set([...jobs.values()].map((j) => (j.upload instanceof ResumableUpload ? j.upload.url : null)));
+        this.unfinished = items.filter((u) => !sending.has(uploadUrl(u.id)));
+      } catch (e) {
+        if (!(e instanceof ApiFailure)) throw e;
+        this.unfinishedError = e.code;
+      }
+    },
+    /** Drops an unfinished upload on the server, which frees what it reserved of the quota. */
+    async discardUnfinished(id: string) {
+      this.unfinishedError = null;
+      try {
+        await discardUpload(uploadUrl(id));
+        this.unfinished = this.unfinished.filter((u) => u.id !== id);
+      } catch (e) {
+        if (!(e instanceof ApiFailure)) throw e;
+        this.unfinishedError = e.code;
+      }
+    },
+    /**
+     * The member picked `file` again for an unfinished upload: it continues where the server stopped if this browser
+     * sent that upload from this very file; any other file of the same name and size is sent anew and the old upload is
+     * discarded, so no bytes of two files are ever joined. Answers what to queue (into the folder it was going to), or
+     * null for a file of another name or size, which is not the one.
+     */
+    async resumeUnfinished(id: string, file: File): Promise<{ files: PickedFile[]; at: { source: string; dir: string } } | null> {
+      const u = this.unfinished.find((x) => x.id === id);
+      if (!u || file.name !== baseName(u.path) || file.size !== u.length) return null;
+      const target = { source: 'home', path: u.path };
+      if (isRememberedFor(uploadUrl(id), file, target)) this.unfinished = this.unfinished.filter((x) => x.id !== id);
+      else await this.discardUnfinished(id);
+      if (this.unfinished.some((x) => x.id === id)) return null; // the discard failed and says why
+      return { files: [{ file, rel: file.name }], at: { source: 'home', dir: parentOf(u.path) } };
     },
   },
 });

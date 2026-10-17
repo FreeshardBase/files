@@ -152,6 +152,15 @@ const skeleton = computed(() => folder.loading && folder.entries.length === 0);
 const notFound = computed(() => folder.error?.code === 'NOT_FOUND' || folder.error?.code === 'SOURCE_NOT_FOUND');
 const sharing = ref<Entry | null>(null);
 const details = ref<Entry | null>(null);
+// The drawer shows the item as the newest listing has it (#231), so an overwrite or restore that relists while it is
+// open shows at once; an item the listing no longer has (moved away meanwhile) keeps what was last known of it.
+const detailsEntry = computed(() => details.value && (folder.entries.find((e) => e.path === details.value!.path) ?? details.value));
+// A restore answers the restored file: the drawer and its row show it before the relist is in.
+function onRestored(entry: Entry) {
+  details.value = entry;
+  folder.replaceEntry(entry);
+  void folder.open(folder.path, { refresh: true });
+}
 async function shareFromDetails() {
   const e = details.value!;
   details.value = null;
@@ -266,9 +275,10 @@ async function settle(at: { source: string; dir: string }) {
 }
 
 // Uploads run in the uploads store (resumable, one panel); failures are summarised there, so this only reports the
-// batch in a toast and relists once it has an outcome.
-function upload(files: PickedFile[]) {
-  const at = { source: folder.source, dir: folder.path }; // captured: navigating away mid-batch must not redirect the remaining files
+// batch in a toast and relists once it has an outcome. `at` is this folder, or where a resumed upload was going (#233).
+function upload(files: PickedFile[], into?: { source: string; dir: string }) {
+  // captured: navigating away mid-batch must not redirect the remaining files
+  const at = into ?? { source: folder.source, dir: folder.path };
   failures.value = null;
   uploads.enqueue(files, at, { returnFocus: uploadFocus(), settled: (r) => {
     say(r.skipped ? t('upload.summarySkipped', { done: r.done, total: r.total, skipped: r.skipped })
@@ -806,7 +816,10 @@ defineExpose({
     </div>
     <!-- The upload panel sits under the toolbar here, so the title stays put when an upload starts (#239); with two panes
          or tabs it is under the focused one only. -->
-    <UploadPanel v-if="focused" />
+    <UploadPanel
+      v-if="focused"
+      @resume="upload"
+    />
     <CollisionDialog
       v-if="conflict"
       :name="conflict.name"
@@ -855,14 +868,14 @@ defineExpose({
       @close="sharing = null"
     />
     <DetailsDrawer
-      v-if="details"
+      v-if="detailsEntry"
       :source="source"
-      :entry="details"
+      :entry="detailsEntry"
       :access="folder.access"
       :root-label="rootLabel"
       @close="details = null"
       @share="shareFromDetails"
-      @restored="folder.open(folder.path, { refresh: true })"
+      @restored="onRestored"
     />
     <PreviewDialog
       v-if="preview"

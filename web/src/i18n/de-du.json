@@ -394,7 +394,15 @@
     "pauseLabel": "Hochladen von {name} pausieren",
     "resumeLabel": "Hochladen von {name} fortsetzen",
     "retryLabel": "Hochladen von {name} erneut versuchen",
-    "cancelLabel": "Hochladen von {name} abbrechen"
+    "cancelLabel": "Hochladen von {name} abbrechen",
+    "unfinished": {
+      "title": "Unterbrochene Uploads",
+      "hint": "Diese Uploads wurden beim Verlassen der Seite unterbrochen. Wähle dieselbe Datei noch einmal, um fortzufahren. Bis dahin hält jeder seine Größe in deinem Speicher frei, höchstens einen Tag lang.",
+      "progress": "{sent} von {total}",
+      "resumeLabel": "Hochladen von {name} fortsetzen: Datei erneut wählen",
+      "discardLabel": "Hochladen von {name} verwerfen",
+      "otherFile": "Das ist nicht die Datei „{name}“ ({size}). Wähle dieselbe Datei noch einmal, um fortzufahren."
+    }
   },
   "collision": {
     "title": "Name schon vergeben",
@@ -557,6 +565,8 @@
     "revoke": "Widerrufen",
     "revokeLabel": "{name} widerrufen",
     "revoked": "„{name}“ widerrufen",
+    "revokeTitle": "„{name}“ widerrufen?",
+    "revokeMessage": "Wer die Adresse hat, kann sie dann nicht mehr öffnen. Das lässt sich nicht rückgängig machen; ein neuer Link bekommt eine neue Adresse.",
     "withPassword": "Mit Passwort",
     "noPassword": "Ohne Passwort",
     "expires": "läuft am {date} ab",

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 import { crc32, deflateSync } from 'node:zlib';
 
 // #242: the details drawer, its versions, the lightbox and the upload panel against the design guide. The drawer says
@@ -227,7 +227,10 @@ for (const scheme of SCHEMES) {
     await page.goto(`/home/${encodeURIComponent(dir)}`);
     await expect(page.getByRole('navigation', { name: 'Pfad' })).toBeVisible();
     // The shard never answers: the first file stays running, the others wait.
-    await page.route('**/api/v1/uploads**', () => {});
+    // Held requests are aborted at the end, never let through: a creation let through late would leave an upload on
+    // the server that the next page lists as unfinished (#233).
+    const hung: Route[] = [];
+    await page.route('**/api/v1/uploads**', (route) => (route.request().method() === 'GET' ? route.continue() : void hung.push(route)));
     const names = ['eins.txt', 'zwei.txt', 'drei.txt'];
     await page.getByTestId('upload-input').setInputFiles(names.map((name) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(name) })));
     const panel = page.getByTestId('upload-panel');
@@ -272,6 +275,7 @@ for (const scheme of SCHEMES) {
     await expect(panel).toHaveCount(0);
 
     // U2: a failed row is the name, "Fehlgeschlagen" in the UI face in danger, and the retry icon; the reason is in the summary only.
+    for (const r of hung) await r.abort();
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     await page.route('**/api/v1/uploads**', (route) => route.abort('internetdisconnected'));
     await page.getByTestId('upload-input').setInputFiles({ name: 'kaputt.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });

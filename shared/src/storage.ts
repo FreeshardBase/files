@@ -19,6 +19,13 @@ export const MemberId = z.uuid();
  */
 export type HomeUsage = { files: number; trash: number; versions: number; uploads: number; total: number };
 
+/**
+ * One of the caller's unfinished tus uploads into their home (#233), from `GET /api/v1/uploads`: `offset` of `length`
+ * bytes have arrived; until `expiresAt` it reserves the rest of the quota.
+ */
+export type OpenUpload = { id: string; path: string; length: number; offset: number; expiresAt: string };
+export type OpenUploadList = { items: OpenUpload[] };
+
 /** A folder of the home and the bytes of every file beneath it. */
 export type LargeFolder = { path: string; size: number };
 
