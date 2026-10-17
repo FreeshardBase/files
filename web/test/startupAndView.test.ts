@@ -11,7 +11,7 @@ import { routes } from '../src/router.ts';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 const me = { id: 'u', displayName: 'Test User', role: 'admin', csrfToken: 'tok', settings: { locale: null, theme: 'system' },
-  sort: { key: 'name', dir: 'asc' } };
+  sort: { key: 'name', dir: 'asc' }, layout: { dualPane: false, tabs: false } };
 const i18n = () => createI18n({ legacy: false, locale: 'en', messages: { en } });
 const mk = () => {
   const router = createRouter({ history: createMemoryHistory(), routes });

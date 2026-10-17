@@ -1,14 +1,20 @@
 <script setup lang="ts">
 // The keyboard shortcuts (#160): opened by "?" outside a text field or by the header button. The list is what FileList,
-// ItemMenu, the gallery, FolderView (Shift+N, #221) and AppDialog actually handle; nothing here is a shortcut of its own.
+// ItemMenu, the gallery, FolderView (Shift+N, #221; two panes, #218; tabs, #219) and AppDialog actually handle; nothing
+// here is a shortcut of its own. The keys of two panes and of tabs show while the member has them on.
 // Key names are translated too ("Strg", "Entf").
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppDialog from './AppDialog.vue';
+import { useLayoutStore } from '../stores/layout.ts';
 
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
-const SHORTCUTS = ['arrows', 'galleryArrows', 'homeEnd', 'open', 'select', 'selectAll', 'rename', 'trash', 'cut', 'copy',
-  'paste', 'newFolder', 'menu', 'close', 'history', 'help'] as const;
+const layout = useLayoutStore();
+const SHORTCUTS = computed(() => ['arrows', 'galleryArrows', 'homeEnd', 'open', 'select', 'selectAll', 'rename', 'trash', 'cut', 'copy',
+  'paste', 'newFolder', 'menu', 'close', 'history', 'help',
+  ...(layout.dualPane ? ['switchPane', 'copyOther', 'moveOther'] : []),
+  ...(layout.tabs ? ['newTab', 'closeTab', 'openTab'] : [])]);
 </script>
 
 <template>

@@ -16,10 +16,16 @@ import ItemMenu from './ItemMenu.vue';
 import TagChips from './TagChips.vue';
 
 // `tags`: the member's tags by path (#212), as chips over the foot of the tile's square (the tile keeps its height).
+// `toOther`: a second pane takes items (#218), as in the list. A middle click on a folder tile asks for a new tab (#219).
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source: string; selected?: string[];
-  editable?: boolean; shareable?: boolean; starred?: string[]; tags?: Record<string, string[]> }>(),
-{ selected: () => [], editable: true, shareable: false, starred: () => [], tags: () => ({}) });
-const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: [] }>();
+  editable?: boolean; shareable?: boolean; starred?: string[]; tags?: Record<string, string[]>; toOther?: boolean }>(),
+{ selected: () => [], editable: true, shareable: false, starred: () => [], tags: () => ({}), toOther: false });
+const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; openTab: [Entry] }>();
+function onAuxClick(e: MouseEvent, entry: Entry) {
+  if (e.button !== 1 || entry.type !== 'directory') return;
+  e.preventDefault();
+  emit('openTab', entry);
+}
 const grid = ref<HTMLElement>();
 // The menus of the rendered tiles by index, collected anew on every render.
 const menus = new Map<number, InstanceType<typeof ItemMenu>>();
@@ -136,6 +142,7 @@ defineExpose({
             @click.capture="press.onClickCapture"
             @click="onClick($event, i)"
             @contextmenu="onContextMenu($event, i)"
+            @auxclick="onAuxClick($event, e)"
             @pointerdown="press.onPointerDown($event, i)"
             @pointermove="press.onPointerMove"
             @pointerup="press.onPointerUp"

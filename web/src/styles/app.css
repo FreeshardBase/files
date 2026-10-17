@@ -1151,3 +1151,35 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
 .duplicate-info { min-width: 0; display: flex; flex-direction: column; }
 .duplicate-info .name { overflow-wrap: anywhere; }
 .duplicate-info .origin { color: var(--ink-muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
+
+/* Two panes (#218): side by side from 1100 px, each scrolling on its own down to the window's bottom. The focused pane
+   has the teal edge of a focused control; the other keeps the hairline. */
+.workspace.dual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); }
+.workspace.dual .pane {
+  display: flex; flex-direction: column; min-width: 0; height: calc(100dvh - var(--pane-top) - var(--space-5));
+  padding: var(--space-3); border: var(--border-w) solid var(--border); border-radius: var(--radius-sheet);
+}
+.workspace.dual .pane.focused { border-color: var(--line); box-shadow: inset 0 0 0 1px var(--line); }
+.workspace.dual .pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.workspace.dual .page { max-width: none; }
+.folder.items-over { outline: 1.5px dashed var(--line); outline-offset: calc(-1 * var(--space-1)); border-radius: var(--radius-tile); }
+.settings-hint { margin: 0 0 var(--space-2) calc(18px + var(--space-2)); color: var(--ink-muted); font-size: var(--fs-small); }
+/* Tabs (#219): a strip over each pane's folder, the open tab joined to the content under the hairline. */
+.workspace.tabbed:not(.dual) { max-width: 960px; }
+.tab-strip { display: flex; align-items: flex-end; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: var(--border-w) solid var(--border); }
+.tab-list { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; }
+.tab-item {
+  display: flex; align-items: center; flex: 0 1 auto; min-width: 0; margin-bottom: calc(-1 * var(--border-w));
+  border: var(--border-w) solid transparent; border-bottom: 0; border-radius: var(--radius-glyph) var(--radius-glyph) 0 0;
+}
+.tab-item.active { background: var(--surface); border-color: var(--border); }
+.tab {
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 14rem; padding: var(--space-2) var(--space-3);
+  background: none; border: 0; color: var(--ink-muted); font: inherit; cursor: pointer;
+}
+.tab-item.active .tab { color: var(--ink); }
+.tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-close .icon { width: 16px; height: 16px; }
+.icon-plus {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
+}

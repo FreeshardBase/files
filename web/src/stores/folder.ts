@@ -1,11 +1,21 @@
-import { defineStore } from 'pinia';
+import { defineStore, getActivePinia } from 'pinia';
 import type { Access, CollisionPolicy, DeleteRequest, Entry, ListResponse, TransferRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { sourceApi } from '../api/paths.ts';
 
 export const join = (dir: string, name: string) => (dir === '/' ? '' : dir) + '/' + name;
 
-export const useFolderStore = defineStore('folder', {
+/** Every entry of a folder, page by page. */
+export async function listAll(source: string, path: string): Promise<Entry[]> {
+  const all: Entry[] = []; let cursor: string | undefined;
+  do {
+    const page: ListResponse = await api.get(`${sourceApi(source)}/list`, cursor ? { path, cursor } : { path });
+    all.push(...page.entries); cursor = page.next;
+  } while (cursor);
+  return all;
+}
+
+const defineFolderStore = (id: string) => defineStore(id, {
   state: () => ({
     source: 'home', // which source the folder belongs to; every request is built from it
     path: '/', entries: [] as Entry[], error: null as ApiFailure | null,
@@ -15,8 +25,6 @@ export const useFolderStore = defineStore('folder', {
     // What the caller may do in the source, from the newest listing (#146). The home is always `edit`; a share starts
     // as `read`, so no change is offered before the server has said it is allowed.
     access: 'edit' as Access,
-    // Items marked with "Move"/"Copy" (Ctrl+X/C), pasted into whichever folder is open later. Survives navigation.
-    clipboard: null as { mode: 'move' | 'copy'; source: string; entries: Entry[] } | null,
   }),
   actions: {
     async open(path: string, opts: { refresh?: boolean; source?: string } = {}) {
@@ -60,4 +68,31 @@ export const useFolderStore = defineStore('folder', {
       return created;
     },
   },
+});
+
+// One folder store per open location (#218, #219): each pane and each tab lists its own folder. Without two panes or
+// tabs there is one, `main`.
+const stores = new Map<string, ReturnType<typeof defineFolderStore>>();
+const storeId = (key: string) => (key === 'main' ? 'folder' : `folder:${key}`);
+export function useFolderStore(key = 'main') {
+  let use = stores.get(key);
+  if (!use) stores.set(key, use = defineFolderStore(storeId(key)));
+  return use();
+}
+/** Drops the store of a closed tab. */
+export function disposeFolderStore(key: string): void {
+  const use = stores.get(key);
+  if (!use) return;
+  use().$dispose();
+  stores.delete(key);
+  const pinia = getActivePinia();
+  if (pinia) delete pinia.state.value[storeId(key)];
+}
+
+/**
+ * Items marked with "Move"/"Copy" (Ctrl+X/C), pasted into whichever folder is open later. Survives navigation and is
+ * one for all panes and tabs: marked in one, pasted in another.
+ */
+export const useClipboardStore = defineStore('clipboard', {
+  state: () => ({ items: null as { mode: 'move' | 'copy'; source: string; entries: Entry[] } | null }),
 });

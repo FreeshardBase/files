@@ -5,8 +5,11 @@ import { computed, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 
-export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash';
-export type ItemProps = { entries: Entry[]; selected: string[]; editable: boolean; shareable: boolean; starred: string[] };
+export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash'
+  | 'copyToOther' | 'moveToOther';
+// `toOther`: a second pane takes items (#218): copying there only reads the items, moving there also changes this source.
+export type ItemProps = { entries: Entry[]; selected: string[]; editable: boolean; shareable: boolean; starred: string[];
+  toOther?: boolean };
 type Emits = {
   open: (e: Entry) => void; select: (paths: string[]) => void; action: (a: ItemAction, entries: Entry[]) => void; paste: () => void;
 };
@@ -35,7 +38,9 @@ export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i
   // destructive action alone under a hairline.
   const menuItems = computed(() => ([
     'download', ...(props.shareable ? ['share'] as const : []), 'details',
-    ...(props.editable ? ['rename', 'cut', 'copy'] as const : []), 'favourite', ...(props.editable ? ['trash'] as const : []),
+    ...(props.editable ? ['rename', 'cut', 'copy'] as const : []),
+    ...(props.toOther ? ['copyToOther', ...(props.editable ? ['moveToOther'] as const : [])] as const : []),
+    'favourite', ...(props.editable ? ['trash'] as const : []),
   ] as const).map((id) => ({ id, label: t(`actions.${id}`), danger: id === 'trash' })));
   // The favourite entry says what choosing it does to this item (#155).
   const starredSet = computed(() => new Set(props.starred));

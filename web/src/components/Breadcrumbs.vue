@@ -6,8 +6,9 @@ import { acceptDrag, droppedPaths } from '../dnd.ts';
 // cloud's account, #244); `editable`: crumbs take drops only where moves are allowed.
 const props = withDefaults(defineProps<{ source: string; path: string; rootLabel?: string; rootNote?: string; editable?: boolean }>(),
   { rootLabel: '', rootNote: '', editable: true });
-// Every crumb is a drop target: dragging list items onto it moves them into that folder.
-const emit = defineEmits<{ drop: [string[], string] }>();
+// Every crumb is a drop target: dragging list items onto it moves them into that folder. The third argument is the
+// source the items came from, another one when they were dragged over from the other pane (#218).
+const emit = defineEmits<{ drop: [string[], string, string] }>();
 const parts = computed(() => {
   const segs = props.path.split('/').filter(Boolean);
   return [{ name: null, path: '/' }, ...segs.map((name, i) => ({ name, path: '/' + segs.slice(0, i + 1).join('/') }))]
@@ -18,8 +19,8 @@ function onDragOver(e: DragEvent, path: string) { if (props.editable && acceptDr
 function onDrop(e: DragEvent, path: string) {
   over.value = null;
   if (!props.editable) return;
-  const paths = droppedPaths(e);
-  if (paths) emit('drop', paths, path);
+  const items = droppedPaths(e);
+  if (items) emit('drop', items.paths, path, items.source);
 }
 </script>
 <template>
