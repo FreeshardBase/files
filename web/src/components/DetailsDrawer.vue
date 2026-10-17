@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
 // member's own home and own cloud connections it lists the members the item is shared with and offers "Share …" (#208);
-// in a share it shows the caller's own access. A file's versions follow (#154); the item can be starred (#155). Esc or the
+// in a share it shows the caller's own access. Its tags with the chip editor (#212, with `edit`); a file's versions follow
+// (#154); the item can be starred (#155). Esc or the
 // head's X closes it; focus returns to the row. Kind and location are words, never a MIME type or a path (#242).
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -11,6 +12,7 @@ import { formatDate, formatSize, intlLocale } from '../format.ts';
 import { fileKind } from '../fileKind.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
+import TagEditor from './TagEditor.vue';
 import { useFavouritesStore } from '../stores/favourites.ts';
 
 // `rootLabel`: the name of the source's root as the breadcrumbs show it ("My storage", a share, a cloud account).
@@ -74,6 +76,12 @@ onMounted(async () => {
       <dt>{{ t('details.location') }}</dt>
       <dd>{{ location }}</dd>
     </dl>
+    <TagEditor
+      :source="source"
+      :path="entry.path"
+      :name="entry.name"
+      :editable="access === 'edit'"
+    />
     <h3
       :id="whoId"
       class="share-heading"

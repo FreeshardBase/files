@@ -47,6 +47,8 @@ const Schema = z.object({
   // oldest go first.
   FILES_VERSIONS_MAX_COUNT: z.coerce.number().int().min(1).max(1000).default(10),
   FILES_VERSIONS_MAX_BYTES: z.coerce.number().int().positive().default(1024 ** 3),
+  // How long one source may take to answer a smart folder or the tag view (#214, #212); after that it is a failed group.
+  FILES_SOURCE_TIMEOUT_MS: z.coerce.number().int().min(1).max(600_000).default(10_000),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
   // The shard's OAuth client at Google (#149). Optional as a pair: without it Google Drive is not offered.
@@ -103,6 +105,7 @@ export function loadConfig(env: Record<string, string | undefined>) {
     thumbCacheBytes: e.FILES_THUMB_CACHE_BYTES,
     thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,
     versions: { maxCount: e.FILES_VERSIONS_MAX_COUNT, maxBytes: e.FILES_VERSIONS_MAX_BYTES },
+    sourceTimeoutMs: e.FILES_SOURCE_TIMEOUT_MS,
     port: e.FILES_PORT,
     logLevel: e.FILES_LOG_LEVEL,
     google: e.FILES_GOOGLE_CLIENT_ID !== undefined && e.FILES_GOOGLE_CLIENT_SECRET !== undefined

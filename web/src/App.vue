@@ -11,6 +11,7 @@ import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
 import { folderRoute } from './api/paths.ts';
 import { useFavouritesStore } from './stores/favourites.ts';
+import { useSmartFoldersStore } from './stores/smartFolders.ts';
 import ShortcutsDialog from './components/ShortcutsDialog.vue';
 import StateAlert from './components/StateAlert.vue';
 import { useRequestsStore } from './stores/requests.ts';
@@ -18,6 +19,7 @@ const session = useSessionStore();
 const requests = useRequestsStore();
 const connections = useConnectionsStore();
 const favourites = useFavouritesStore();
+const smartFolders = useSmartFoldersStore();
 const transfers = useTransfersStore();
 const router = useRouter();
 const route = useRoute();
@@ -66,6 +68,7 @@ onMounted(async () => {
   if (session.me) {
     void connections.load(); // the member's clouds in the sidebar (#148)
     void favourites.load(); // the star of every item (#155)
+    void smartFolders.load(); // the member's smart folders in the sidebar (#214)
     void requests.load(); // the badge of new files from file requests (#217)
     transfers.connect(); // the member's transfer jobs, live (#152)
     actionLost.value = takeInterruptedAction();
@@ -285,6 +288,20 @@ onMounted(async () => {
                   aria-hidden="true"
                 />
                 {{ $t('nav.favourites') }}
+              </RouterLink>
+              <!-- The member's smart folders (#214), below Favourites. -->
+              <RouterLink
+                v-for="f in smartFolders.items"
+                :key="f.id"
+                :to="`/smart/${f.id}`"
+                active-class="active"
+                class="nav-smart"
+              >
+                <span
+                  class="icon icon-search"
+                  aria-hidden="true"
+                />
+                <span class="nav-smart-name">{{ f.name }}</span>
               </RouterLink>
               <RouterLink
                 to="/recent"

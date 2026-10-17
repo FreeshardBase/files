@@ -27,6 +27,8 @@ import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
 import { useFavouritesStore } from '../stores/favourites.ts';
 import { useSortStore } from '../stores/sort.ts';
+import { useTagsStore } from '../stores/tags.ts';
+import AddTagDialog from '../components/AddTagDialog.vue';
 import { acceptFileDrag, droppedFiles } from '../dnd.ts';
 import { sortEntries } from '../sort.ts';
 import { intlLocale } from '../format.ts';
@@ -394,6 +396,28 @@ async function rename(name: string) {
   await settle(at);
 }
 
+// Tags (#212): the chips of this folder's items come with every listing; "Add tag" puts one tag on the whole selection
+// (all or nothing), and a refusal stays in the dialog with the typed name.
+const tagStore = useTagsStore();
+watch(() => folder.entries, () => { if (!folder.error) void tagStore.loadFolder(folder.source, folder.path); });
+const folderTags = computed(() => tagStore.folder.source === source.value && tagStore.folder.path === path.value
+  ? tagStore.folder.byPath : {});
+const tagging = ref<{ entries: Entry[]; error: string | null; busy: boolean } | null>(null);
+async function addTag(name: string) {
+  const g = tagging.value!;
+  g.error = null; g.busy = true;
+  try {
+    await tagStore.add(folder.source, g.entries.map((e) => e.path), name);
+  } catch (err) {
+    if (!(err instanceof ApiFailure)) throw err;
+    g.error = t(`errors.${err.code}`, err.params ?? {}); g.busy = false;
+    return;
+  }
+  tagging.value = null;
+  failures.value = null;
+  say(t('tags.added', { tag: name, count: g.entries.length }, g.entries.length));
+}
+
 // The server sends an attachment; a link with `download` keeps the page even if the request fails.
 function download(entries: Entry[]) {
   const a = document.createElement('a');
@@ -616,6 +640,18 @@ function onDrop(paths: string[], dir: string) {
             </button>
             <button
               type="button"
+              class="button tag-button"
+              :aria-label="$t('tags.addToSelection')"
+              :title="$t('tags.addToSelection')"
+              @click="tagging = { entries: selectedEntries, error: null, busy: false }"
+            >
+              <span
+                class="icon icon-tag"
+                aria-hidden="true"
+              />
+            </button>
+            <button
+              type="button"
               class="button danger"
               :disabled="acting"
               @click="onAction('trash', selectedEntries)"
@@ -667,6 +703,14 @@ function onDrop(paths: string[], dir: string) {
       :busy="creating.busy"
       @submit="createFolder"
       @cancel="creating = null"
+    />
+    <AddTagDialog
+      v-if="tagging"
+      :count="tagging.entries.length"
+      :error="tagging.error"
+      :busy="tagging.busy"
+      @submit="addTag"
+      @cancel="tagging = null"
     />
     <ShareDialog
       v-if="sharing"
@@ -779,6 +823,7 @@ function onDrop(paths: string[], dir: string) {
           :editable="editable"
           :shareable="shareable"
           :starred="starred"
+          :tags="folderTags"
           @open="open"
           @action="onAction"
           @paste="paste"
@@ -794,6 +839,7 @@ function onDrop(paths: string[], dir: string) {
           :editable="editable"
           :shareable="shareable"
           :starred="starred"
+          :tags="folderTags"
           @open="open"
           @action="onAction"
           @paste="paste"

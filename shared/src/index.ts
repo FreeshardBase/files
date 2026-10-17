@@ -6,3 +6,5 @@ export * from './storage.ts';
 export * from './appPasswords.ts';
 export * from './settings.ts';
 export * from './requests.ts';
+export * from './tags.ts';
+export * from './smartFolders.ts';

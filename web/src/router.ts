@@ -3,6 +3,8 @@ import FolderView from './views/FolderView.vue';
 import TrashView from './views/TrashView.vue';
 import RecentView from './views/RecentView.vue';
 import FavouritesView from './views/FavouritesView.vue';
+import TagView from './views/TagView.vue';
+import SmartFolderView from './views/SmartFolderView.vue';
 import SharedView from './views/SharedView.vue';
 import PublicLinkView from './views/PublicLinkView.vue';
 import ConnectionsView from './views/ConnectionsView.vue';
@@ -23,13 +25,16 @@ export const isPublicPage = (pathname: string): boolean =>
   pathname === SIGNED_OUT_PATH || /^\/[sr]\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
-// `/favourites`, `/shared`, `/connections`, `/storage`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
+// `/favourites`, `/tags`, `/smart`, `/shared`, `/connections`, `/storage`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
 // under their source.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
   // `folder`: the folder view shows the upload panel under its own toolbar (#239); App.vue shows it on every other view.
   { path: '/:source(home|share:[A-Za-z0-9_-]{1,64}|conn:[A-Za-z0-9_-]{1,64})/:path(.*)*', component: FolderView, meta: { folder: true } },
   { path: '/favourites', component: FavouritesView },
+  // A tag's items across sources (#212), and a smart folder's live result (#214).
+  { path: '/tags/:name', component: TagView },
+  { path: '/smart/:id([0-9a-f]{32})', component: SmartFolderView },
   { path: '/recent', component: RecentView },
   { path: '/shared', component: SharedView },
   { path: '/connections', component: ConnectionsView },

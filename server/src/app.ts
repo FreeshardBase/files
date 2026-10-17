@@ -40,6 +40,8 @@ import { registerTransferRoutes } from './routes/transfers.ts';
 import { registerMigrationRoutes } from './routes/migrations.ts';
 import { registerVersionRoutes } from './routes/versions.ts';
 import { registerFavouriteRoutes } from './routes/favourites.ts';
+import { registerTagRoutes } from './routes/tags.ts';
+import { registerSmartFolderRoutes } from './routes/smartFolders.ts';
 import { registerStorageRoutes } from './routes/storage.ts';
 import { registerAppPasswordRoutes } from './routes/appPasswords.ts';
 import { registerDavRoutes } from './dav/routes.ts';
@@ -149,6 +151,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerMigrationRoutes(app);
   await registerVersionRoutes(app);
   await registerFavouriteRoutes(app);
+  await registerTagRoutes(app);
+  await registerSmartFolderRoutes(app);
   await registerStorageRoutes(app);
   await registerAppPasswordRoutes(app);
   await registerDavRoutes(app);
