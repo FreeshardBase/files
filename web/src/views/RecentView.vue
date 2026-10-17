@@ -1,20 +1,22 @@
 <script setup lang="ts">
 // What the member recently uploaded, copied, moved, renamed or restored, newest first, each with a way to its folder.
 // Only the member's own writes; there is no feed of other members' actions.
-import { onMounted } from 'vue';
+import { onMounted, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { RecentItem } from '@files/shared';
 import { useRecentStore } from '../stores/recent.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import { parentOf, useLocations } from '../location.ts';
+import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
-const { t, locale } = useI18n();
+const { locale } = useI18n();
 const recent = useRecentStore();
+const { folderLabel } = useLocations();
 onMounted(() => { void recent.load(); });
-
-const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
-const folderLabel = (p: string) => p === '/' ? t('nav.home') : p;
+// A thumbnail in the folder list's 28 px slot (#244); one that fails to load falls back to the line icon.
+const thumbFailed = reactive(new Set<string>());
 // A folder opens itself; a file opens the folder it is in.
 const target = (item: RecentItem) => folderRoute(item.source, item.type === 'directory' ? item.path : parentOf(item.path));
 </script>
@@ -71,7 +73,16 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
         >
           <td class="name">
             <div class="name-inner">
+              <img
+                v-if="hasThumbnail(item) && !thumbFailed.has(item.path)"
+                class="row-thumb"
+                :src="thumbnailHref(item.source, { path: item.path, modified: item.changedAt }, 128)"
+                alt=""
+                loading="lazy"
+                @error="thumbFailed.add(item.path)"
+              >
               <span
+                v-else
                 class="icon"
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
@@ -85,8 +96,8 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
           <td class="origin">
             <span
               class="origin-text"
-              :title="folderLabel(parentOf(item.path))"
-            >{{ folderLabel(parentOf(item.path)) }}</span>
+              :title="folderLabel(item.source, parentOf(item.path))"
+            >{{ folderLabel(item.source, parentOf(item.path)) }}</span>
           </td>
           <td class="num date">
             {{ formatDate(item.changedAt, intlLocale(locale)) }}

@@ -34,7 +34,8 @@ test('typing a name shows the file; arrows pick a result and Enter opens its fol
   const list = results(page);
   await expect(list.getByRole('group', { name: /Mein Speicher|My storage/ })).toBeVisible();
   await expect(list.getByRole('option')).toHaveCount(2);
-  await expect(list.getByRole('option', { name: new RegExp(first) })).toContainText(`/${dir}`);
+  await expect(list.getByRole('option', { name: new RegExp(first) }).locator('.search-location'))
+    .toHaveText(new RegExp(`^(Mein Speicher|My storage) › ${dir}$`)); // #244
 
   await box(page).press('ArrowDown');
   await box(page).press('ArrowDown');
@@ -75,7 +76,7 @@ test('a search without matches shows its empty state', async ({ page }, info) =>
   await expect(crumbs(page)).toBeVisible();
   const q = `nothing-is-called-this-${tag(info)}`;
   await box(page).fill(q);
-  await expect(page.getByText(new RegExp(`(Nichts gefunden, das „${q}“ im Namen hat|Nothing found with “${q}” in its name)`)))
+  await expect(page.getByText(new RegExp(`(Kein Name enthält „${q}“|Nothing found with “${q}” in its name)`)))
     .toBeVisible();
   await expect(results(page)).toHaveCount(0);
   await expect(box(page)).toHaveAttribute('aria-expanded', 'false');

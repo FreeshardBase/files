@@ -17,7 +17,7 @@ describe('German terminology (#246)', () => {
       expect(at(t, 'actions.share')).toBe('Freigeben');
       expect(at(t, 'share.submit')).toBe('Freigeben');
       expect(at(t, 'share.title')).toBe('„{name}“ freigeben');
-      expect(at(t, 'details.share')).toBe('Freigeben …');
+      expect(at(t, 'details.share')).toBe('Freigeben …'); // the ellipsis stays on its word (#247)
       expect(at(t, 'nav.shared')).toBe('Für mich freigegeben');
       expect(at(t, 'shared.title')).toBe('Für mich freigegeben');
       expect(at(t, 'share.shared')).toBe('Für {name} freigegeben: {access}');
@@ -95,11 +95,11 @@ describe('Du/Sie consistency (#246)', () => {
 
 describe('English terminology (#246)', () => {
   it('a place is a "place", and names are quoted', () => {
-    expect(at(en, 'errors.NOT_SUPPORTED')).toBe('This place doesn\'t offer that.');
-    expect(at(en, 'errors.SOURCE_NOT_FOUND')).toBe('This place doesn\'t exist or isn\'t available to you.');
+    expect(at(en, 'errors.NOT_SUPPORTED')).toBe('This place doesn’t offer that.');
+    expect(at(en, 'errors.SOURCE_NOT_FOUND')).toBe('This place doesn’t exist or isn’t available to you.');
     expect(at(en, 'shareTarget.intro')).toBe('Choose the folder in “My storage” for the shared file. | Choose the folder in “My storage” for the {count} shared files.');
     expect(at(en, 'shareTarget.missing')).toBe('Nothing to save here. Either the files were already saved, or the share did not reach “Files”: open “Files” once, then share again.');
-    expect(at(en, 'members.intro')).toMatch(/^Everyone who has signed in to “Files” before\. /);
+    expect(at(en, 'members.intro')).toMatch(/^Everyone who has signed in to “Files” at least once\. /);
     expect(at(en, 'signedOut.text')).toContain('signed out of “Files” on this device');
   });
 });

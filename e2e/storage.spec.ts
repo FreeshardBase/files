@@ -38,17 +38,17 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await expect(page.getByRole('heading', { name: /^(Mitglieder|Members)$/ })).toBeVisible();
   const row = page.locator('tbody tr', { hasText: 'member@example.com' });
   await expect(row).toBeVisible();
-  const amount = row.getByRole('textbox', { name: /Kontingent für Test Member|Quota for Test Member/ });
+  const amount = row.getByRole('textbox', { name: /Speicherlimit für Test Member|Storage limit for Test Member/ });
 
   // Something that is not a size is refused in the form, before anything is sent.
   await amount.fill('-1');
-  await row.getByRole('button', { name: /Kontingent für Test Member festlegen|Set the quota for Test Member/ }).click();
+  await row.getByRole('button', { name: /Speicherlimit für Test Member festlegen|Set the storage limit for Test Member/ }).click();
   await expect(amount).toHaveAttribute('aria-invalid', 'true');
   await expect(row).toContainText(/Gib eine Größe ab 0 ein|Geben Sie eine Größe ab 0 ein|Enter a size of 0 or more/);
 
   await amount.fill('50');
   await row.getByRole('combobox', { name: /Einheit für Test Member|Unit for Test Member/ }).selectOption('MB');
-  await row.getByRole('button', { name: /Kontingent für Test Member festlegen|Set the quota for Test Member/ }).click();
+  await row.getByRole('button', { name: /Speicherlimit für Test Member festlegen|Set the storage limit for Test Member/ }).click();
   await expect(page.locator('.members .status')).toContainText(/50 MB/);
   await expect(row.locator('.members-quota')).toHaveText('50 MB');
   await expect(amount).not.toHaveAttribute('aria-invalid', 'true');
@@ -62,13 +62,13 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await expect(member.locator('.storage-figures').first()).toContainText(/(von|of) 50 MB/);
   // The members page is the admin's: the server refuses it to the member.
   await member.goto('/members');
-  await expect(member.getByRole('alert')).toContainText(/keine Berechtigung|don't have permission/);
+  await expect(member.getByRole('alert')).toContainText(/keine Berechtigung|don’t have permission/);
 
   // Removed again: no quota, no bar.
-  await row.getByRole('button', { name: /Kontingent für Test Member entfernen|Remove the quota for Test Member/ }).click();
-  await expect(row.locator('.members-quota')).toHaveText(/Kein Kontingent|No quota/);
+  await row.getByRole('button', { name: /Speicherlimit für Test Member entfernen|Remove the storage limit for Test Member/ }).click();
+  await expect(row.locator('.members-quota')).toHaveText(/Kein Speicherlimit|No storage limit/);
   await member.goto('/storage');
-  await expect(member.locator('.storage-figures').first()).toContainText(/unbegrenzt|no quota/);
+  await expect(member.locator('.storage-figures').first()).toContainText(/unbegrenzt|no limit/);
   await expect(shardBar(member)).toHaveCount(0);
   expect(dialogs).toEqual([]);
   await member.context().close();
@@ -104,8 +104,10 @@ test.describe('with a cloud account', () => {
       await expect(cloud).toHaveAttribute('aria-valuetext', /2[.,]5 MB (von|of) 15 GB/);
       await expect(page.locator('.storage-clouds')).toContainText(/2[.,]5 MB (von|of) 15 GB/);
       const largest = page.getByRole('table', { name: /Größte Ordner|Largest folders/ });
-      await expect(largest.getByRole('link', { name: new RegExp(`/${dir}`) })).toBeVisible();
-      await largest.getByRole('link', { name: new RegExp(`/${dir}`) }).click();
+      // A folder is written like everywhere else, from the root's name and never with a leading slash (#244).
+      const folder = largest.getByRole('link', { name: new RegExp(`(Mein Speicher|My storage) › ${dir}`) });
+      await expect(folder).toHaveText(new RegExp(`^(Mein Speicher|My storage) › ${dir}$`));
+      await folder.click();
       await expect(page).toHaveURL(new RegExp(`/home/${dir}$`));
     } finally {
       expect((await page.request.put(`/api/v1/admin/members/${id}/quota`, { headers, data: { quotaBytes: null } })).status()).toBe(200);

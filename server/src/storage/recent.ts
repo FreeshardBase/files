@@ -1,6 +1,7 @@
 import { posix } from 'node:path';
 import type { RecentItem } from '@files/shared';
 import type { Db } from '../db.ts';
+import { lookupMime } from './mime.ts';
 
 /** Entries kept per member; writing one more drops the oldest. */
 export const RECENT_CAP = 100;
@@ -22,5 +23,9 @@ export function recordRecent(db: Db, userId: string, path: string, type: 'file' 
 /** The member's recent items in the home, newest first. */
 export function recentItems(db: Db, userId: string): RecentItem[] {
   const rows = db.prepare('SELECT path, type, changed_at FROM recent WHERE user_id = ? ORDER BY id DESC').all(userId) as RecentRow[];
-  return rows.map((r) => ({ source: 'home', name: posix.basename(r.path), path: r.path, type: r.type, changedAt: r.changed_at }));
+  return rows.map((r) => {
+    const name = posix.basename(r.path);
+    return { source: 'home', name, path: r.path, type: r.type, changedAt: r.changed_at,
+      ...(r.type === 'file' ? { mime: lookupMime(name) } : {}) };
+  });
 }

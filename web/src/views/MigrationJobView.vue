@@ -251,7 +251,7 @@ async function confirmCleanup() {
       v-if="preview"
       :title="t('migrate.cleanup.confirmTitle')"
       :message="preview.files === 0 ? t('migrate.cleanup.nothing')
-        : t('migrate.cleanup.confirmMessage', { count: preview.files, size: size(preview.bytes), account })"
+        : t('migrate.cleanup.confirmMessage', { count: preview.files, size: size(preview.bytes), account }, preview.files)"
       :confirm-label="t('migrate.cleanup.confirm')"
       @confirm="confirmCleanup()"
       @cancel="preview = null"

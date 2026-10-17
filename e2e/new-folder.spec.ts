@@ -68,11 +68,11 @@ test('the name is checked; a taken name says so and keeps the dialog open; Esc c
   const input = d.getByRole('textbox');
   await expect(input).toBeFocused();
   await page.keyboard.press('Enter'); // empty
-  await expect(d).toContainText(/darf nicht leer|can't be empty/);
+  await expect(d).toContainText(/darf nicht leer|can’t be empty/);
   await expect(input).toHaveAttribute('aria-invalid', 'true');
   await input.fill('a/b');
   await page.keyboard.press('Enter');
-  await expect(d).toContainText(/darf nicht leer|can't be empty/);
+  await expect(d).toContainText(/darf nicht leer|can’t be empty/);
 
   await input.fill('Ordner');
   await page.keyboard.press('Enter');

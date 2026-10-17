@@ -58,7 +58,7 @@ test('F2 renames the focused row; the stem is preselected and the bytes stay', a
   await page.keyboard.type('Prüfung #1 & 50%');
   await page.keyboard.press('Enter');
   await expect(renameDialog(page)).toHaveCount(0);
-  await expect(status(page)).toContainText(/Umbenannt in Prüfung #1 & 50%\.txt|Renamed to Prüfung #1 & 50%\.txt/);
+  await expect(status(page)).toContainText(/Umbenannt in „Prüfung #1 & 50%\.txt“|Renamed to “Prüfung #1 & 50%\.txt”/);
   expect(await names(page)).toEqual(['Prüfung #1 & 50%.txt']);
   expect(await focusedRowName(page)).toBe('Prüfung #1 & 50%.txt');
   expect(await download(page, 'Prüfung #1 & 50%.txt')).toBe('inhalt');
@@ -132,7 +132,7 @@ test('copy and paste with the keyboard; pasting onto the same name asks, keep bo
   await setup(page, dir, { 'x.txt': 'copy me' }, ['Ziel']);
   await row(page, 'x.txt').focus();
   await page.keyboard.press('ControlOrMeta+c');
-  await expect(status(page)).toContainText(/1 zum Kopieren vorgemerkt|1 ready to copy/);
+  await expect(status(page)).toContainText(/Ein Element zum Kopieren vorgemerkt|One item ready to copy/);
   // Same folder: the name is taken.
   await page.keyboard.press('ControlOrMeta+v');
   await expect(collision(page)).toContainText('x.txt');
@@ -152,7 +152,7 @@ test('Delete moves the focused row to the trash and keeps the focus in the list'
   await setup(page, dir, { 'a.txt': 'a', 'b.txt': 'b', 'c.txt': 'c' });
   await row(page, 'b.txt').focus();
   await page.keyboard.press('Delete');
-  await expect(status(page)).toContainText(/1 in den Papierkorb verschoben|1 moved to trash/);
+  await expect(status(page)).toContainText(/Ein Element in den Papierkorb verschoben|One item moved to the trash/);
   expect(await names(page)).toEqual(['a.txt', 'c.txt']);
   expect(await focusedRowName(page)).toBeTruthy();
   // Multi-select with Space, then Delete removes the whole selection in one go.
@@ -161,7 +161,7 @@ test('Delete moves the focused row to the trash and keeps the focus in the list'
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press(' ');
   await page.keyboard.press('Delete');
-  await expect(status(page)).toContainText(/2 in den Papierkorb verschoben|2 moved to trash/);
+  await expect(status(page)).toContainText(/2 Elemente in den Papierkorb verschoben|2 items moved to the trash/);
   await expect(page.getByText(/Dieser Ordner ist leer|This folder is empty/)).toBeVisible();
 });
 
@@ -189,7 +189,7 @@ test('keyboard only: select, cut, open the folder, paste; the row menu opens wit
   expect(await focusedRowName(page)).toBe('k.txt');
 
   await page.keyboard.press('ControlOrMeta+x');
-  await expect(status(page)).toContainText(/1 zum Verschieben vorgemerkt|1 ready to move/);
+  await expect(status(page)).toContainText(/Ein Element zum Verschieben vorgemerkt|One item ready to move/);
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText('Ziel');
@@ -220,7 +220,7 @@ test('every action is reachable through the item action menu (mobile path)', asy
   await expect(status(page)).toContainText(/1 von 1 verschoben|1 of 1 moved/);
   // Delete.
   await (await menuFor(page, 'm.txt')).getByRole('menuitem', { name: /In den Papierkorb|Move to trash/ }).click();
-  await expect(status(page)).toContainText(/1 in den Papierkorb verschoben|1 moved to trash/);
+  await expect(status(page)).toContainText(/Ein Element in den Papierkorb verschoben|One item moved to the trash/);
   expect(await names(page)).toEqual(['Ziel']);
   await openFolder(page, 'Ziel');
   await expect(page.getByText(/Dieser Ordner ist leer|This folder is empty/)).toBeVisible();

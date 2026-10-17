@@ -86,6 +86,8 @@ export const RecentItemSchema = z.object({
   path: z.string().startsWith('/'),
   type: z.enum(['file', 'directory']),
   changedAt: z.iso.datetime(),
+  /** A file's type from its extension, so the list can show its thumbnail like a folder does (#244); absent on a folder. */
+  mime: z.string().optional(),
 });
 export type RecentItem = z.infer<typeof RecentItemSchema>;
 
@@ -103,6 +105,8 @@ export const FavouriteSchema = z.object({
   /** False once the source is gone (an unlinked connection, a revoked share): the entry is shown but never opened. */
   available: z.boolean(),
   createdAt: z.iso.datetime(),
+  /** A file's type from its extension, for its thumbnail (#244); absent on a folder. */
+  mime: z.string().optional(),
 });
 export type Favourite = z.infer<typeof FavouriteSchema>;
 

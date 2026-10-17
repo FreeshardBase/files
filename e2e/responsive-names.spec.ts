@@ -165,7 +165,8 @@ for (const scheme of SCHEMES) {
       for (const view of ['recent', 'trash']) {
         await p.goto(`/${view}`);
         const origin = row(p, 'Notizen.txt').locator('.origin-text');
-        await expect(origin).toHaveAttribute('title', DEEP);
+        // The full location, written from the root's name (#244).
+        await expect(origin).toHaveAttribute('title', 'Mein Speicher › Schule › Projekte › Mathematik › Hausaufgaben im Oktober und November');
         expect(await lines(origin), `${view}: the location's lines`).toBe(1);
         expect(await ellipsized(origin), `${view}: the location is cut with an ellipsis`).toBe(true);
         await noSideways(p, view);
@@ -233,7 +234,7 @@ for (const scheme of SCHEMES) {
       await expect(mail).toHaveAttribute('title', email);
       expect(await lines(mail), `${what}: the e-mail breaks`).toBe(1);
       const field = await box(r.locator('.members-amount'));
-      const set = await box(r.getByRole('button', { name: 'Kontingent für Test User festlegen', exact: true }));
+      const set = await box(r.getByRole('button', { name: 'Speicherlimit für Test User festlegen', exact: true }));
       if (!info.project.name.startsWith('mobile') || p !== page) {
         expect(Math.abs(set.y - field.y), `${what}: the button is beside the field`).toBeLessThan(2);
         expect(Math.abs((await box(r.locator('.members-unit'))).y - field.y), `${what}: the unit is beside the field`).toBeLessThan(2);

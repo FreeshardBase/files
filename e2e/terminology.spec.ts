@@ -69,7 +69,7 @@ test('the members page names the app „Dateien“ in German and “Files” in 
   await expect(page.getByText(/\bFiles\b/)).toHaveCount(0);
   await putSettings(page, { locale: 'en', theme: 'light' });
   await page.reload();
-  await expect(page.getByText(/^Everyone who has signed in to “Files” before\./)).toBeVisible();
+  await expect(page.getByText(/^Everyone who has signed in to “Files” at least once\./)).toBeVisible();
 });
 
 test('de-sie: the collision dialog asks "Was möchten Sie tun?" under "Name schon vergeben"', async ({ page }, info) => {

@@ -72,7 +72,7 @@ test('a rename the server refuses keeps the dialog open with a rename message; a
   await field.fill('b.txt');
   await page.keyboard.press('Enter');
   await expect(field).toHaveAccessibleDescription(
-    /Umbenennen hat nicht geklappt: Hier gibt es schon ein Element mit diesem Namen\.|Renaming didn't work: An item with this name already exists\./);
+    /Umbenennen hat nicht geklappt: Hier gibt es schon ein Element mit diesem Namen\.|Renaming didn’t work: An item with this name already exists\./);
   await expect(field).toHaveValue('b.txt');
   await expect(field).toBeFocused();
   await expect(page.getByText(/0 von 1 verschoben|0 of 1 moved/)).toHaveCount(0);
@@ -82,11 +82,11 @@ test('a rename the server refuses keeps the dialog open with a rename message; a
   await field.fill('c.txt');
   await expect(field).not.toHaveAttribute('aria-invalid', 'true');
   await page.keyboard.press('Enter');
-  await expect(field).toHaveAccessibleDescription(/Umbenennen hat nicht geklappt: Keine Verbindung zum Shard\.|Renaming didn't work: No connection to the shard\./);
+  await expect(field).toHaveAccessibleDescription(/Umbenennen hat nicht geklappt: Keine Verbindung zum Shard\.|Renaming didn’t work: No connection to the shard\./);
   await page.unroute('**/api/v1/sources/home/move');
   await page.keyboard.press('Enter');
   await expect(renameDialog(page)).toHaveCount(0);
-  await expect(status(page)).toContainText(/Umbenannt in c\.txt|Renamed to c\.txt/);
+  await expect(status(page)).toContainText(/Umbenannt in „c\.txt“|Renamed to “c\.txt”/);
   expect(await names(page)).toEqual(['b.txt', 'c.txt']);
 });
 
@@ -99,7 +99,7 @@ test('the rename button is disabled while the rename is in flight; a double clic
   const submit = renameDialog(page).getByRole('button', { name: /^(Umbenennen|Rename)$/ });
   await submit.dblclick();
   await expect(renameDialog(page)).toHaveCount(0);
-  await expect(status(page)).toContainText(/Umbenannt in b\.txt|Renamed to b\.txt/);
+  await expect(status(page)).toContainText(/Umbenannt in „b\.txt“|Renamed to “b\.txt”/);
   expect(await names(page)).toEqual(['b.txt']);
   expect(moves.count).toBe(1);
 });
@@ -111,7 +111,7 @@ test('a double click on "Move to trash" sends one request and reports no error',
   await row(page, 'a.txt').getByRole('checkbox').check();
   const trash = bar(page).getByRole('button', { name: /^(In den Papierkorb|Move to trash)$/ });
   await trash.dblclick();
-  await expect(status(page)).toContainText(/1 in den Papierkorb verschoben|1 moved to trash/);
+  await expect(status(page)).toContainText(/Ein Element in den Papierkorb verschoben|One item moved to the trash/);
   await expect(row(page, 'a.txt')).toHaveCount(0);
   await page.waitForTimeout(600); // a second request would answer within this
   expect(deletes.count).toBe(1);

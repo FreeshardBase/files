@@ -154,5 +154,5 @@ test('gallery on a phone: long-press selects, taps on the checkbox add to it, th
   const width = await page.evaluate(() => window.innerWidth);
   expect(m.x).toBeGreaterThanOrEqual(0); expect(m.x + m.width).toBeLessThanOrEqual(width);
   await page.getByRole('menuitem', { name: 'Move', exact: true }).tap();
-  await expect(page.getByRole('status')).toContainText('2 ready to move');
+  await expect(page.getByRole('status')).toContainText('2 items ready to move');
 });

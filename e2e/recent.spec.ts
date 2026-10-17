@@ -30,7 +30,7 @@ test('upload a file, find it in Recent, and open its folder from there', async (
   await expect(page.getByRole('heading', { name: /Zuletzt geändert|Recent/ })).toBeVisible();
   // Newest first: the upload is the top row.
   await expect(page.locator('tbody tr').first()).toContainText(name);
-  await expect(row(page, name).locator('.origin')).toHaveText(`/${dir}`);
+  await expect(row(page, name).locator('.origin')).toHaveText(new RegExp(`^(Mein Speicher|My storage) › ${dir}$`)); // #244
 
   await row(page, name).getByRole('link', { name: new RegExp(`(Ordner von|folder of) ${name}`) }).click();
   await expect(crumbs(page)).toContainText(dir);

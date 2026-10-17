@@ -5,9 +5,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 // `wide`: a sheet for content (the preview) instead of a question; full screen on a phone.
 // `drawer`: a sheet at the right edge, full height (the details drawer); a bottom sheet on a phone.
-// `closeLabel`: a head row with the title and an X icon button of that name over a hairline (#242). The focus then
-// starts on the title, which stops after two lines and carries its whole text as `title`. `label` is an uppercase
-// label over the title and part of the dialog's name.
+// Every dialog's title sits over a hairline and its action row under one, like Calendar's modals (#244).
+// `closeLabel`: an X icon button of that name beside the title (#242). The focus then starts on the title, which stops
+// after two lines and carries its whole text as `title`. `label`: an uppercase label over the title, part of the
+// dialog's name.
 const props = defineProps<{
   title: string; returnFocus?: HTMLElement | null; wide?: boolean; drawer?: boolean; label?: string; closeLabel?: string;
 }>();
@@ -76,10 +77,8 @@ onBeforeUnmount(() => {
         tabindex="-1"
         @keydown="onKeydown"
       >
-        <div
-          v-if="closeLabel"
-          class="app-dialog-head"
-        >
+        <!-- Calendar's modal anatomy (#244): every head sits over a hairline, and the action row under one. -->
+        <div class="app-dialog-head">
           <div class="app-dialog-heading">
             <p
               v-if="label"
@@ -89,6 +88,7 @@ onBeforeUnmount(() => {
               {{ label }}
             </p>
             <h2
+              v-if="closeLabel"
               :id="titleId"
               class="app-dialog-title"
               :title="title"
@@ -97,8 +97,16 @@ onBeforeUnmount(() => {
             >
               {{ title }}
             </h2>
+            <h2
+              v-else
+              :id="titleId"
+              class="app-dialog-title"
+            >
+              {{ title }}
+            </h2>
           </div>
           <button
+            v-if="closeLabel"
             type="button"
             class="icon-button row-icon-button app-dialog-close"
             :aria-label="closeLabel"
@@ -110,15 +118,11 @@ onBeforeUnmount(() => {
             />
           </button>
         </div>
-        <h2
-          v-else
-          :id="titleId"
-          class="app-dialog-title"
-        >
-          {{ title }}
-        </h2>
         <slot />
-        <div class="app-dialog-actions">
+        <div
+          v-if="$slots.actions"
+          class="app-dialog-actions"
+        >
           <slot name="actions" />
         </div>
       </div>
