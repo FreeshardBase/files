@@ -18,6 +18,8 @@ pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile)
 pnpm test:live                              # real-provider tests; skipped without LIVE_* tokens in server/.env.live
 pnpm test:litmus                            # litmus WebDAV suites (basic, copymove, props, locks) in a podman/docker container
+pnpm smoke:container                        # build the image with podman, run it, /healthz, upload + download, stop; skipped without podman
+pnpm load                                   # load test of the local backend (10 000 files, 5 GB, parallel uploads); numbers in docs/perf.md
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 
