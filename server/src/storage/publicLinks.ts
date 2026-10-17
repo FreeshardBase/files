@@ -59,6 +59,11 @@ export function linksOf(db: Db, ownerId: string, source: string, path: string): 
     ORDER BY created_at, id`).all(ownerId, source, path) as LinkRow[];
 }
 
+/** Every link of the owner across their sources, orphaned ones included, newest first ("My shares", #299). */
+export function linksOfOwner(db: Db, ownerId: string): LinkRow[] {
+  return db.prepare(`SELECT ${COLUMNS} FROM public_links WHERE owner_id = ? ORDER BY created_at DESC, id`).all(ownerId) as LinkRow[];
+}
+
 /** The link `id` if the caller owns it; anyone else's link looks exactly like an unknown id. */
 export function ownLink(db: Db, id: string, ownerId: string): LinkRow {
   const row = db.prepare(`SELECT ${COLUMNS} FROM public_links WHERE id = ? AND owner_id = ?`).get(id, ownerId) as LinkRow | undefined;

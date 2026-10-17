@@ -1053,3 +1053,17 @@ Decision:
 - **Fail-safe.** The reporter sends with a plain `fetch` (not the API client, which would redirect to the login on a 401), drops a report whose sending fails, and ignores errors raised while it is reporting. Vue's `errorHandler` still logs to the console.
 
 Why: the route name, the bundle and the user agent are what #291/#295 lacked; anything that could name a file or open a link stays out of the log. Redacting on the server too means a modified or old client cannot write a path into the log.
+
+## 2026-10-17: "My shares", one page for the owner's links and shares (#299)
+
+Question: the issue leaves open one endpoint or two, paging, the page's address and layout, what "edit" opens, whether revoked or orphaned entries show, and how a share is removed.
+
+Decision:
+- **Two plain lists.** `GET /api/v1/links/mine` (every public link of the caller with its `source`, `path` and `type`) and `GET /api/v1/shares/outgoing` (every share the caller granted, with item, grantee, access and `orphaned`), newest first, no cursor: a member has few. Only rows with the caller as owner; another member's never appear, whatever the source.
+- **Orphaned entries stay**, marked, so the owner can revoke or remove them (as in the share dialog); a revoked link or removed share is gone, since the row is deleted.
+- **Page** `/my-shares`, "Meine Freigaben"/"My shares", under "Collections" right after "Shared with me". Two sections in hairline rows: "Public links" (item link and location, label, password, expiry, downloads of max, the address; Copy, Edit, Revoke) and "Shared with members" (item, member, access pill; Remove access). One empty sentence when both are empty, a short note when only one is.
+- **Edit** opens the item's own share dialog (`ShareDialog`, links and access), the same the folder view opens; the page reloads when it closes. **Revoke** asks first, as in the dialog (#232); **Remove access** does not, as in the dialog.
+- **The item** opens like a favourite: a folder opens itself, a file its folder with the file selected.
+- **Class names** are `mine-*` plus the existing `fs-entry-list`/`fs-link-rows`: none matches the generic cosmetic rules (#295).
+
+Why: two endpoints reuse the existing routes' meaning (`links`, `shares/outgoing` beside `shares/incoming`) without a merged type; a cursor is YAGNI for a handful of rows. Reusing the share dialog for edit keeps one place where a link is changed, so the page and the dialog cannot disagree.

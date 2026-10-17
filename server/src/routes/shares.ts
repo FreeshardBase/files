@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CreateShareRequest, type IncomingShareList, type MemberList, type Share, type ShareList } from '@files/shared';
+import { CreateShareRequest, type IncomingShareList, type MemberList, type OutgoingShareList, type Share, type ShareList } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { getUser } from '../users.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { parseSource, resolveSource } from '../storage/resolveSource.ts';
-import { incomingShares, otherMembers, removeShare, sharesOf, upsertShare } from '../storage/shares.ts';
+import { incomingShares, otherMembers, outgoingShares, removeShare, sharesOf, upsertShare } from '../storage/shares.ts';
 
 const ShareId = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) });
 
@@ -46,6 +46,12 @@ export async function registerShareRoutes(app: FastifyInstance): Promise<void> {
     const q = z.object({ source: z.string().min(1), path: z.string().min(1) }).parse(req.query);
     if (parseSource(q.source).kind === 'share') return { items: [] };
     return { items: sharesOf(db, user.id, q.source, normalizeUserPath(q.path)) };
+  });
+
+  // "My shares" (#299): every share the caller granted, across their sources.
+  app.get('/api/v1/shares/outgoing', async (req): Promise<OutgoingShareList> => {
+    const { user } = requireUser(req);
+    return { items: outgoingShares(db, user.id) };
   });
 
   app.get('/api/v1/shares/incoming', async (req): Promise<IncomingShareList> => {

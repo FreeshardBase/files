@@ -10,7 +10,7 @@ import { useSmartFoldersStore } from './stores/smartFolders.ts';
 
 // The first segment of a page's address and the words it is called by (the sidebar's, or the page's own heading).
 const PAGES: Record<string, string> = {
-  favourites: 'nav.favourites', recent: 'nav.recent', shared: 'nav.shared', connections: 'nav.connections',
+  favourites: 'nav.favourites', recent: 'nav.recent', shared: 'nav.shared', 'my-shares': 'nav.myShares', connections: 'nav.connections',
   trash: 'nav.trash', storage: 'nav.storage', duplicates: 'nav.duplicates', members: 'nav.members',
   settings: 'nav.settings', migrate: 'nav.migrate', requests: 'nav.requests', 'share-target': 'shareTarget.title',
   'signed-out': 'signedOut.title',

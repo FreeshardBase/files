@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { CreateLinkRequest, LinkToken, UnlockRequest, UpdateLinkRequest, type ErrorCode, type PublicLinkInfo,
+import { CreateLinkRequest, LinkToken, UnlockRequest, UpdateLinkRequest, type ErrorCode, type MyLinkList, type PublicLinkInfo,
   type PublicLinkList } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
@@ -10,7 +10,7 @@ import { readRanged, sendContent } from '../http/content.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { ownerSource, parseSource, resolveSource } from '../storage/resolveSource.ts';
 import { ShareBackend } from '../storage/shares.ts';
-import { createLink, hashPassword, isExpired, linkByToken, linksOf, ownLink, parseExpiry, passwordStamp, removeLink,
+import { createLink, hashPassword, isExpired, linkByToken, linksOf, linksOfOwner, ownLink, parseExpiry, passwordStamp, removeLink,
   takeDownload, toPublicLink, updateLink, verifyPassword, type LinkRow } from '../storage/publicLinks.ts';
 const LinkId = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) });
 // How long an entered password holds, for this link only.
@@ -48,6 +48,12 @@ export async function registerLinkRoutes(app: FastifyInstance, perIp: AttemptLim
     const { user } = requireUser(req);
     const q = z.object({ source: z.string().min(1), path: z.string().min(1) }).parse(req.query);
     return { items: linksOf(db, user.id, q.source, normalizeUserPath(q.path)).map(toPublicLink) };
+  });
+
+  // "My shares" (#299): all of the caller's links with the item each opens, across every source. Links are few.
+  app.get('/api/v1/links/mine', async (req): Promise<MyLinkList> => {
+    const { user } = requireUser(req);
+    return { items: linksOfOwner(db, user.id).map((r) => ({ ...toPublicLink(r), source: r.source, path: r.path, type: r.type })) };
   });
 
   app.patch('/api/v1/links/:id', async (req) => {

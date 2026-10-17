@@ -35,6 +35,7 @@
     "sources": "Places",
     "recent": "Recent",
     "shared": "Shared with me",
+    "myShares": "My shares",
     "trash": "Trash",
     "connections": "Cloud accounts",
     "connection": "{provider}: {account}",
@@ -539,6 +540,17 @@
     "remove": "Remove from list",
     "removeLabel": "Remove {name} from the list",
     "removed": "“{name}” removed from the list"
+  },
+  "myShares": {
+    "title": "My shares",
+    "empty": "You have not shared anything yet. Public links and shares with members you create show up here.",
+    "noLinks": "No public links.",
+    "noShares": "Nothing shared with members.",
+    "sharesHeading": "Shared with members",
+    "openLabel": "Open {name}",
+    "remove": "Remove access",
+    "removeLabel": "Remove access of {member} to {name}",
+    "removed": "{member} no longer has access to “{name}”"
   },
   "link": {
     "heading": "Public links",

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import type { Access, CollisionPolicy, Entry, IncomingShare, Member, Share, ThumbSize } from '@files/shared';
+import type { Access, CollisionPolicy, Entry, IncomingShare, Member, OutgoingShare, Share, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 import type { Db } from '../db.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
@@ -46,6 +46,14 @@ export function sharesOf(db: Db, ownerId: string, source: string, path: string):
     WHERE s.owner_id = ? AND s.source = ? AND s.path = ? AND s.orphaned_at IS NULL
     ORDER BY u.display_name COLLATE NOCASE, s.id`).all(ownerId, source, path) as (Named & Pick<ShareRow, 'id' | 'grantee_id' | 'access' | 'created_at'>)[];
   return rows.map((r) => ({ id: r.id, grantee: member(r.grantee_id, r), access: r.access, createdAt: r.created_at }));
+}
+
+/** Every share the owner granted across their sources, orphaned ones included, newest first ("My shares", #299). */
+export function outgoingShares(db: Db, ownerId: string): OutgoingShare[] {
+  const rows = db.prepare(`SELECT ${COLUMNS.split(', ').map((c) => `s.${c}`).join(', ')}, u.display_name FROM shares s
+    JOIN users u ON u.id = s.grantee_id WHERE s.owner_id = ? ORDER BY s.created_at DESC, s.id`).all(ownerId) as (ShareRow & Named)[];
+  return rows.map((r) => ({ id: r.id, source: r.source, path: r.path, type: r.type, grantee: member(r.grantee_id, r),
+    access: r.access, createdAt: r.created_at, orphaned: r.orphaned_at !== null }));
 }
 
 /** "Shared with me": every share granted to the member, newest first. Only the item's own name is revealed. */
