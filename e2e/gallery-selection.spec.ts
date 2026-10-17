@@ -53,7 +53,9 @@ test('gallery: click opens, Ctrl/Shift+click and Space select, hover shows the c
   await expect(check(page, 'd.txt')).toBeHidden(); // neither selected, hovered nor focused
   await page.mouse.move(0, 0);
   await expect(check(page, 'b.txt')).toBeVisible(); // a selected tile keeps its checkbox
-  await expect(bar(page).getByRole('button', { name: 'Rename' })).toHaveCount(0); // three selected
+  // Three selected: no single rename, the batch rename instead (#215).
+  await expect(bar(page).getByRole('button', { name: 'Rename', exact: true })).toHaveCount(0);
+  await expect(bar(page).getByRole('button', { name: 'Rename…', exact: true })).toBeVisible();
 
   // Space toggles the focused tile and does not open the preview; the checkbox shows on focus.
   await tile(page, 'd.txt').focus();
@@ -130,7 +132,9 @@ test('gallery on a phone: long-press selects, taps on the checkbox add to it, th
   const cdp = await page.context().newCDPSession(page);
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-  await page.waitForTimeout(800);
+  // Held until the press has selected: on a busy renderer Chromium runs the queued touchEnd before the long-press
+  // timer, so a fixed wait would release too early.
+  await expect(check(page, 'b.txt')).toBeChecked();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect(check(page, 'b.txt')).toBeChecked();
   await expect(page.getByRole('dialog')).toHaveCount(0);

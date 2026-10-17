@@ -20,6 +20,12 @@ export type DropboxItem = { id: string; name: string; path: string; folder: bool
   modified: string; revisions: { rev: string; modified: string; size: number; content?: Content }[]; thumbnail?: boolean };
 type Session = { received: number; parts: Buffer[]; md5: ReturnType<typeof createHash> };
 
+/** Dropbox's `content_hash` (#216): the SHA-256 of the SHA-256 digests of the file's 4 MiB blocks; only kept bytes have one here. */
+export function contentHash(data: Buffer): string {
+  const digests: Buffer[] = [];
+  for (let at = 0; at < data.length; at += 4 * 1024 * 1024) digests.push(createHash('sha256').update(data.subarray(at, at + 4 * 1024 * 1024)).digest());
+  return createHash('sha256').update(Buffer.concat(digests)).digest('hex');
+}
 const sizeOf = (c?: Content) => (c === undefined ? 0 : c.kind === 'bytes' ? c.data.length : c.size);
 const lower = (p: string) => p.toLowerCase();
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/'));
@@ -107,7 +113,8 @@ export class FakeDropbox {
    */
   private plain(i: DropboxItem) {
     const base = { name: i.name, id: i.id, path_lower: lower(i.path), path_display: i.path };
-    return i.folder ? base : { ...base, rev: i.rev, size: sizeOf(i.content), server_modified: i.modified, client_modified: i.modified };
+    return i.folder ? base : { ...base, rev: i.rev, size: sizeOf(i.content), server_modified: i.modified, client_modified: i.modified,
+      ...(i.content?.kind === 'bytes' ? { content_hash: contentHash(i.content.data) } : {}) };
   }
 
   /** Moves or copies the item at `from` (and everything beneath it) to `to`. */

@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import type { CollisionPolicy, Entry, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
+import { RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import type { OAuthClient, Provider } from './oauth.ts';
@@ -268,8 +268,10 @@ export class GoogleDriveBackend implements StorageBackend {
 
   private entry(f: DriveFile, path: string, name: string): Entry {
     const dir = isFolder(f);
-    return { name, path, type: dir ? 'directory' : 'file', size: dir || isNative(f) ? 0 : Number(f.size ?? 0),
-      modified: new Date(f.modifiedTime).toISOString(), ...(dir ? {} : { mime: lookupMime(name) }) };
+    // Drive's MD5 of a stored file (none for a folder or a Google-native document), for the duplicate finder (#216).
+    return withHash({ name, path, type: dir ? 'directory' : 'file', size: dir || isNative(f) ? 0 : Number(f.size ?? 0),
+      modified: new Date(f.modifiedTime).toISOString(), ...(dir ? {} : { mime: lookupMime(name) }) },
+      !dir && f.md5Checksum ? { algorithm: 'md5', value: f.md5Checksum.toLowerCase() } : undefined);
   }
 
   /** Drive's own name for `f` when it is to be called `name` (the id marker and an added export extension removed). */

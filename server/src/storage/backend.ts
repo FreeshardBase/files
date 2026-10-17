@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { CollisionPolicy, Entry, ProviderQuota, ThumbSize } from '@files/shared';
+import type { CollisionPolicy, Entry, HashAlgorithm, ProviderQuota, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 
 export type ByteRange = { start: number; end: number };
@@ -74,6 +74,20 @@ export interface StorageBackend {
 }
 
 export type Revision = { id: string; modified: string; size?: number; current?: boolean };
+
+/** A provider's own hash of a file's bytes, as it lists it (#216): Drive's MD5, Dropbox's content hash, Graph's SHA-1 or quickXorHash. */
+export type ContentHash = { algorithm: Exclude<HashAlgorithm, 'sha256'>; value: string };
+
+// Kept beside the entry, never in it: an entry is sent as JSON (to a public link's visitor too), and the algorithm would
+// name the provider behind the link (spec §3.5).
+const hashes = new WeakMap<Entry, ContentHash>();
+/** Attaches the provider's hash to an entry a cloud backend lists or stats; returns the entry. */
+export function withHash(entry: Entry, hash: ContentHash | undefined): Entry {
+  if (hash) hashes.set(entry, hash);
+  return entry;
+}
+/** The provider's hash of a listed or stat'ed file, if its backend reported one. */
+export const hashOf = (entry: Entry): ContentHash | undefined => hashes.get(entry);
 
 /** One of the member's own cloud connections, searched and addressed as the source `conn:<id>`. */
 export type ConnectedBackend = { id: string; backend: StorageBackend };

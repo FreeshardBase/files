@@ -9,9 +9,7 @@ import { resolveSource, type Access } from '../storage/resolveSource.ts';
 import { CONTENT_CSP, disposition, readRanged, sendContent } from '../http/content.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { zipStream, type ZipRoot } from '../storage/zip.ts';
-import { deleteFavourites, moveFavourites } from '../storage/favourites.ts';
-import { deleteTags, moveTags } from '../storage/tags.ts';
-import { deleteComments, keysOf, moveComments } from '../storage/comments.ts';
+import { followDelete, followMove } from '../storage/followRefs.ts';
 import { requireUser } from '../auth/guard.ts';
 
 const PathQ = z.object({ path: z.string().min(1) });
@@ -134,23 +132,14 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(await b.mkdir(body.path));
   });
 
-  // Rename is a move within the same folder. In the home the caller's favourites and tags follow inside the move's
-  // transaction (PATH_TABLES); in another source the provider has no transaction, so they follow once the move is done
-  // (#155, #212). Comment threads (#213) hang off the owner's item: in the owner's home (also through a share) they are
-  // in PATH_TABLES, in a cloud they follow here, also when a grantee moves inside a share.
+  // Rename is a move within the same folder. Favourites, tags and comment threads follow the item (`followMove`).
   app.post('/api/v1/sources/:source/move', async (req) => {
     const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = TransferRequest.parse(req.body);
     const userId = requireUser(req).user.id;
-    const keyOf = keysOf(app.deps.db, userId, source);
     const entry = await b.move(body.from, body.to, body.onCollision);
-    const from = normalizeUserPath(body.from);
-    moveComments(app.deps.db, keyOf(from), keyOf(entry.path));
-    if (source !== 'home') {
-      moveFavourites(app.deps.db, userId, source, from, entry.path);
-      moveTags(app.deps.db, userId, source, from, entry.path);
-    }
+    followMove(app.deps.db, userId, source, normalizeUserPath(body.from), entry.path);
     return entry;
   });
 
@@ -160,22 +149,15 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(await b.copy(body.from, body.to, body.onCollision));
   });
 
-  // Moves every path to the trash in one transaction: all or nothing. Favourites and tags go as with a move (#155, #212);
-  // in the home the tags wait in the trash with their item. So do comment threads in the owner's home; a cloud's are
-  // deleted with the item (#213).
+  // Moves every path to the trash in one transaction: all or nothing. Favourites, tags and comment threads go with the
+  // items (`followDelete`).
   app.post('/api/v1/sources/:source/delete', async (req, reply) => {
     const { source } = z.object({ source: z.string() }).parse(req.params);
     const b = await backendFor(req, 'edit');
     const body = DeleteRequest.parse(req.body);
     const userId = requireUser(req).user.id;
-    const keyOf = keysOf(app.deps.db, userId, source);
     await b.delete(body.paths);
-    const paths = body.paths.map(normalizeUserPath);
-    deleteComments(app.deps.db, paths.map(keyOf));
-    if (source !== 'home') {
-      deleteFavourites(app.deps.db, userId, source, paths);
-      deleteTags(app.deps.db, userId, source, paths);
-    }
+    followDelete(app.deps.db, userId, source, body.paths.map(normalizeUserPath));
     return reply.status(204).send();
   });
 }

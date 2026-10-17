@@ -35,6 +35,8 @@ Name search answers from an index that the app keeps up to date on every change 
 
 Smart folders (saved searches) and the tag view ask every source when they are opened; `FILES_SOURCE_TIMEOUT_MS` (default 10 000) is how long one source may take before it is shown as failed.
 
+The duplicate finder hashes home files at most at `FILES_DUPLICATE_SCAN_BYTES_PER_SECOND` (default 33 554 432, 32 MiB/s), one file at a time, so a scan does not slow the shard down.
+
 ## Container and the `/data` volume
 
 Configuration comes from the environment; `cp .env.example .env` and fill in the required values. A missing or invalid value stops startup with a list of what is wrong.

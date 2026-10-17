@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import type { CollisionPolicy, Entry, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
+import { RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import type { OAuthClient, Provider } from './oauth.ts';
@@ -40,7 +40,7 @@ const MAX_LIST_LIMIT = 2000;
 const THUMB_TAGS = [[128, 'w128h128'], [256, 'w256h256'], [640, 'w640h480'], [1024, 'w1024h768']] as const;
 
 const File = z.object({ '.tag': z.literal('file'), name: z.string(), path_lower: z.string(), path_display: z.string(), id: z.string(),
-  rev: z.string(), size: z.number().int().nonnegative(), server_modified: z.string() });
+  rev: z.string(), size: z.number().int().nonnegative(), server_modified: z.string(), content_hash: z.string().optional() });
 const Folder = z.object({ '.tag': z.literal('folder'), name: z.string(), path_lower: z.string(), path_display: z.string(), id: z.string() });
 // Results typed `FileMetadata`/`FolderMetadata` (not the `Metadata` union) carry no `.tag`: the download result header,
 // upload_session/finish, list_revisions entries, restore and create_folder_v2. These schemas add it back.
@@ -143,7 +143,9 @@ export class DropboxBackend implements StorageBackend {
   /** Dropbox reports no time for a folder, so a folder's entry has none rather than a made-up one. */
   private entry(i: Item, path: string, name = i.name): Entry {
     if (i['.tag'] === 'folder') return { name, path, type: 'directory', size: 0 };
-    return { name, path, type: 'file', size: i.size, modified: new Date(i.server_modified).toISOString(), mime: lookupMime(name) };
+    // Dropbox's content hash, for the duplicate finder (#216).
+    return withHash({ name, path, type: 'file', size: i.size, modified: new Date(i.server_modified).toISOString(), mime: lookupMime(name) },
+      i.content_hash ? { algorithm: 'dropbox', value: i.content_hash } : undefined);
   }
   /** The entry of an item that now lives in `dir`, under Dropbox's name for it (which carries its case). */
   private placed(i: Item, dir: string): Entry { return this.entry(i, posix.join(dir, i.name)); }

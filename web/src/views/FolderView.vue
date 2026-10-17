@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { SORT_KEYS, type CollisionPolicy, type Entry, type ErrorCode, type Sort, type SortKey } from '@files/shared';
+import { SORT_KEYS, type CollisionPolicy, type Entry, type ErrorCode, type RenameRequest, type Sort, type SortKey } from '@files/shared';
 import { join, useFolderStore } from '../stores/folder.ts';
 import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
@@ -17,6 +17,7 @@ import UploadPanel from '../components/UploadPanel.vue';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import RenameDialog from '../components/RenameDialog.vue';
 import NewFolderDialog from '../components/NewFolderDialog.vue';
+import BatchRenameDialog from '../components/BatchRenameDialog.vue';
 import PreviewDialog from '../components/PreviewDialog.vue';
 import GalleryGrid from '../components/GalleryGrid.vue';
 import ActionToast, { type Toast } from '../components/ActionToast.vue';
@@ -397,6 +398,31 @@ async function rename(name: string) {
   await settle(at);
 }
 
+// Batch rename (#215) of a selection of more than one item: the dialog numbers them in the order the list shows them,
+// previews the server's plan and starts one job, which reports in the transfer panel; the folder relists when it ends.
+const batchRenaming = ref<{ source: string; dir: string; entries: Entry[]; error: string | null; busy: boolean } | null>(null);
+function openBatchRename() {
+  const chosen = new Set(selected.value);
+  batchRenaming.value = { source: folder.source, dir: folder.path, entries: entries.value.filter((e) => chosen.has(e.path)),
+    error: null, busy: false };
+}
+async function batchRename(req: RenameRequest) {
+  const b = batchRenaming.value!;
+  b.error = null; b.busy = true;
+  let job;
+  try {
+    job = await transfers.rename(req);
+  } catch (err) {
+    if (!(err instanceof ApiFailure)) throw err;
+    b.error = t(`errors.${err.code}`); b.busy = false;
+    return;
+  }
+  batchRenaming.value = null;
+  failures.value = null;
+  selected.value = [];
+  say(t('transfers.started.rename', { count: job.total }, job.total));
+}
+
 // Tags (#212): the chips of this folder's items come with every listing; "Add tag" puts one tag on the whole selection
 // (all or nothing), and a refusal stays in the dialog with the typed name.
 const tagStore = useTagsStore();
@@ -631,6 +657,14 @@ function onDrop(paths: string[], dir: string) {
               {{ $t('actions.rename') }}
             </button>
             <button
+              v-else
+              type="button"
+              class="button batch-rename-button"
+              @click="openBatchRename"
+            >
+              {{ $t('batchRename.button') }}
+            </button>
+            <button
               type="button"
               class="button"
               @click="onAction('cut', selectedEntries)"
@@ -702,6 +736,16 @@ function onDrop(paths: string[], dir: string) {
       :busy="renaming.busy"
       @submit="rename"
       @cancel="renaming = null"
+    />
+    <BatchRenameDialog
+      v-if="batchRenaming"
+      :source="batchRenaming.source"
+      :dir="batchRenaming.dir"
+      :entries="batchRenaming.entries"
+      :error="batchRenaming.error"
+      :busy="batchRenaming.busy"
+      @submit="batchRename"
+      @cancel="batchRenaming = null"
     />
     <NewFolderDialog
       v-if="creating"

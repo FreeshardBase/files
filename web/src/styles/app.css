@@ -1124,3 +1124,30 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   .share-radio, .settings-radio { min-height: 44px; }
 }
 .file-list .check-target { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+
+/* ---- Batch rename (#215): the rules in a grid over the preview table, which scrolls inside the wide dialog ---- */
+.batch-rename { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.batch-rename-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0 var(--space-4); }
+.batch-rename .fs-field__hint { font-size: var(--fs-small); color: var(--ink-muted); }
+.batch-rename-preview { flex: 1 1 auto; min-height: 8rem; max-height: 45vh; overflow: auto; border-top: var(--border-w) solid var(--line); }
+.batch-rename-table { width: 100%; }
+.batch-rename-table td { overflow-wrap: anywhere; }
+.batch-rename-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.batch-rename-flag { color: var(--danger); }
+.batch-rename-status { min-height: 1.5em; margin: var(--space-2) 0 0; font-size: var(--fs-small); color: var(--ink-muted); }
+
+/* ---- Duplicates (#216): one group per card, its copies as rows with a checkbox, a thumbnail and where they are ---- */
+.duplicates-sources { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); border: 0; padding: 0; margin: 0 0 var(--space-3); }
+.duplicates-note { color: var(--ink-muted); font-size: var(--fs-small); margin: 0 0 var(--space-4); }
+.duplicates-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-4); }
+.duplicates-progress { margin-bottom: var(--space-4); }
+.duplicate-group { border: var(--border-w) solid var(--line); border-radius: var(--radius-tile); padding: var(--space-3); margin-bottom: var(--space-3); }
+.duplicate-group h2 { font-size: var(--fs-body); font-weight: 600; margin: 0 0 var(--space-2); }
+.duplicate-copy { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; }
+.duplicate-copy + .duplicate-copy { border-top: var(--border-w) solid var(--line); }
+.duplicate-thumb { width: 48px; height: 48px; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); border-radius: var(--radius-control); overflow: hidden; }
+.duplicate-thumb img { max-width: 100%; max-height: 100%; object-fit: cover; }
+.duplicate-info { min-width: 0; display: flex; flex-direction: column; }
+.duplicate-info .name { overflow-wrap: anywhere; }
+.duplicate-info .origin { color: var(--ink-muted); font-size: var(--fs-small); overflow-wrap: anywhere; }

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
-import { openDb } from '../src/db.ts';
+import { DEFAULT_MIGRATIONS, openDb } from '../src/db.ts';
 
 const dbTs = fileURLToPath(new URL('../src/db.ts', import.meta.url));
 
@@ -17,8 +17,41 @@ describe('openDb', () => {
     openDb(file).close();
     const again = openDb(file);
     try {
-      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }]);
+      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }, { name: '023_rename_jobs.sql' }, { name: '024_content_hashes.sql' }]);
     } finally { again.close(); }
+  });
+
+  it('keeps every transfer job and item when it rebuilds the tables for rename jobs (#215), with their references', () => {
+    // A database migrated up to 022 that holds a migration, its cleanup and their items.
+    const dir = tmp();
+    mkdirSync(join(dir, 'm'));
+    for (const f of readdirSync(DEFAULT_MIGRATIONS).filter((n) => n < '023')) copyFileSync(join(DEFAULT_MIGRATIONS, f), join(dir, 'm', f));
+    const file = join(dir, 'f.db');
+    const old = openDb(file, join(dir, 'm'));
+    old.prepare(`INSERT INTO users (id, iss, sub, display_name, role, created_at, last_login)
+      VALUES ('u1', 'https://idp.example.com', 'testuser', 'Test User', 'member', 'now', 'now')`).run();
+    const job = old.prepare(`INSERT INTO transfer_jobs (id, user_id, kind, origin, mode, from_source, to_source, dir, status, created_at)
+      VALUES (?, 'u1', ?, ?, ?, 'conn:x', 'home', '/', 'completed', '2026-10-17T00:00:00.000Z')`);
+    job.run('a'.repeat(32), 'migration', null, 'copy');
+    job.run('b'.repeat(32), 'cleanup', 'a'.repeat(32), 'move');
+    old.prepare(`INSERT INTO transfer_items (job_id, seq, from_path, to_path, on_collision, type, placed, status, bytes, sha256, verified)
+      VALUES (?, 0, '/x.txt', '/M/x.txt', 'fail', 'file', '/M/x.txt', 'done', 3, 'abc', 'size sha256')`).run('a'.repeat(32));
+    old.close();
+
+    const db = openDb(file);
+    try {
+      expect(db.prepare('SELECT id, kind, origin, mode FROM transfer_jobs ORDER BY id').all()).toEqual([
+        { id: 'a'.repeat(32), kind: 'migration', origin: null, mode: 'copy' }, { id: 'b'.repeat(32), kind: 'cleanup', origin: 'a'.repeat(32), mode: 'move' }]);
+      expect(db.prepare('SELECT job_id, placed, bytes, sha256, verified FROM transfer_items').all())
+        .toEqual([{ job_id: 'a'.repeat(32), placed: '/M/x.txt', bytes: 3, sha256: 'abc', verified: 'size sha256' }]);
+      expect(db.pragma('foreign_key_check')).toEqual([]);
+      // A rename job is allowed now; the references still act: deleting a job takes its items and clears an origin.
+      db.prepare(`INSERT INTO transfer_jobs (id, user_id, kind, mode, from_source, to_source, dir, status, created_at)
+        VALUES (?, 'u1', 'rename', 'move', 'home', 'home', '/', 'running', 'now')`).run('c'.repeat(32));
+      db.prepare('DELETE FROM transfer_jobs WHERE id = ?').run('a'.repeat(32));
+      expect(db.prepare('SELECT count(*) FROM transfer_items').pluck().get()).toBe(0);
+      expect(db.prepare('SELECT origin FROM transfer_jobs WHERE id = ?').pluck().get('b'.repeat(32))).toBeNull();
+    } finally { db.close(); }
   });
 
   it('enables WAL and foreign keys', () => {

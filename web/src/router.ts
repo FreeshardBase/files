@@ -11,6 +11,7 @@ import ConnectionsView from './views/ConnectionsView.vue';
 import MigrateView from './views/MigrateView.vue';
 import MigrationJobView from './views/MigrationJobView.vue';
 import StorageView from './views/StorageView.vue';
+import DuplicatesView from './views/DuplicatesView.vue';
 import MembersView from './views/MembersView.vue';
 import SettingsView from './views/SettingsView.vue';
 import ShareTargetView from './views/ShareTargetView.vue';
@@ -25,7 +26,7 @@ export const isPublicPage = (pathname: string): boolean =>
   pathname === SIGNED_OUT_PATH || /^\/[sr]\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
-// `/favourites`, `/tags`, `/smart`, `/shared`, `/connections`, `/storage`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
+// `/favourites`, `/tags`, `/smart`, `/shared`, `/connections`, `/storage`, `/duplicates`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
 // under their source.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
@@ -41,6 +42,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/trash', component: TrashView },
   // The storage overview for every member, and the admin's page of members and quotas (#156).
   { path: '/storage', component: StorageView },
+  // The duplicate finder (#216).
+  { path: '/duplicates', component: DuplicatesView },
   { path: '/members', component: MembersView },
   // Settings (#157): the WebDAV address and the member's app passwords.
   { path: '/settings', component: SettingsView },

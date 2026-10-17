@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { CreateTransferRequest, TransferJob } from '@files/shared';
+import type { CreateTransferRequest, RenameRequest, TransferJob } from '@files/shared';
 import { api } from '../api/client.ts';
 
 let events: EventSource | null = null;
@@ -34,6 +34,12 @@ export const useTransfersStore = defineStore('transfers', {
     },
     async start(req: CreateTransferRequest): Promise<TransferJob> {
       const job = await api.post<TransferJob>('/api/v1/transfers', req);
+      this.apply(job);
+      return job;
+    },
+    /** A batch rename (#215): the job the server started from the plan the dialog showed. */
+    async rename(req: RenameRequest): Promise<TransferJob> {
+      const job = await api.post<TransferJob>('/api/v1/renames', req);
       this.apply(job);
       return job;
     },

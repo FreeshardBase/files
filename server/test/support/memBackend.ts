@@ -3,7 +3,7 @@ import { posix } from 'node:path';
 import { Readable } from 'node:stream';
 import type { CollisionPolicy, Entry } from '@files/shared';
 import { AppError } from '../../src/errors.ts';
-import type { ByteRange, StorageBackend, WriteOptions } from '../../src/storage/backend.ts';
+import { withHash, type ByteRange, type StorageBackend, type WriteOptions } from '../../src/storage/backend.ts';
 
 let tick = 0;
 /** A modified time that is new on every write, so a file changed later is told apart from the one migrated (#153). */
@@ -14,7 +14,9 @@ const nextTime = () => new Date(1_700_000_000_000 + ++tick * 1000).toISOString()
  * catch. `lieSize` makes `stat`/`read` claim more bytes than the stream carries; `truncateWrites` and `corruptWrites`
  * make `write` succeed while storing fewer or different bytes; `stall` holds a path's read stream after its first
  * chunk until `release`; `reads` counts reads per path. `digest` is offered only with `withDigest`. With `withMd5`,
- * `read` reports the file's MD5 like Google Drive does (#153); `lieMd5` makes it report the MD5 of other bytes.
+ * `read` reports the file's MD5 like Google Drive does (#153); `lieMd5` makes it report the MD5 of other bytes. With
+ * `listHash`, `list` and `stat` attach the file's MD5 as the provider's listed hash (#216); `noHash` leaves paths without
+ * one. `move` (#215) honours the collision policy; `failMove` makes the move of a path fail with PROVIDER_UNAVAILABLE.
  */
 export class MemBackend implements StorageBackend {
   files = new Map<string, Buffer>();
@@ -29,12 +31,17 @@ export class MemBackend implements StorageBackend {
   /** `write` stores whatever arrives, whatever size was declared (a provider that does not check). */
   ignoreSize = false;
   private stalls = new Map<string, { release: () => void; promise: Promise<void> }>();
+  failMove = new Set<string>();
+  noHash = new Set<string>();
+  moves: string[] = [];
   private withMd5: boolean;
+  private listHash: boolean;
   digest?: (path: string) => Promise<string>;
 
-  constructor(o: { withDigest?: boolean; withMd5?: boolean } = {}) {
+  constructor(o: { withDigest?: boolean; withMd5?: boolean; listHash?: boolean } = {}) {
     if (o.withDigest) this.digest = async (p) => createHash('sha256').update(this.fileOf(p)).digest('hex');
     this.withMd5 = o.withMd5 ?? false;
+    this.listHash = o.listHash ?? false;
   }
 
   put(path: string, data: string | Buffer): this {
@@ -60,7 +67,8 @@ export class MemBackend implements StorageBackend {
     const name = posix.basename(p) || 'root';
     if (this.dirs.has(p)) return { name, path: p, type: 'directory', size: 0, modified: new Date(0).toISOString() };
     const f = this.fileOf(p);
-    return { name, path: p, type: 'file', size: this.lieSize.get(p) ?? f.length, modified: this.mtimes.get(p)! };
+    const entry: Entry = { name, path: p, type: 'file', size: this.lieSize.get(p) ?? f.length, modified: this.mtimes.get(p)! };
+    return this.listHash && !this.noHash.has(p) ? withHash(entry, { algorithm: 'md5', value: createHash('md5').update(f).digest('hex') }) : entry;
   }
 
   async list(path: string) {
@@ -105,7 +113,19 @@ export class MemBackend implements StorageBackend {
     this.dirs.add(path);
     return this.entry(path);
   }
-  async move(_from: string, _to: string, _c: CollisionPolicy): Promise<Entry> { throw new Error('not used'); }
+  async move(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
+    this.moves.push(from);
+    if (this.failMove.has(from)) throw new AppError('PROVIDER_UNAVAILABLE');
+    if (!this.files.has(from)) throw new AppError(this.dirs.has(from) ? 'NOT_SUPPORTED' : 'NOT_FOUND');
+    if (this.files.has(to) || this.dirs.has(to)) {
+      if (onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: posix.basename(to) });
+      if (onCollision === 'keep-both') to = to.replace(/(\.[^./]*)?$/, ' (1)$1');
+      else await this.delete([to]);
+    }
+    this.files.set(to, this.files.get(from)!); this.mtimes.set(to, this.mtimes.get(from)!);
+    this.files.delete(from); this.mtimes.delete(from);
+    return this.entry(to);
+  }
   async copy(_from: string, _to: string, _c: CollisionPolicy): Promise<Entry> { throw new Error('not used'); }
   async delete(paths: readonly string[]): Promise<void> {
     for (const p of paths) {

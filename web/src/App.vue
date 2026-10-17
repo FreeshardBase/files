@@ -374,6 +374,16 @@ onMounted(async () => {
                 {{ $t('nav.storage') }}
               </RouterLink>
               <RouterLink
+                to="/duplicates"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-file"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.duplicates') }}
+              </RouterLink>
+              <RouterLink
                 v-if="session.me?.role === 'admin'"
                 to="/members"
                 active-class="active"

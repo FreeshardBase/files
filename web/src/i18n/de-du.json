@@ -41,6 +41,7 @@
     "favourites": "Favoriten",
     "storage": "Speicherbelegung",
     "members": "Mitglieder",
+    "duplicates": "Doppelte Dateien",
     "settings": "Einstellungen",
     "requests": "Dateianfragen",
     "requestsNew": "eine neue Datei | {count} neue Dateien",
@@ -731,7 +732,92 @@
     "SOURCE_TIMEOUT": "Dieser Ort hat zu lange nicht geantwortet.",
     "SEARCH_NEEDS_NAME": "Dieser Ort lässt sich nur nach einem Namensteil oder einem Tag durchsuchen.",
     "SMART_FOLDER_LIMIT": "Du kannst höchstens {max} intelligente Ordner anlegen.",
-    "COMMENT_INVALID": "Ein Kommentar braucht Text mit höchstens {max} Zeichen, ohne Steuerzeichen."
+    "COMMENT_INVALID": "Ein Kommentar braucht Text mit höchstens {max} Zeichen, ohne Steuerzeichen.",
+    "RENAME_CONFLICT": "Einige neue Namen sind vergeben oder nicht erlaubt. Wähle für jeden markierten Namen, was passieren soll.",
+    "SCAN_RUNNING": "Eine Suche nach doppelten Dateien läuft schon.",
+    "DUPLICATE_CHANGED": "Seit der Suche geändert, deshalb behalten.",
+    "DUPLICATE_LAST_COPY": "Mindestens eine Kopie muss bleiben."
+  },
+  "batchRename": {
+    "button": "Umbenennen …",
+    "title": "Ein Element umbenennen | {count} Elemente umbenennen",
+    "find": "Suchen",
+    "replace": "Ersetzen durch",
+    "case": "Groß- und Kleinschreibung",
+    "cases": {
+      "keep": "Wie bisher",
+      "lower": "alles klein",
+      "upper": "ALLES GROSS",
+      "title": "Jedes Wort Groß"
+    },
+    "numbering": "Nummerieren",
+    "pattern": "Muster",
+    "patternHint": "{n} ist die Nummer, {padded} füllt sie auf drei Stellen auf, {name} ist der Name bis dahin.",
+    "start": "Beginnen bei",
+    "prefix": "Voranstellen",
+    "suffix": "Anhängen",
+    "extension": "Auch die Dateiendung ändern",
+    "preview": "Vorschau",
+    "old": "Bisheriger Name",
+    "new": "Neuer Name",
+    "check": "Prüfung",
+    "ready": "Bereit",
+    "unchanged": "Bleibt gleich",
+    "skipped": "Wird übersprungen",
+    "conflict": {
+      "batch": "Ein anderes ausgewähltes Element bekommt oder hat diesen Namen",
+      "exists": "Ein Element mit diesem Namen gibt es hier schon"
+    },
+    "problem": {
+      "empty": "Der Name ist leer",
+      "slash": "Ein Name darf kein „/“ enthalten",
+      "long": "Der Name ist zu lang",
+      "reserved": "Dieser Name ist reserviert oder endet mit Leerzeichen oder Punkt"
+    },
+    "policyLabel": "Was mit „{name}“ passieren soll",
+    "policy": {
+      "choose": "Bitte wählen …",
+      "replace": "Das andere Element ersetzen",
+      "keepBoth": "Beide behalten (mit Nummer)",
+      "skip": "Dieses Element überspringen"
+    },
+    "checking": "Namen werden geprüft …",
+    "blocked": "Löse zuerst jeden markierten Namen: Wähle, was passieren soll, oder ändere die Regeln oben.",
+    "nothing": "Noch ändert sich kein Name.",
+    "submit": "Ein Element umbenennen | {count} Elemente umbenennen",
+    "cancel": "Abbrechen"
+  },
+  "duplicates": {
+    "title": "Doppelte Dateien",
+    "intro": "Findet Dateien mit gleichem Inhalt. Gelöscht wird nur, was du auswählst, und alles Ausgewählte kommt in den Papierkorb.",
+    "where": "Wo suchen",
+    "cloudNote": "In einer Cloud werden nur Dateien verglichen, für die der Anbieter eine Prüfsumme meldet.",
+    "start": "Doppelte Dateien suchen",
+    "again": "Erneut suchen",
+    "listing": "{files} Dateien durchgesehen …",
+    "hashing": "{hashed} von {candidates} Dateien verglichen …",
+    "progressLabel": "Fortschritt der Suche",
+    "cancel": "Abbrechen",
+    "cancelled": "Die Suche wurde abgebrochen.",
+    "none": "Keine doppelten Dateien gefunden.",
+    "found": "Eine Gruppe gleicher Dateien | {count} Gruppen gleicher Dateien",
+    "incomplete": "Die Suche hat nach {max} Dateien aufgehört, es können also doppelte Dateien fehlen.",
+    "unhashed": "Eine Datei in der Cloud ließ sich nicht vergleichen. | {count} Dateien in der Cloud ließen sich nicht vergleichen.",
+    "failedSource": "{source} ließ sich nicht durchsuchen: {reason}",
+    "groupTitle": "{count} Kopien zu je {size}",
+    "keepOldest": "Älteste behalten, Rest auswählen",
+    "keepNewest": "Neueste behalten, Rest auswählen",
+    "clear": "Nichts auswählen",
+    "pick": "„{name}“ in {location} in den Papierkorb",
+    "oneStays": "Eine Kopie bleibt immer.",
+    "modified": "Geändert am {date}",
+    "trash": "Eine Datei in den Papierkorb | {count} Dateien in den Papierkorb",
+    "confirmTitle": "In den Papierkorb verschieben?",
+    "confirmText": "Eine Datei kommt in den Papierkorb, wo du sie wiederherstellen kannst. Vorher wird sie noch einmal geprüft; hat sie sich seit der Suche geändert, bleibt sie. | {count} Dateien kommen in den Papierkorb, wo du sie wiederherstellen kannst. Jede wird vorher noch einmal geprüft; eine Datei, die sich seit der Suche geändert hat, bleibt.",
+    "confirm": "In den Papierkorb",
+    "trashed": "Eine Datei in den Papierkorb verschoben | {count} Dateien in den Papierkorb verschoben",
+    "keptHeading": "Nicht verschoben:",
+    "keptItem": "{path}: {reason}"
   },
   "versions": {
     "title": "Versionen",
@@ -789,7 +875,8 @@
       "copy": "„{name}“ nach {target} kopieren",
       "move": "„{name}“ nach {target} verschieben",
       "migration": "„{name}“ nach {target} umziehen",
-      "cleanup": "Originale von „{name}“ löschen"
+      "cleanup": "Originale von „{name}“ löschen",
+      "rename": "Elemente in {target} umbenennen"
     },
     "state": {
       "running": "{done} von {total} · {size}",
@@ -803,7 +890,8 @@
     "failedItem": "{path}: {reason}",
     "started": {
       "copy": "Ein Element wird kopiert; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden kopiert; den Fortschritt siehst du unter „Übertragungen“.",
-      "move": "Ein Element wird verschoben; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden verschoben; den Fortschritt siehst du unter „Übertragungen“."
+      "move": "Ein Element wird verschoben; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden verschoben; den Fortschritt siehst du unter „Übertragungen“.",
+      "rename": "Ein Element wird umbenannt; den Fortschritt siehst du unter „Übertragungen“. | {count} Elemente werden umbenannt; den Fortschritt siehst du unter „Übertragungen“."
     },
     "nothingToDo": "Nichts eingefügt: Alle Elemente wurden übersprungen.",
     "summary": "Zusammenfassung",
