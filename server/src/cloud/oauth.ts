@@ -41,7 +41,20 @@ export type Provider = {
    * picks one after the consent, and until then the connection has no files.
    */
   libraries?: LibraryPicker;
+  /**
+   * Set for a provider whose access token never expires and comes without a refresh token (pCloud, #211). Its own
+   * `exchange` trades the code (with the callback's extra parameters) for one credential, which the connection keeps
+   * where others keep their refresh token; `bearer` reads the access token out of it. Nothing is ever refreshed, and
+   * `tokenEndpoint` is not used.
+   */
+  longLived?: {
+    exchange(clock: Clock, p: { code: string; redirectUri: string; callback: CallbackParams }): Promise<string>;
+    bearer(credential: string): string;
+  };
 };
+
+/** What a provider adds to the callback beyond `code` and `state`: pCloud's region (#211). */
+export type CallbackParams = { hostname?: string; locationid?: string };
 
 /** The site and library lookups of the picker; every request goes through the connection's client. */
 export type LibraryPicker = {
@@ -135,7 +148,7 @@ export function authorizationUrl(provider: Provider, p: { redirectUri: string; s
   q.set('response_type', 'code');
   q.set('client_id', provider.clientId);
   q.set('redirect_uri', p.redirectUri);
-  q.set('scope', provider.scopes.join(' '));
+  if (provider.scopes.length > 0) q.set('scope', provider.scopes.join(' '));
   q.set('state', p.state);
   if (p.challenge !== undefined) { q.set('code_challenge', p.challenge); q.set('code_challenge_method', 'S256'); }
   for (const [k, v] of Object.entries(provider.authorizationParams ?? {})) q.set(k, v);
@@ -175,8 +188,18 @@ export class OAuthClient {
 
   /** A valid access token, refreshed first when it is missing or about to expire. */
   async accessToken(): Promise<string> {
+    if (this.provider.longLived) return this.provider.longLived.bearer(this.store.refreshToken());
     if (this.access && this.clock.now() < this.access.expiresAt - EXPIRY_SKEW_MS) return this.access.token;
     return this.refresh();
+  }
+
+  /** The stored credential: a long-lived provider's backend reads its API host from it (pCloud, #211). */
+  credential(): string { return this.store.refreshToken(); }
+
+  /** The provider refused the token in an answer's body (pCloud answers 200 with a `result` code): `reauth`. */
+  refused(): never {
+    this.store.setStatus('reauth');
+    throw new AppError('CONNECTION_REAUTH');
   }
 
   private refresh(): Promise<string> {

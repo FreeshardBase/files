@@ -16,6 +16,9 @@ const CallbackQuery = z.object({
   code: z.string().min(1).max(4096).optional(),
   state: z.string().min(1).max(256).optional(),
   error: z.string().min(1).max(256).optional(),
+  // pCloud's region (#211): the API host is checked against pCloud's two hosts by its provider, never trusted as such.
+  hostname: z.string().max(253).optional(),
+  locationid: z.string().regex(/^\d{1,3}$/).optional(),
 });
 
 /** Where a failed consent sends the browser: the connections page names the error. */

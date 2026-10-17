@@ -62,6 +62,9 @@ const Schema = z.object({
   // The shard's Azure app registration (#151) for OneDrive and SharePoint. Optional as a pair: without it neither is
   // offered. The tenant is part of Microsoft's fixed sign-in URL: `common` (work and personal accounts), `organizations`,
   // `consumers`, or one directory's id or domain for a single-tenant registration.
+  // The shard's pCloud app (#211): its client id and secret. Optional as a pair: without it pCloud is not offered.
+  FILES_PCLOUD_CLIENT_ID: z.string().min(1).optional(),
+  FILES_PCLOUD_CLIENT_SECRET: z.string().min(1).optional(),
   FILES_GRAPH_CLIENT_ID: z.string().min(1).optional(),
   FILES_GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
   FILES_GRAPH_TENANT: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$/, 'must be common, organizations, consumers, a tenant id or a domain')
@@ -75,6 +78,9 @@ const Schema = z.object({
 }).refine((e) => (e.FILES_DROPBOX_CLIENT_ID === undefined) === (e.FILES_DROPBOX_CLIENT_SECRET === undefined), {
   path: ['FILES_DROPBOX_CLIENT_ID'],
   message: 'FILES_DROPBOX_CLIENT_ID and FILES_DROPBOX_CLIENT_SECRET must be set both or neither',
+}).refine((e) => (e.FILES_PCLOUD_CLIENT_ID === undefined) === (e.FILES_PCLOUD_CLIENT_SECRET === undefined), {
+  path: ['FILES_PCLOUD_CLIENT_ID'],
+  message: 'FILES_PCLOUD_CLIENT_ID and FILES_PCLOUD_CLIENT_SECRET must be set both or neither',
 }).refine((e) => (e.FILES_GRAPH_CLIENT_ID === undefined) === (e.FILES_GRAPH_CLIENT_SECRET === undefined), {
   path: ['FILES_GRAPH_CLIENT_ID'],
   message: 'FILES_GRAPH_CLIENT_ID and FILES_GRAPH_CLIENT_SECRET must be set both or neither',
@@ -116,6 +122,9 @@ export function loadConfig(env: Record<string, string | undefined>) {
       : undefined,
     dropbox: e.FILES_DROPBOX_CLIENT_ID !== undefined && e.FILES_DROPBOX_CLIENT_SECRET !== undefined
       ? { clientId: e.FILES_DROPBOX_CLIENT_ID, clientSecret: e.FILES_DROPBOX_CLIENT_SECRET }
+      : undefined,
+    pcloud: e.FILES_PCLOUD_CLIENT_ID !== undefined && e.FILES_PCLOUD_CLIENT_SECRET !== undefined
+      ? { clientId: e.FILES_PCLOUD_CLIENT_ID, clientSecret: e.FILES_PCLOUD_CLIENT_SECRET }
       : undefined,
     graph: e.FILES_GRAPH_CLIENT_ID !== undefined && e.FILES_GRAPH_CLIENT_SECRET !== undefined
       ? { clientId: e.FILES_GRAPH_CLIENT_ID, clientSecret: e.FILES_GRAPH_CLIENT_SECRET, tenant: e.FILES_GRAPH_TENANT }

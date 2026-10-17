@@ -10,7 +10,7 @@ The rendered `design-guide.pdf` has recipes that `docs/design-guide.md` does not
 
 ## Icons
 
-Line icons are SVG on a 24px grid with a 1.5px stroke, stored as data-URI custom properties (`--icon`) in `web/src/styles/app.css` and drawn through a CSS mask on the `.icon` class. The colour therefore comes from the theme tokens, not from the SVG. No emoji, no icon fonts.
+Line icons are SVG on a 24px grid with a 1.5px stroke, stored as data-URI custom properties (`--icon`) in `web/src/styles/app.css` and drawn through a CSS mask on the `.icon` class. The colour therefore comes from the theme tokens, not from the SVG. No emoji, no icon fonts. A provider is never shown by its brand logo: each "Connect …" button in "Cloud accounts" carries the line cloud, and pCloud's carries the cloud with a line "p" in it (`icon-provider-pcloud`, #211).
 
 ## Dialogs
 
