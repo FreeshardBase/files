@@ -52,6 +52,7 @@ import { registerSettingsRoutes } from './routes/settings.ts';
 import { registerRenameRoutes } from './routes/renames.ts';
 import { registerDuplicateRoutes } from './routes/duplicates.ts';
 import { DuplicateFinder } from './storage/duplicates.ts';
+import { registerClientErrorRoutes } from './routes/clientErrors.ts';
 
 declare module 'fastify' {
   /**
@@ -168,6 +169,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerDavRoutes(app);
   await registerShareTargetRoutes(app);
   await registerSettingsRoutes(app);
+  await registerClientErrorRoutes(app);
   app.setNotFoundHandler((req, reply) => {
     if (!req.user) {
       return reply.status(401).send({ code: 'UNAUTHENTICATED' });

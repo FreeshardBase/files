@@ -1039,3 +1039,17 @@ Question: Brave's shields apply Fanboy's Social and Annoyance lists, whose gener
 Decision: `share-list` becomes `fs-entry-list` and `share-heading` becomes `fs-section-heading`, everywhere they were used. `link-list` (LinkManager) becomes `fs-link-rows`, since the issue names "link-list" as a word to avoid; no current rule names it. The other `share-*` classes (`share-name`, `share-level`, `share-option`, …) stay: no generic rule in EasyList, Fanboy Social or Fanboy Annoyance names them. `e2e/fixtures/generic-cosmetic-rules.txt` vendors the generic share and social rules; `web/test/blockerClasses.test.ts` fails when a class in `web/src` matches one, and `e2e/blocker-rules.spec.ts` opens the share dialog with them applied.
 
 Why: one neutral, `fs-`-prefixed name per shared style fits every list that uses it, and renaming only what a rule names (or the issue lists) keeps the change small (YAGNI). A new rule that hits another class is added to the fixture, and the test names the class.
+
+## 2026-10-17: Reporting browser errors to the server (#298)
+
+Question: the issue fixes the endpoint, the fields, the 4 KiB stack, the limit and the log level, but leaves open what the "route name" and the "build id" are (routes had no names, the build had no id), what counts as a path or a token to redact, which side redacts, and whether a page without a session reports.
+
+Decision:
+- **Route name.** Every route in `web/src/router.ts` gets a name (`folder`, `recent`, `not-found`, …); a report carries it, or `unknown`. The path and query never leave the browser in a report.
+- **Build id.** The file name of the bundle the reporter is in (`index-<hash>.js`). Vite changes the hash with every build, so it needs no build-time variable.
+- **Redaction** (`shared/src/clientErrors.ts`, the same `cleanReport` in the browser before sending and on the server before logging, since a report is whatever a browser sent): every URL keeps only its origin unless its path is one of the bundle's files (`/assets/…`, `/sw.js`, with `:line:column`), so stack frames stay useful; any other path starting with `/` becomes `<path>`; query strings and fragments always go; a run of 20 or more URL-safe characters mixing digits and letters (link tokens, ids, bearer tokens) becomes `<token>`. A message is cut to 1 KiB, a stack to 4 KiB (UTF-8), the other fields to 256 bytes. An overlong field is trimmed, not refused; a body that is not a report is VALIDATION.
+- **Who reports.** Only a page with a member's session (its CSRF token is set): a public link's or a file request's visitor sends nothing, and the route stays members-only (401 without a session, CSRF like every mutation).
+- **Limit.** 20 reports per session in a fixed minute, counted in memory; the 21st and later get the same 204 and no log line, so a page in an error loop neither floods the log nor sees a failure to report. The log line is `client error` at warn with `userId` (the internal id) and `clientError`; there is no table.
+- **Fail-safe.** The reporter sends with a plain `fetch` (not the API client, which would redirect to the login on a 401), drops a report whose sending fails, and ignores errors raised while it is reporting. Vue's `errorHandler` still logs to the console.
+
+Why: the route name, the bundle and the user agent are what #291/#295 lacked; anything that could name a file or open a link stays out of the log. Redacting on the server too means a modified or old client cannot write a path into the log.

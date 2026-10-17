@@ -6,6 +6,8 @@ export class ApiFailure extends Error {
 
 let csrf = '';
 export const setCsrf = (t: string) => { csrf = t; };
+/** The session's CSRF token; empty until a member's session is loaded (never on a public page). */
+export const csrfToken = (): string => csrf;
 
 /** The server sends a failed login back with `?loginError=1`; the shell then shows the error instead of looping into login. */
 export const loginFailed = (): boolean => new URLSearchParams(location.search).get('loginError') === '1';

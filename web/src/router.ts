@@ -27,40 +27,40 @@ export const isPublicPage = (pathname: string): boolean =>
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
 // `/favourites`, `/tags`, `/smart`, `/shared`, `/connections`, `/storage`, `/duplicates`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
-// under their source.
+// under their source. Every page has a name: an error report names the page by it, never by its path (#298).
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
   // `folder`: the folder view shows the upload panel under its own toolbar (#239); App.vue shows it on every other view.
-  { path: '/:source(home|share:[A-Za-z0-9_-]{1,64}|conn:[A-Za-z0-9_-]{1,64})/:path(.*)*', component: FolderView, meta: { folder: true } },
-  { path: '/favourites', component: FavouritesView },
+  { path: '/:source(home|share:[A-Za-z0-9_-]{1,64}|conn:[A-Za-z0-9_-]{1,64})/:path(.*)*', name: 'folder', component: FolderView, meta: { folder: true } },
+  { path: '/favourites', name: 'favourites', component: FavouritesView },
   // A tag's items across sources (#212), and a smart folder's live result (#214).
-  { path: '/tags/:name', component: TagView },
-  { path: '/smart/:id([0-9a-f]{32})', component: SmartFolderView },
-  { path: '/recent', component: RecentView },
-  { path: '/shared', component: SharedView },
-  { path: '/connections', component: ConnectionsView },
-  { path: '/trash', component: TrashView },
+  { path: '/tags/:name', name: 'tag', component: TagView },
+  { path: '/smart/:id([0-9a-f]{32})', name: 'smart-folder', component: SmartFolderView },
+  { path: '/recent', name: 'recent', component: RecentView },
+  { path: '/shared', name: 'shared', component: SharedView },
+  { path: '/connections', name: 'connections', component: ConnectionsView },
+  { path: '/trash', name: 'trash', component: TrashView },
   // The storage overview for every member, and the admin's page of members and quotas (#156).
-  { path: '/storage', component: StorageView },
+  { path: '/storage', name: 'storage', component: StorageView },
   // The duplicate finder (#216).
-  { path: '/duplicates', component: DuplicatesView },
-  { path: '/members', component: MembersView },
+  { path: '/duplicates', name: 'duplicates', component: DuplicatesView },
+  { path: '/members', name: 'members', component: MembersView },
   // Settings (#157): the WebDAV address and the member's app passwords.
-  { path: '/settings', component: SettingsView },
+  { path: '/settings', name: 'settings', component: SettingsView },
   // A cloud folder or account onto the shard (#153): the wizard, and one migration's progress, summary and cleanup.
-  { path: '/migrate', component: MigrateView },
-  { path: '/migrate/:id([0-9a-f]{32})', component: MigrationJobView },
+  { path: '/migrate', name: 'migrate', component: MigrateView },
+  { path: '/migrate/:id([0-9a-f]{32})', name: 'migration', component: MigrationJobView },
   // The Web Share Target (#158): the service worker sends a share here with the id of its inbox entry.
-  { path: '/share-target/:id([0-9a-f-]{36})?', component: ShareTargetView },
+  { path: '/share-target/:id([0-9a-f-]{36})?', name: 'share-target', component: ShareTargetView },
   // A public link's share page (#147): for visitors, outside the signed-in shell (App.vue).
-  { path: '/s/:token([A-Za-z0-9_-]{22})', component: PublicLinkView },
+  { path: '/s/:token([A-Za-z0-9_-]{22})', name: 'public-link', component: PublicLinkView },
   // File requests (#217): the member's list, and a request's upload page for visitors, outside the signed-in shell.
-  { path: '/requests', component: FileRequestsView },
-  { path: '/r/:token([A-Za-z0-9_-]{22})', component: FileRequestPageView },
+  { path: '/requests', name: 'requests', component: FileRequestsView },
+  { path: '/r/:token([A-Za-z0-9_-]{22})', name: 'file-request', component: FileRequestPageView },
   // After sign-out (#222): outside the signed-in shell, and it never redirects to the login.
-  { path: SIGNED_OUT_PATH, component: SignedOutView },
+  { path: SIGNED_OUT_PATH, name: 'signed-out', component: SignedOutView },
   // Any other address says it does not exist (#240), with the way to "My storage", instead of a silent redirect.
-  { path: '/:pathMatch(.*)*', component: NotFoundView },
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
 ];
 
 export const router = createRouter({ history: createWebHistory(), routes });
