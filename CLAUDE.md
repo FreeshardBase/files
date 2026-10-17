@@ -10,6 +10,8 @@ pnpm typecheck && pnpm lint && pnpm test   # unit + integration (Vitest)
 pnpm e2e                                    # build + Playwright (desktop + mobile Chromium, Firefox for the PDF preview); picks free ports itself
 pnpm test:live                              # real cloud providers; skipped (never passed) without LIVE_* tokens in server/.env.live
 pnpm test:litmus                            # litmus (basic, copymove, props, locks) in a podman/docker container against WebDAV; skipped without an engine
+pnpm smoke:container                        # podman build + run + /healthz + upload/download + stop (scripts/container-smoke.sh); skipped without podman
+pnpm load                                   # load test, local backend (scripts/load/run.ts, ~3 GB temp disk); record the table in docs/perf.md
 pnpm dev                                    # fake IdP on :4000 + server on :3005; run `pnpm --filter @files/web dev` for the SPA on :5173
 ```
 Container: with podman use `podman build --format docker .`, otherwise the `HEALTHCHECK` is dropped. The image has no `USER`: `main.ts` starts as root, chowns `/data` itself (never recursively, `server/src/dataDir.ts`) and drops to `node` (uid 1000) before opening anything. Do not add `USER node` to the image or `user: 0:0` to the app template.

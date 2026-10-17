@@ -1067,3 +1067,16 @@ Decision:
 - **Class names** are `mine-*` plus the existing `fs-entry-list`/`fs-link-rows`: none matches the generic cosmetic rules (#295).
 
 Why: two endpoints reuse the existing routes' meaning (`links`, `shares/outgoing` beside `shares/incoming`) without a merged type; a cursor is YAGNI for a handful of rows. Reusing the share dialog for edit keeps one place where a link is changed, so the page and the dialog cannot disagree.
+
+## 2026-10-17: Container smoke test and load tests (#300)
+
+Question: the issue asks for the image to run "non-root", although the image deliberately has no `USER` (it starts as root to hand `/data` to uid 1000). It leaves open how the smoke test gets a session without local accounts, how big the uploaded file is, and what happens if the load run finds nothing to fix.
+
+Decision:
+- **Non-root** means two things here. Rootless podman runs the container, so its root is the host user. Inside, the smoke test checks that the server process runs as uid and gid 1000 after `dropPrivileges`. The image keeps its root start and gets no `USER`, as CLAUDE.md requires.
+- **Session.** The smoke test runs the fake IdP from the test support on the host (`scripts/smoke/fake-idp.ts`). The container shares the host network, so issuer and public URL are loopback http, which the config allows. The test signs in as `testuser` with the real OIDC flow, the same way `pnpm dev` and the E2E tests do. No bypass and no account exist in the image.
+- **Upload.** One 1 MiB random file, with the plain `PUT …/content`. tus and the parallel uploads belong to the load test.
+- **The check the driver runs** is `pnpm smoke:container`. Without podman it exits 0 and prints `container smoke SKIPPED: podman is not installed …`. A failed step exits 1 and names the step. Container and volume are always removed. `server/test/containerSmoke.test.ts` pins this in the suite against a controlled PATH (no podman, or a stand-in `podman` that records its calls), plus the host fake IdP's issuer line, discovery and clean exit; the full run with a real image build stays outside the suite because it needs network.
+- **Load.** `pnpm load` (`scripts/load/run.ts`) runs the real app in one process with its client, and prints the table that `docs/perf.md` records. The run found no O(n²) path, no whole-file buffering and no stall over 200 ms, so no production code changes. `server/test/load.test.ts` pins the same profile at suite scale. The slow copy of many small files (fsync per file) and the per-page sort of a listing are recorded in `docs/perf.md` and left as they are.
+
+Why: checking the uid of the running process proves what "non-root" is meant to guard, without breaking the bind-mount handover (DECISIONS 2026-10-15). Using the fake IdP keeps "no auth bypass" true in the image as well. A load profile that only lives in a script would rot, so the suite keeps a scaled copy whose memory and stall limits fail if a handler starts to buffer.

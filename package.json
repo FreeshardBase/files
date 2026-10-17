@@ -14,7 +14,9 @@
     "test:litmus": "pnpm --filter @files/server test:litmus",
     "build": "pnpm --filter @files/web build && pnpm --filter @files/server build",
     "e2e": "pnpm build && playwright test -c e2e/playwright.config.ts",
-    "dev": "pnpm --filter @files/server dev"
+    "dev": "pnpm --filter @files/server dev",
+    "load": "pnpm --filter @files/server exec tsx ../scripts/load/run.ts",
+    "smoke:container": "bash scripts/container-smoke.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
