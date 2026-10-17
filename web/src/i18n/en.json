@@ -231,6 +231,30 @@
     "removeLabel": "Remove {name} from favourites",
     "unavailable": "Unavailable"
   },
+  "comments": {
+    "tab": "Comments | Comments (1) | Comments ({count})",
+    "ofItem": "Comments on {name}",
+    "count": "No comments | One comment | {count} comments",
+    "you": "You",
+    "edited": "edited",
+    "none": "No comments yet.",
+    "loading": "Loading comments…",
+    "newLabel": "New comment",
+    "hint": "Enter sends, Shift+Enter starts a new line.",
+    "send": "Send",
+    "sent": "Comment sent.",
+    "edit": "Edit",
+    "editLabel": "Edit comment",
+    "editOne": "Edit your comment from {time}",
+    "save": "Save",
+    "saved": "Comment saved.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteMine": "Delete your comment from {time}",
+    "deleteOne": "Delete the comment by {author} from {time}",
+    "confirmDelete": "Delete this comment?",
+    "deleted": "Comment deleted."
+  },
   "tags": {
     "heading": "Tags",
     "ofItem": "Tags of {name}",
@@ -642,6 +666,8 @@
     "size": "Size",
     "modified": "Modified",
     "location": "Location",
+    "tab": "Details",
+    "tabs": "Details and comments",
     "you": "You",
     "share": "Share…"
   },
@@ -704,7 +730,8 @@
     "TAG_LIMIT": "An item can have at most {max} tags.",
     "SOURCE_TIMEOUT": "This place took too long to answer.",
     "SEARCH_NEEDS_NAME": "This place can only be searched by part of a name or by a tag.",
-    "SMART_FOLDER_LIMIT": "You can keep at most {max} smart folders."
+    "SMART_FOLDER_LIMIT": "You can keep at most {max} smart folders.",
+    "COMMENT_INVALID": "A comment needs text of at most {max} characters, without control characters."
   },
   "versions": {
     "title": "Versions",

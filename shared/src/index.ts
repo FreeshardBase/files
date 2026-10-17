@@ -8,3 +8,4 @@ export * from './settings.ts';
 export * from './requests.ts';
 export * from './tags.ts';
 export * from './smartFolders.ts';
+export * from './comments.ts';

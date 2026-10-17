@@ -19,10 +19,12 @@ import TagChips from './TagChips.vue';
 // Large folders (#225): only the rows near the viewport are in the DOM (`useWindowedRows`); the table carries
 // aria-rowcount and every row its aria-rowindex, so assistive technology still counts the whole folder.
 // `tags`: the member's tags by path (#212), shown as chips after the name; each opens the tag view.
+// `comments`: comment counts by path (#213), a badge after the chips; the thread is in the details drawer.
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
-  editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort; tags?: Record<string, string[]> }>(),
+  editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort; tags?: Record<string, string[]>;
+  comments?: Record<string, number> }>(),
 { source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }),
-  tags: () => ({}) });
+  tags: () => ({}), comments: () => ({}) });
 const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
   sort: [SortKey];
@@ -286,6 +288,18 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   :name="e.name"
                   in-row
                 />
+                <span
+                  v-if="comments[e.path]"
+                  class="comment-badge"
+                  :title="$t('comments.count', { count: comments[e.path] }, comments[e.path]!)"
+                >
+                  <span
+                    class="icon icon-comment"
+                    aria-hidden="true"
+                  />
+                  <span aria-hidden="true">{{ comments[e.path] }}</span>
+                  <span class="visually-hidden">{{ $t('comments.count', { count: comments[e.path] }, comments[e.path]!) }}</span>
+                </span>
               </div>
             </td>
             <td

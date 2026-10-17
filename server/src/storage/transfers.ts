@@ -9,6 +9,7 @@ import { getUser, type User } from '../users.ts';
 import type { StorageBackend } from './backend.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
 import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
+import { deleteComments, keysOf } from './comments.ts';
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
 export const TRANSFER_CONCURRENCY = 2;
@@ -372,6 +373,7 @@ export class TransferEngine {
       const { from, to } = await this.sources(job);
       if (job.kind === 'cleanup') {
         await this.removeOriginal(item, from.backend, to.backend);
+        deleteComments(db, [keysOf(db, job.user_id, job.from_source)(item.from_path)]);
         this.setItem(jobId, seq, { status: 'done', error: null });
         return;
       }
@@ -552,8 +554,10 @@ export class TransferEngine {
     const user = getUser(db, job.user_id);
     if (!user) return;
     const from = (await sourceFor(this.deps, user, job.from_source)).backend;
+    // A cloud original's comment threads go with it, as with a delete through the sources route (#213).
+    const keyOf = keysOf(db, user.id, job.from_source);
     for (const i of roots) {
-      try { await from.delete([i.from_path]); }
+      try { await from.delete([i.from_path]); deleteComments(db, [keyOf(i.from_path)]); }
       catch (e) {
         if (isNotFound(e)) continue; // handled: already gone (a finish interrupted by a restart deleted it)
         if (!(e instanceof AppError)) this.log.error({ err: e, job: job.id }, 'deleting a moved source failed');

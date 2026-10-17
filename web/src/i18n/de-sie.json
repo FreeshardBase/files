@@ -231,6 +231,30 @@
     "removeLabel": "{name} aus den Favoriten entfernen",
     "unavailable": "Nicht verfügbar"
   },
+  "comments": {
+    "tab": "Kommentare | Kommentare (1) | Kommentare ({count})",
+    "ofItem": "Kommentare zu {name}",
+    "count": "Keine Kommentare | Ein Kommentar | {count} Kommentare",
+    "you": "Sie",
+    "edited": "bearbeitet",
+    "none": "Noch keine Kommentare.",
+    "loading": "Kommentare werden geladen …",
+    "newLabel": "Neuer Kommentar",
+    "hint": "Enter sendet, Umschalt+Enter beginnt eine neue Zeile.",
+    "send": "Senden",
+    "sent": "Kommentar gesendet.",
+    "edit": "Bearbeiten",
+    "editLabel": "Kommentar bearbeiten",
+    "editOne": "Ihren Kommentar vom {time} bearbeiten",
+    "save": "Speichern",
+    "saved": "Kommentar gespeichert.",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "deleteMine": "Ihren Kommentar vom {time} löschen",
+    "deleteOne": "Kommentar von {author} vom {time} löschen",
+    "confirmDelete": "Diesen Kommentar löschen?",
+    "deleted": "Kommentar gelöscht."
+  },
   "tags": {
     "heading": "Tags",
     "ofItem": "Tags von {name}",
@@ -642,6 +666,8 @@
     "size": "Größe",
     "modified": "Geändert",
     "location": "Ort",
+    "tab": "Details",
+    "tabs": "Details und Kommentare",
     "you": "Sie",
     "share": "Freigeben …"
   },
@@ -704,7 +730,8 @@
     "TAG_LIMIT": "Ein Element kann höchstens {max} Tags haben.",
     "SOURCE_TIMEOUT": "Dieser Ort hat zu lange nicht geantwortet.",
     "SEARCH_NEEDS_NAME": "Dieser Ort lässt sich nur nach einem Namensteil oder einem Tag durchsuchen.",
-    "SMART_FOLDER_LIMIT": "Sie können höchstens {max} intelligente Ordner anlegen."
+    "SMART_FOLDER_LIMIT": "Sie können höchstens {max} intelligente Ordner anlegen.",
+    "COMMENT_INVALID": "Ein Kommentar braucht Text mit höchstens {max} Zeichen, ohne Steuerzeichen."
   },
   "versions": {
     "title": "Versionen",
