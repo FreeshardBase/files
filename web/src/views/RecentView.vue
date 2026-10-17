@@ -8,7 +8,7 @@ import { useRecentStore } from '../stores/recent.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatDate, intlLocale } from '../format.ts';
 import { parentOf, useLocations } from '../location.ts';
-import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { locale } = useI18n();
@@ -17,8 +17,9 @@ const { folderLabel } = useLocations();
 onMounted(() => { void recent.load(); });
 // A thumbnail in the folder list's 28 px slot (#244); one that fails to load falls back to the line icon.
 const thumbFailed = reactive(new Set<string>());
-// A folder opens itself; a file opens the folder it is in.
-const target = (item: RecentItem) => folderRoute(item.source, item.type === 'directory' ? item.path : parentOf(item.path));
+// A folder opens itself; a file opens the folder it is in with the file selected (#235), as from Favourites.
+const target = (item: RecentItem) => item.type === 'directory' ? folderRoute(item.source, item.path)
+  : { path: folderRoute(item.source, parentOf(item.path)), query: { select: item.path } };
 </script>
 
 <template>
@@ -76,6 +77,7 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
               <img
                 v-if="hasThumbnail(item) && !thumbFailed.has(item.path)"
                 class="row-thumb"
+                :data-page="pageThumb(item)"
                 :src="thumbnailHref(item.source, { path: item.path, modified: item.changedAt }, 128)"
                 alt=""
                 loading="lazy"
@@ -87,10 +89,12 @@ const target = (item: RecentItem) => folderRoute(item.source, item.type === 'dir
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              <span
-                class="name-text"
-                :title="item.name"
-              >{{ item.name }}</span>
+              <RouterLink :to="target(item)">
+                <span
+                  class="name-text"
+                  :title="item.name"
+                >{{ item.name }}</span>
+              </RouterLink>
             </div>
           </td>
           <td class="origin">

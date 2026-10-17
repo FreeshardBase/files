@@ -10,7 +10,7 @@ import type { TagItem, TagItemList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import { parentOf, useLocations } from '../location.ts';
-import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useTagsStore } from '../stores/tags.ts';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
@@ -133,6 +133,7 @@ async function untag(i: TagItem) {
               <img
                 v-if="i.entry && hasThumbnail(i.entry) && !thumbFailed.has(key(i))"
                 class="row-thumb"
+                :data-page="pageThumb(i.entry)"
                 :src="thumbnailHref(i.source, i.entry, 128)"
                 alt=""
                 loading="lazy"

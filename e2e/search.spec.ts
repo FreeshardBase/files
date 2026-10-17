@@ -81,3 +81,18 @@ test('a search without matches shows its empty state', async ({ page }, info) =>
   await expect(results(page)).toHaveCount(0);
   await expect(box(page)).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('#235: the search ignores accents and case: "umlaut" finds "Ümlaut", "CAFE" finds "Café"', async ({ page }, info) => {
+  const dir = `search-accents-${tag(info)}`;
+  const umlaut = `Ümlaut-Liste ${tag(info)}.txt`;
+  const cafe = `Café ${tag(info)}.md`;
+  await setUp(page, dir, [umlaut, cafe]);
+
+  await box(page).fill(`umlaut-liste ${tag(info)}`);
+  await expect(results(page).getByRole('option', { name: new RegExp(umlaut) })).toBeVisible();
+  await expect(results(page).getByRole('option')).toHaveCount(1);
+
+  await box(page).fill(`CAFE ${tag(info)}`);
+  await expect(results(page).getByRole('option', { name: new RegExp(cafe) })).toBeVisible();
+  await expect(results(page).getByRole('option')).toHaveCount(1);
+});

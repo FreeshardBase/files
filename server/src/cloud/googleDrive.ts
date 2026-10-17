@@ -270,7 +270,8 @@ export class GoogleDriveBackend implements StorageBackend {
     const dir = isFolder(f);
     // Drive's MD5 of a stored file (none for a folder or a Google-native document), for the duplicate finder (#216).
     return withHash({ name, path, type: dir ? 'directory' : 'file', size: dir || isNative(f) ? 0 : Number(f.size ?? 0),
-      modified: new Date(f.modifiedTime).toISOString(), ...(dir ? {} : { mime: lookupMime(name) }) },
+      modified: new Date(f.modifiedTime).toISOString(), ...(dir ? {} : { mime: lookupMime(name) }),
+      ...(isNative(f) ? { sizeUnknown: true as const } : {}) },
       !dir && f.md5Checksum ? { algorithm: 'md5', value: f.md5Checksum.toLowerCase() } : undefined);
   }
 

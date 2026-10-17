@@ -133,10 +133,18 @@ describe('connecting an account', () => {
     expect(rowCount()).toBe(1);
   });
 
-  it('a denied consent stores nothing', async () => {
+  it('a denied consent stores nothing and says it was denied, not that it failed (#236 P10)', async () => {
     const back = await fake.consent((await authorize(a, { provider: 'fake' })).href, { deny: true });
-    expect((await callback(a, back)).headers.location).toBe('/connections?error=CONNECT_FAILED');
+    expect((await callback(a, back)).headers.location).toBe('/connections?error=CONNECT_DENIED');
     expect(rowCount()).toBe(0);
+  });
+
+  it('a denial is believed only with this session\'s own state (#236 P10)', async () => {
+    await authorize(a, { provider: 'fake' });
+    const forged = new URL(CALLBACK);
+    forged.searchParams.set('error', 'access_denied');
+    forged.searchParams.set('state', 'not-a-state-of-this-session');
+    expect((await callback(a, forged)).headers.location).toBe('/connections?error=CONNECT_FAILED');
   });
 
   it('builds the redirect URI from the configured public URL, never from Host or X-Forwarded-Host (#106)', async () => {

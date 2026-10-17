@@ -8,7 +8,7 @@
 // show on hover or focus, while the tile is selected, and always on a touch screen; there a long-press selects.
 import { nextTick, onBeforeUpdate, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import type { Entry } from '@files/shared';
-import { hasThumbnail, thumbnailHref } from '../preview.ts';
+import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { nameParts } from '../format.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
@@ -151,6 +151,7 @@ defineExpose({
             <img
               v-if="hasThumbnail(e) && !failed.has(e.path)"
               class="gallery-thumb"
+              :data-page="pageThumb(e)"
               :src="thumbnailHref(source, e, 256)"
               alt=""
               loading="lazy"

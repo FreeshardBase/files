@@ -10,7 +10,7 @@ import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, Comment, Entry, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
-import { formatDate, formatSize, intlLocale } from '../format.ts';
+import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
 import { fileKind } from '../fileKind.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
@@ -148,7 +148,7 @@ onMounted(async () => {
         <template v-if="entry.type === 'file'">
           <dt>{{ t('details.size') }}</dt>
           <dd class="value-mono">
-            {{ formatSize(entry.size, intlLocale(locale)) }}
+            {{ formatEntrySize(entry, intlLocale(locale)) }}
           </dd>
         </template>
         <template v-if="entry.modified">

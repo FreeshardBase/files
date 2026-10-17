@@ -81,6 +81,14 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     return engine().cancel(user.id, IdP.parse(req.params).id);
   });
 
+  // Removes one finished job from the panel (#234): a successful one once the member has seen it, a failed one when they
+  // dismiss it.
+  app.post('/api/v1/transfers/:id/dismiss', async (req, reply) => {
+    const { user } = requireUser(req);
+    engine().dismiss(user.id, IdP.parse(req.params).id);
+    return reply.status(204).send();
+  });
+
   // Removes the caller's finished jobs from the panel; running ones stay.
   app.post('/api/v1/transfers/clear', async (req, reply) => {
     const { user } = requireUser(req);

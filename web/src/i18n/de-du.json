@@ -8,7 +8,8 @@
     "offline": "Du bist offline. Dateien und Ordner werden wieder geladen, sobald die Verbindung wieder da ist.",
     "actionLost": "Deine Sitzung war abgelaufen, du bist wieder angemeldet. Deine letzte Aktion wurde nicht ausgeführt; bitte wiederhole sie.",
     "dismiss": "Schließen",
-    "loadFailed": "„Dateien“ lässt sich nicht laden"
+    "loadFailed": "„Dateien“ lässt sich nicht laden",
+    "pageTitle": "{page} – {app}"
   },
   "notFound": {
     "title": "Seite nicht gefunden",
@@ -516,6 +517,11 @@
   "shared": {
     "title": "Für mich freigegeben",
     "empty": "Für dich wurde noch nichts freigegeben.",
+    "gone": {
+      "title": "Freigabe nicht mehr verfügbar",
+      "text": "Die Person, die das für dich freigegeben hat, hat die Freigabe beendet. Was noch für dich freigegeben ist, findest du unter „Für mich freigegeben“.",
+      "back": "Zu „Für mich freigegeben“"
+    },
     "columns": {
       "name": "Name",
       "owner": "Freigegeben von",
@@ -767,7 +773,8 @@
     "RENAME_CONFLICT": "Einige neue Namen sind vergeben oder nicht erlaubt. Wähle für jeden markierten Namen, was passieren soll.",
     "SCAN_RUNNING": "Eine Suche nach doppelten Dateien läuft schon.",
     "DUPLICATE_CHANGED": "Seit der Suche geändert, deshalb behalten.",
-    "DUPLICATE_LAST_COPY": "Mindestens eine Kopie muss bleiben."
+    "DUPLICATE_LAST_COPY": "Mindestens eine Kopie muss bleiben.",
+    "CONNECT_DENIED": "Du hast den Zugriff nicht erlaubt, darum wurde kein Konto verbunden."
   },
   "batchRename": {
     "button": "Umbenennen …",
@@ -926,7 +933,20 @@
     },
     "nothingToDo": "Nichts eingefügt: Alle Elemente wurden übersprungen.",
     "summary": "Zusammenfassung",
-    "summaryLabel": "Zusammenfassung von {name}"
+    "summaryLabel": "Zusammenfassung von {name}",
+    "labelMany": {
+      "copy": "{count} Elemente nach {target} kopieren",
+      "move": "{count} Elemente nach {target} verschieben"
+    },
+    "items": "{count} Elemente",
+    "names": "Namen anzeigen",
+    "moreNames": "und {count} weitere",
+    "dismiss": "Entfernen",
+    "dismissLabel": "{name} aus der Liste entfernen",
+    "folded": "Eine Übertragung beendet | {count} Übertragungen beendet",
+    "foldedFailed": "eine mit Fehlern | {count} mit Fehlern",
+    "show": "Anzeigen",
+    "hide": "Ausblenden"
   },
   "migrate": {
     "title": "Auf den Shard umziehen",

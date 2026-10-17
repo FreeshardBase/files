@@ -167,7 +167,7 @@ a:where(:hover) { text-decoration: underline; }
 .search-option:hover, .search-option[aria-selected='true'] {
   border-left-color: var(--line); background: color-mix(in srgb, var(--data) 9%, transparent);
 }
-.search-name { overflow-wrap: anywhere; }
+.search-name { overflow-wrap: anywhere; white-space: pre-wrap; }
 .search-location { font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
 .search-note { margin: 0; padding: var(--space-2) var(--space-3); font-size: var(--fs-small); color: var(--ink-muted); }
 .search-error { color: var(--danger); }
@@ -260,6 +260,13 @@ a:where(:hover) { text-decoration: underline; }
   display: flex; align-items: flex-start; gap: var(--space-3);
   margin: 0 0 var(--space-4); padding-bottom: var(--space-3); border-bottom: var(--border-w) solid var(--border);
 }
+/* A dialog taller than the window scrolls on its scrim; its head stays in sight at the top meanwhile (#236 P12). It reaches
+   up over the dialog's top padding on the sheet's own colour, so what scrolls under it never shows above it. The drawer
+   and the wide sheet scroll inside themselves and keep their head anyway. */
+.app-dialog:not(.app-dialog-drawer, .app-dialog-wide) > .app-dialog-head {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  margin-top: calc(-1 * var(--space-5)); padding-top: var(--space-5);
+}
 .app-dialog-heading { flex: 1 1 auto; min-width: 0; }
 .app-dialog-heading .fs-label { margin: 0 0 var(--space-2); }
 .app-dialog-head .app-dialog-title { margin: 0; line-height: 1.3; overflow-wrap: anywhere; }
@@ -319,7 +326,7 @@ a:where(:hover) { text-decoration: underline; }
   max-width: 380px; margin: 0; min-height: 100dvh; box-sizing: border-box;
   border-width: 0 0 0 var(--border-w); border-radius: 0; display: flex; flex-direction: column;
 }
-.app-dialog-drawer .app-dialog-title { overflow-wrap: anywhere; }
+.app-dialog-drawer .app-dialog-title { overflow-wrap: anywhere; white-space: pre-wrap; }
 .app-dialog-drawer .app-dialog-actions { margin-top: auto; padding-top: var(--space-4); }
 .details-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
 .details-facts dt { color: var(--ink-muted); font-size: var(--fs-small); }
@@ -497,11 +504,12 @@ a:where(:hover) { text-decoration: underline; }
 }
 .file-list td { padding: var(--space-3) var(--space-4); border-bottom: var(--border-w) solid var(--border); }
 /* Names (#237): the column keeps 12rem, a name breaks between words only (a single word longer than the line still
-   breaks) and stops after two lines with an ellipsis; the full name is in its `title`. */
+   breaks) and stops after two lines with an ellipsis; the full name is in its `title`. Spaces are kept as typed (#236
+   P1): "a   b" never reads as "a b". `pre-wrap`, not `pre`, so the two lines of #237 still hold. */
 .file-list td.name { min-width: 12rem; }
 .name-text {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
-  overflow: hidden; overflow-wrap: break-word; min-width: 0;
+  overflow: hidden; overflow-wrap: break-word; min-width: 0; white-space: pre-wrap;
 }
 .file-list tbody tr:last-child td { border-bottom: 0; }
 .file-list tbody tr:focus-visible { outline-offset: -2px; }
@@ -509,8 +517,7 @@ a:where(:hover) { text-decoration: underline; }
 .file-list tr.virtual-spacer, .file-list tr.virtual-spacer td { padding: 0; border: 0; }
 .file-list .num { font: 400 var(--fs-mono)/1.3 var(--font-mono); letter-spacing: var(--ls-mono); color: var(--ink-muted); white-space: nowrap; }
 /* The flex box sits inside the cell: a flex <td> stops being a table cell and its border falls out of line. */
-.file-list .name-inner { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow-wrap: break-word; }
-/* A row's name is a bare link; a link styled as a button ("Open", "Open folder") keeps the button look (#238). */
+.file-list .name-inner { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow-wrap: break-word; }/* A row's name is a bare link; a link styled as a button ("Open", "Open folder") keeps the button look (#238). */
 .file-list a:not(.button), .file-list .link {
   color: var(--ink); text-decoration: none; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
 }
@@ -593,6 +600,8 @@ a:where(:hover) { text-decoration: underline; }
 .gallery > li.selected :is(.gallery-check, .gallery-menu) { visibility: visible; }
 @media (hover: none) { .gallery :is(.gallery-check, .gallery-menu) { visibility: visible; } }
 .gallery-thumb, .gallery-icon { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg); }
+/* A document's page (#236 P6) is mostly white: a hairline frame keeps it a page instead of a white square. */
+:is(.row-thumb, .gallery-thumb)[data-page] { outline: var(--border-w) solid var(--border-cool); outline-offset: calc(-1 * var(--border-w)); }
 .gallery-icon { display: flex; align-items: center; justify-content: center; }
 .gallery-icon .icon { width: 40px; height: 40px; }
 /* The name is cut in the middle (#237): the head takes the ellipsis, the tail (the end and the extension) stays whole. */
@@ -768,6 +777,15 @@ a:where(:hover) { text-decoration: underline; }
 }
 /* Transfer panel (#152): the same sheet; a job that ended with errors lists its failed items under its row. */
 .transfer-failures { grid-column: 1 / -1; margin: 0; padding-left: var(--space-5); color: var(--danger); font-size: var(--fs-small); overflow-wrap: anywhere; }
+/* The names of a job of several items (#234), behind a disclosure under its row. */
+.transfer-names { grid-column: 1 / -1; font-size: var(--fs-small); color: var(--ink-muted); }
+.transfer-names summary { cursor: pointer; }
+.transfer-names ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); overflow-wrap: anywhere; white-space: pre-wrap; }
+/* Ended jobs fold into one line after a few seconds (#234). */
+.transfer-folded {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  margin: var(--space-2) 0 0; font-size: var(--fs-small); color: var(--ink-muted);
+}
 @media (max-width: 600px) {
   /* A failure's reason takes its own row under the name (#237), so the name keeps its column. */
   .upload-item { grid-template-columns: minmax(8rem, 1fr) auto; }

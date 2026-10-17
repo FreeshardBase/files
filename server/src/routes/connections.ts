@@ -50,7 +50,8 @@ export async function registerConnectionRoutes(app: FastifyInstance): Promise<vo
     let done: { id: string; pick: boolean };
     try { done = await cloud.complete(session.idHash, user.id, q.data, req.log); }
     catch (err) { // handled: an expected refusal goes back to the connections page with its code; anything else is rethrown
-      if (err instanceof AppError && (err.code === 'CONNECT_FAILED' || err.code === 'CONNECT_ACCOUNT_MISMATCH' || err.code === 'NOT_FOUND')) {
+      if (err instanceof AppError && (err.code === 'CONNECT_FAILED' || err.code === 'CONNECT_DENIED'
+        || err.code === 'CONNECT_ACCOUNT_MISMATCH' || err.code === 'NOT_FOUND')) {
         return reply.redirect(failedUrl(err.code === 'NOT_FOUND' ? 'CONNECT_FAILED' : err.code));
       }
       throw err;

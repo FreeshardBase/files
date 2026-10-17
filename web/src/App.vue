@@ -16,6 +16,7 @@ import { useSmartFoldersStore } from './stores/smartFolders.ts';
 import ShortcutsDialog from './components/ShortcutsDialog.vue';
 import StateAlert from './components/StateAlert.vue';
 import { useRequestsStore } from './stores/requests.ts';
+import { usePageTitle } from './pageTitle.ts';
 const session = useSessionStore();
 const requests = useRequestsStore();
 const connections = useConnectionsStore();
@@ -25,6 +26,7 @@ const transfers = useTransfersStore();
 const router = useRouter();
 const route = useRoute();
 const showLoginFailed = loginFailed();
+usePageTitle();
 // A failed login is said on its own, outside the shell; every other state keeps the shell (#240).
 const loginFailedHere = computed(() => session.error?.code === 'UNAUTHENTICATED' && showLoginFailed);
 // A visitor of a public link (#147) has no account: the share page renders alone, without /api/v1/me. So does the

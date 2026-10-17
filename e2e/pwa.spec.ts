@@ -26,7 +26,7 @@ test('the manifest is served, linked and valid, with installable icons and the s
   expect(r.status()).toBe(200);
   expect(r.headers()['content-type']).toContain('application/manifest+json');
   const m = await r.json();
-  expect(m).toMatchObject({ name: 'Files', short_name: 'Files', start_url: '/home', scope: '/', display: 'standalone',
+  expect(m).toMatchObject({ name: 'Dateien', short_name: 'Dateien', lang: 'de', start_url: '/home', scope: '/', display: 'standalone',
     share_target: { action: '/api/v1/share-target', method: 'POST', enctype: 'multipart/form-data',
       params: { files: [{ name: 'files', accept: ['*/*'] }] } } });
   const icons = m.icons as { src: string; sizes: string; type: string; purpose?: string }[];

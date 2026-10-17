@@ -29,7 +29,9 @@ const report = (e: unknown) => {
 
 onMounted(async () => {
   const code = route.query.error;
-  if (typeof code === 'string' && (ERROR_CODES as readonly string[]).includes(code)) alert.value = t(`errors.${code as ErrorCode}`);
+  // A denied consent is the member's own choice (#236 P10): a neutral note, not an alert.
+  if (code === 'CONNECT_DENIED') status.value = t('errors.CONNECT_DENIED');
+  else if (typeof code === 'string' && (ERROR_CODES as readonly string[]).includes(code)) alert.value = t(`errors.${code as ErrorCode}`);
   const pick = route.query.pick;
   if (code !== undefined || pick !== undefined) await router.replace({ query: {} });
   await connections.load();

@@ -18,6 +18,9 @@ export const CreateTransferRequest = z.object({
 }).strict();
 export type CreateTransferRequest = z.infer<typeof CreateTransferRequest>;
 
+/** At most this many picked items are named in a job (#234); `picked` counts them all. */
+export const PICKED_NAMES = 20;
+
 export const TransferStatus = z.enum(['running', 'completed', 'completed_with_errors', 'cancelled']);
 export type TransferStatus = z.infer<typeof TransferStatus>;
 
@@ -39,6 +42,10 @@ export const TransferJobSchema = z.object({
   from: z.string(), to: z.string(), dir: z.string(),
   /** The name of the first item, for the panel's label. */
   name: z.string(),
+  /** How many items the member picked (#234), their folders' contents not counted; a migration and a cleanup have one. */
+  picked: z.number().int().nonnegative(),
+  /** The names of the first `PICKED_NAMES` picked items, for the panel's details. */
+  names: z.array(z.string()),
   status: TransferStatus,
   total: z.number().int().nonnegative(),
   done: z.number().int().nonnegative(),

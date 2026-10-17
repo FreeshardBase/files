@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
 import { pipeline, Readable, Transform } from 'node:stream';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
-import { planRenames, type CleanupPreview, type CollisionPolicy, type CreateMigrationRequest, type CreateTransferRequest,
+import { PICKED_NAMES, planRenames, type CleanupPreview, type CollisionPolicy, type CreateMigrationRequest, type CreateTransferRequest,
   type Entry, type ErrorCode, type MigrationScan, type RenamePlan, type RenameRequest, type TransferJob,
   type TransferStatus } from '@files/shared';
 import { AppError } from '../errors.ts';
@@ -288,6 +288,12 @@ export class TransferEngine {
     return this.view(id);
   }
 
+  /** Removes one finished job of the member's from the list (#234); a running job is refused with JOB_RUNNING. */
+  dismiss(userId: string, id: string): void {
+    if (this.own(userId, id).status === 'running') throw new AppError('JOB_RUNNING');
+    this.deps.db.prepare(`DELETE FROM transfer_jobs WHERE id = ? AND status != 'running'`).run(id);
+  }
+
   /** Removes the member's finished jobs from the list. */
   clearFinished(userId: string): void {
     this.deps.db.prepare(`DELETE FROM transfer_jobs WHERE user_id = ? AND status != 'running'`).run(userId);
@@ -358,7 +364,13 @@ export class TransferEngine {
     // name it got), a cleanup by the migration's folder.
     const name = job.kind === 'transfer' || job.kind === 'rename' ? posix.basename(first!.from_path)
       : posix.basename(job.kind === 'migration' ? first!.target : job.dir);
+    // What the member picked (#234): the items without a parent. A migration and a cleanup are one thing, named as above.
+    const byPick = job.kind === 'transfer' || job.kind === 'rename';
+    const picked = byPick ? db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND parent IS NULL`).pluck().get(id) as number : 1;
+    const names = byPick ? (db.prepare(`SELECT from_path FROM transfer_items WHERE job_id = ? AND parent IS NULL ORDER BY seq LIMIT ?`)
+      .pluck().all(id, PICKED_NAMES) as string[]).map((p) => posix.basename(p)) : [name];
     return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
+      picked, names,
       status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0, verifiedFiles: done.files,
       files: known.files, listing: job.status === 'running' && known.unlisted > 0, cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
       createdAt: job.created_at, finishedAt: job.finished_at };
