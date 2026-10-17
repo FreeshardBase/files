@@ -94,7 +94,7 @@ describe('ShareDialog', () => {
     document.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
     await tick(); await tick();
     expect(s.calls.find((c) => c.method === 'POST')!.body).toEqual({ source: 'home', path: '/Fotos', grantee: 'u3', access: 'edit' });
-    const who = document.querySelector('.share-list')!;
+    const who = document.querySelector('.fs-entry-list')!;
     expect(who.textContent).toContain('Test Member');
     expect(who.textContent).toContain('Can edit');
     expect(d.input.value).toBe('');
@@ -102,7 +102,7 @@ describe('ShareDialog', () => {
     document.querySelector<HTMLButtonElement>('[aria-label="Remove access for Test Member"]')!.click();
     await tick(); await tick();
     expect(s.calls.some((c) => c.method === 'DELETE' && c.url === '/api/v1/shares/s-u3')).toBe(true);
-    expect(document.querySelector('.share-list')).toBeNull();
+    expect(document.querySelector('.fs-entry-list')).toBeNull();
   });
 
   it('asks to pick a member from the list when the text names none', async () => {

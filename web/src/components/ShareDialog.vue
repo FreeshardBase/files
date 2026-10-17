@@ -228,13 +228,13 @@ async function revoke(s: Share) {
     </form>
     <h3
       :id="whoId"
-      class="share-heading"
+      class="fs-section-heading"
     >
       {{ t('share.whoHasAccess') }}
     </h3>
     <ul
       v-if="shares.length"
-      class="share-list"
+      class="fs-entry-list"
       :aria-labelledby="whoId"
     >
       <li

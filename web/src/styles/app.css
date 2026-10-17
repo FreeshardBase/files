@@ -312,13 +312,14 @@ a:where(:hover) { text-decoration: underline; }
 .share-send { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .share-send .share-access { margin-bottom: 0; }
 .share-submit { flex: none; margin-left: auto; }
-.share-heading { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-small); font-weight: 600; }
-.share-list { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
-.share-list li {
+/* Generic ad-block rules hide `.share-list` and `.share-heading` (#295): never name a class after them. */
+.fs-section-heading { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-small); font-weight: 600; }
+.fs-entry-list { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
+.fs-entry-list li {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
   padding: var(--space-2) 0; border-bottom: var(--border-w) solid var(--border);
 }
-.share-list li:last-child { border-bottom: 0; }
+.fs-entry-list li:last-child { border-bottom: 0; }
 .share-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .share-level { font-size: var(--fs-small); color: var(--ink-muted); }
 .app-dialog-scrim.app-dialog-scrim-drawer { justify-content: flex-end; align-items: stretch; padding: 0; }
@@ -332,7 +333,7 @@ a:where(:hover) { text-decoration: underline; }
 .details-facts dt { color: var(--ink-muted); font-size: var(--fs-small); }
 .details-facts dd { margin: 0; overflow-wrap: anywhere; }
 /* Public links (#147): the share dialog's link list and form, and the visitor's share page; see DESIGN.md */
-.link-list .share-level { flex-basis: 100%; }
+.fs-link-rows .share-level { flex-basis: 100%; }
 .link-address { flex: 1 1 100%; box-sizing: border-box; font-family: var(--font-mono); font-size: var(--fs-mono); }
 .link-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .link-form { margin-top: var(--space-3); padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }

@@ -1031,3 +1031,11 @@ Decision:
 - **Config.** The variables are `FILES_PCLOUD_CLIENT_ID` and `FILES_PCLOUD_CLIENT_SECRET`, set as a pair. The live suites read `LIVE_PCLOUD_ACCESS_TOKEN`, `LIVE_PCLOUD_HOSTNAME`, `LIVE_PCLOUD_CLIENT_ID` and `LIVE_PCLOUD_CLIENT_SECRET`. Agents may not edit `.env*` files, so README documents the two lines and the owner adds them to `.env.example`.
 
 Why: a token that cannot be refreshed still needs a place, a revocation path and a status. Treating it as the credential the row already seals keeps one connection model. Checking both the region host and the content host against fixed lists keeps spec §3.7 (no request to a host from a request) although pCloud names both at run time. The fake follows docs.pcloud.com, including `result` codes in 200 answers, both regions, content hosts tagged with the real host that must pass the production allowlist, and tokens only valid on their region's host. The live contract (`pnpm test:live`) is the net if the docs and the API differ (#201).
+
+## 2026-10-17: Class names that ad blockers hide (#295)
+
+Question: Brave's shields apply Fanboy's Social and Annoyance lists, whose generic cosmetic rules `##.share-list` and `##.share-heading` hid the share dialog's link and access lists. The issue suggested `fs-access-list`; the two classes are also used for version, upload, request, comment and tag lists. What do they become, and what else is renamed?
+
+Decision: `share-list` becomes `fs-entry-list` and `share-heading` becomes `fs-section-heading`, everywhere they were used. `link-list` (LinkManager) becomes `fs-link-rows`, since the issue names "link-list" as a word to avoid; no current rule names it. The other `share-*` classes (`share-name`, `share-level`, `share-option`, …) stay: no generic rule in EasyList, Fanboy Social or Fanboy Annoyance names them. `e2e/fixtures/generic-cosmetic-rules.txt` vendors the generic share and social rules; `web/test/blockerClasses.test.ts` fails when a class in `web/src` matches one, and `e2e/blocker-rules.spec.ts` opens the share dialog with them applied.
+
+Why: one neutral, `fs-`-prefixed name per shared style fits every list that uses it, and renaming only what a rule names (or the issue lists) keeps the change small (YAGNI). A new rule that hits another class is added to the fixture, and the test names the class.

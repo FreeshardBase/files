@@ -1,0 +1,17 @@
+! Generic element-hiding rules (Adblock Plus syntax) that hide share and social widgets on every site.
+! Excerpt of Fanboy's Social Blocking List (https://easylist.to/easylist/fanboy-social.txt), also part of Fanboy's
+! Annoyance List; Brave's built-in shields apply both. Taken 2026-10-17 for #295, where the first two hid the share
+! dialog's link and access lists in Brave (Android).
+! Used by e2e/blocker-rules.spec.ts (injected as display:none !important) and web/test/blockerClasses.test.ts.
+##.share-list
+##.share-heading
+##.share-buttons
+##.share-links
+##.share-bar
+##.share-box
+##.social-share
+##.social-buttons
+##.social-links
+##.social-icons
+##.sharing-buttons
+##.sharethis

@@ -63,7 +63,7 @@ async function remove(tag: string) {
   >
     <h3
       :id="headingId"
-      class="share-heading"
+      class="fs-section-heading"
     >
       {{ t('tags.heading') }}
     </h3>

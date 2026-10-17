@@ -168,7 +168,7 @@ onMounted(async () => {
       />
       <h3
         :id="whoId"
-        class="share-heading"
+        class="fs-section-heading"
       >
         {{ t('share.whoHasAccess') }}
       </h3>
@@ -180,7 +180,7 @@ onMounted(async () => {
       </p>
       <ul
         v-else-if="!own || (shares && shares.length)"
-        class="share-list"
+        class="fs-entry-list"
         :aria-labelledby="whoId"
       >
         <li v-if="!own">

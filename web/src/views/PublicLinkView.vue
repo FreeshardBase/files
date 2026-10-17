@@ -215,7 +215,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
             </p>
             <ul
               v-else
-              class="share-list link-entries"
+              class="fs-entry-list link-entries"
               :aria-label="t('link.page.contents', { name: info.name })"
             >
               <li
