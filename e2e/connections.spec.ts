@@ -54,10 +54,10 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await expect(conn).toContainText(/Verbunden|Connected/);
   await expect(conn).toContainText('Fake Cloud');
 
-  // Unlink asks first in an <AppDialog>; Cancel has the focus and Esc keeps the connection.
-  const unlink = conn.getByRole('button', { name: /testuser@example\.com trennen|Unlink testuser@example\.com/ });
+  // Disconnecting asks first in an <AppDialog>; Cancel has the focus and Esc keeps the connection.
+  const unlink = conn.getByRole('button', { name: /testuser@example\.com trennen|Disconnect testuser@example\.com/ });
   await unlink.click();
-  const confirm = page.getByRole('dialog', { name: /testuser@example\.com trennen\?|Unlink testuser@example\.com\?/ });
+  const confirm = page.getByRole('dialog', { name: /testuser@example\.com trennen\?|Disconnect testuser@example\.com\?/ });
   await expect(confirm).toBeVisible();
   await expect(confirm).toHaveAttribute('aria-modal', 'true');
   await expect(confirm).toContainText(/funktionieren danach nicht mehr|stop working/);
@@ -69,9 +69,9 @@ test('connect an account on the fake consent page, see it in the sidebar, open i
   await expect(sidebarConnection(page)).toBeVisible();
 
   await unlink.click();
-  await confirm.getByRole('button', { name: /^(Trennen|Unlink)$/ }).click();
+  await confirm.getByRole('button', { name: /^(Trennen|Disconnect)$/ }).click();
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText(/testuser@example\.com getrennt|testuser@example\.com unlinked/);
+  await expect(page.getByRole('status')).toContainText(/„testuser@example\.com“ getrennt|“testuser@example\.com” disconnected/);
   await expect(conn).toHaveCount(0);
   await openPlaces(page);
   await expect(sidebarConnection(page)).toHaveCount(0);

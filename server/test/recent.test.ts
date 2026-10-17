@@ -57,6 +57,18 @@ describe('Recent', () => {
     expect((await t.app.inject({ url: '/api/v1/recent' })).statusCode).toBe(401);
   });
 
+  it('gives a file its type, so the list can show its thumbnail; a folder has none (#244)', async () => {
+    const d = await fresh('thumbs');
+    await mkdir(`${d}/album`);
+    await put(`${d}/photo.png`, 'p');
+    await move(`${d}/album`, `${d}/album-2026`);
+    const mine = (await recent()).items.filter((i) => i.path.startsWith(d));
+    expect(mine.find((i) => i.name === 'photo.png')).toMatchObject({ type: 'file', mime: 'image/png' });
+    const folder = mine.find((i) => i.name === 'album-2026');
+    expect(folder).toMatchObject({ type: 'directory' });
+    expect(folder).not.toHaveProperty('mime');
+  });
+
   it('after upload, rename and move it lists the current paths, newest first, and only the caller\'s own files', async () => {
     const d = await fresh('flow');
     await mkdir(`${d}/sub`);

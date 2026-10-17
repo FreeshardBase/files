@@ -37,6 +37,10 @@ const placesOpen = ref(false);
 // did not happen, until they dismiss the note.
 const actionLost = ref(false);
 watch(() => route.fullPath, () => { placesOpen.value = false; });
+// The source the folder view shows (`home`, `conn:<id>`), so its sidebar entry stays current in every subfolder (#244).
+const inSource = (source: string) => route.params.source === source;
+// The member in the header as an initial (#244); the whole name is beside it on a wide screen and its tooltip.
+const initial = computed(() => Array.from(session.me?.displayName.trim() ?? '')[0]?.toLocaleUpperCase() ?? '');
 // "?" opens the keyboard shortcuts, except while typing or while another dialog is open.
 const shortcutsOpen = ref(false);
 function onKey(e: KeyboardEvent) {
@@ -77,16 +81,22 @@ onMounted(async () => {
     class="app-shell"
   >
     <header class="app-header">
-      <span class="app-title">{{ $t('app.name') }}</span>
+      <span class="app-title"><span
+        class="icon icon-folder app-logo"
+        aria-hidden="true"
+      />{{ $t('app.name') }}</span>
       <SearchBox v-if="session.me" />
       <template v-if="session.me">
         <span
           class="app-user"
-          :title="session.me.email"
-        >{{ session.me.displayName }}</span>
+          :title="session.me.displayName"
+        ><span
+          class="fs-avatar app-avatar"
+          aria-hidden="true"
+        >{{ initial }}</span><span class="app-user-name">{{ session.me.displayName }}</span></span>
         <button
           type="button"
-          class="icon-button"
+          class="icon-button shortcuts-button"
           :aria-label="$t('shortcuts.title')"
           :title="$t('shortcuts.title')"
           @click="shortcutsOpen = true"
@@ -185,136 +195,176 @@ onMounted(async () => {
             />
           </div>
           <template v-else>
-            <RouterLink
-              to="/home"
-              active-class="active"
+            <!-- Three groups under uppercase titles with hairlines between them, like Calendar's sidebar (#244). -->
+            <div
+              class="nav-group"
+              role="group"
+              aria-labelledby="nav-group-places"
             >
-              <span
-                class="icon icon-home"
-                aria-hidden="true"
-              />
-              {{ $t('nav.home') }}
-            </RouterLink>
-            <RouterLink
-              v-for="c in connections.items"
-              :key="c.id"
-              :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
-              active-class="active"
-              class="nav-connection"
-              :data-status="c.status"
-            >
-              <span
-                class="icon icon-cloud"
-                aria-hidden="true"
-              />
-              <span class="nav-connection-text">
-                <span class="nav-connection-provider">{{ c.providerName }}</span>
+              <p
+                id="nav-group-places"
+                class="fs-label nav-group-title"
+              >
+                {{ $t('nav.groups.places') }}
+              </p>
+              <!-- A source's entry stays current in its subfolders (#244), where the path no longer matches its link. -->
+              <RouterLink
+                to="/home"
+                active-class="active"
+                :class="{ active: inSource('home') }"
+              >
                 <span
-                  class="nav-connection-account"
-                  :title="c.account"
-                > {{ c.account }}</span>
+                  class="icon icon-home"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.home') }}
+              </RouterLink>
+              <RouterLink
+                v-for="c in connections.items"
+                :key="c.id"
+                :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
+                active-class="active"
+                class="nav-connection"
+                :class="{ active: inSource(c.source) }"
+                :data-status="c.status"
+              >
                 <span
-                  v-if="c.library"
-                  class="nav-connection-library"
-                  :title="c.library"
-                > {{ c.library }}</span>
+                  class="icon icon-cloud"
+                  aria-hidden="true"
+                />
+                <span class="nav-connection-text">
+                  <span class="nav-connection-provider">{{ c.providerName }}</span>
+                  <span
+                    class="nav-connection-account"
+                    :title="c.account"
+                  > {{ c.account }}</span>
+                  <span
+                    v-if="c.library"
+                    class="nav-connection-library"
+                    :title="c.library"
+                  > {{ c.library }}</span>
+                  <span
+                    v-if="c.status !== 'ok'"
+                    class="nav-connection-status"
+                  >{{ $t(`connections.status.${c.status}`) }}</span>
+                </span>
+              </RouterLink>
+              <RouterLink
+                to="/connections"
+                active-class="active"
+              >
                 <span
-                  v-if="c.status !== 'ok'"
-                  class="nav-connection-status"
-                >{{ $t(`connections.status.${c.status}`) }}</span>
-              </span>
-            </RouterLink>
-            <RouterLink
-              to="/connections"
-              active-class="active"
+                  class="icon icon-cloud-add"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.connections') }}
+              </RouterLink>
+            </div>
+            <div
+              class="nav-group"
+              role="group"
+              aria-labelledby="nav-group-collections"
             >
-              <span
-                class="icon icon-cloud-add"
-                aria-hidden="true"
-              />
-              {{ $t('nav.connections') }}
-            </RouterLink>
-            <RouterLink
-              to="/migrate"
-              active-class="active"
+              <p
+                id="nav-group-collections"
+                class="fs-label nav-group-title"
+              >
+                {{ $t('nav.groups.collections') }}
+              </p>
+              <RouterLink
+                to="/favourites"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-star"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.favourites') }}
+              </RouterLink>
+              <RouterLink
+                to="/recent"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-recent"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.recent') }}
+              </RouterLink>
+              <RouterLink
+                to="/shared"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-shared"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.shared') }}
+              </RouterLink>
+              <RouterLink
+                to="/trash"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-trash"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.trash') }}
+              </RouterLink>
+            </div>
+            <div
+              class="nav-group"
+              role="group"
+              aria-labelledby="nav-group-manage"
             >
-              <span
-                class="icon icon-migrate"
-                aria-hidden="true"
-              />
-              {{ $t('nav.migrate') }}
-            </RouterLink>
-            <RouterLink
-              to="/favourites"
-              active-class="active"
-            >
-              <span
-                class="icon icon-star"
-                aria-hidden="true"
-              />
-              {{ $t('nav.favourites') }}
-            </RouterLink>
-            <RouterLink
-              to="/recent"
-              active-class="active"
-            >
-              <span
-                class="icon icon-recent"
-                aria-hidden="true"
-              />
-              {{ $t('nav.recent') }}
-            </RouterLink>
-            <RouterLink
-              to="/shared"
-              active-class="active"
-            >
-              <span
-                class="icon icon-shared"
-                aria-hidden="true"
-              />
-              {{ $t('nav.shared') }}
-            </RouterLink>
-            <RouterLink
-              to="/trash"
-              active-class="active"
-            >
-              <span
-                class="icon icon-trash"
-                aria-hidden="true"
-              />
-              {{ $t('nav.trash') }}
-            </RouterLink>
-            <RouterLink
-              to="/storage"
-              active-class="active"
-            >
-              <span
-                class="icon icon-storage"
-                aria-hidden="true"
-              />
-              {{ $t('nav.storage') }}
-            </RouterLink>
-            <RouterLink
-              v-if="session.me?.role === 'admin'"
-              to="/members"
-              active-class="active"
-            >
-              <span
-                class="icon icon-members"
-                aria-hidden="true"
-              />
-              {{ $t('nav.members') }}
-            </RouterLink>
-            <RouterLink
-              to="/settings"
-              active-class="active"
-            >
-              <span
-                class="icon icon-settings"
-                aria-hidden="true"
-              />
-              {{ $t('nav.settings') }}
-            </RouterLink>
+              <p
+                id="nav-group-manage"
+                class="fs-label nav-group-title"
+              >
+                {{ $t('nav.groups.manage') }}
+              </p>
+              <RouterLink
+                to="/storage"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-storage"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.storage') }}
+              </RouterLink>
+              <RouterLink
+                v-if="session.me?.role === 'admin'"
+                to="/members"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-members"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.members') }}
+              </RouterLink>
+              <RouterLink
+                to="/settings"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-settings"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.settings') }}
+              </RouterLink>
+              <RouterLink
+                to="/migrate"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-migrate"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.migrate') }}
+              </RouterLink>
+            </div>
           </template>
         </div>
       </nav>

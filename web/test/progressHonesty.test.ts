@@ -34,7 +34,7 @@ describe('progress honesty', () => {
     uploads.items = [item(1, 996, 'uploading'), item(2, 1000, 'uploading'), item(3, 1000, 'done')];
     const w = mount(UploadPanel, { global: { plugins: [i18n()] } });
     expect(values(w)).toEqual(['99', '99', '100']);
-    expect(w.findAll('.upload-state').map((s) => s.text())).toEqual(['99 %', '99 %', 'Uploaded']);
+    expect(w.findAll('.upload-state').map((s) => s.text())).toEqual(['99%', '99%', 'Uploaded']); // English: no space (#247)
     w.unmount();
   });
 

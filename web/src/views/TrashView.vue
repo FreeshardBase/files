@@ -11,6 +11,7 @@ import { formatDate, formatSize, intlLocale } from '../format.ts';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
+import { parentOf, useLocations } from '../location.ts';
 
 const { t, locale } = useI18n();
 const trash = useTrashStore();
@@ -21,13 +22,16 @@ const restoredTo = ref<string | null>(null);
 const failure = ref('');
 onMounted(() => { void trash.load(); });
 
-const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
-const folderLabel = (p: string) => p === '/' ? t('nav.home') : p;
+// The trash holds the home's items only; their places are written as everywhere else (#244).
+const { folderLabel: label } = useLocations();
+const folderLabel = (p: string) => label('home', p);
 const size = (n: number) => formatSize(n, intlLocale(locale.value));
 
 const fail = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
-  failure.value = t(`errors.${e.code}`, e.params ?? {});
+  // A count (PURGE_FAILED) picks the singular or plural form (#247).
+  const count = e.params?.count;
+  failure.value = typeof count === 'number' ? t(`errors.${e.code}`, e.params ?? {}, count) : t(`errors.${e.code}`, e.params ?? {});
 };
 // Reload once per action; if the action took the focused button away, focus the heading instead of the page.
 async function settle() {
@@ -115,7 +119,7 @@ async function confirmed() {
     <ConfirmDialog
       v-if="confirming"
       :title="confirming.kind === 'all' ? $t('trash.confirmEmptyTitle') : $t('trash.confirmDeleteTitle')"
-      :message="confirming.kind === 'all' ? $t('trash.confirmEmptyMessage', { count: trash.items.length })
+      :message="confirming.kind === 'all' ? $t('trash.confirmEmptyMessage', { count: trash.items.length }, trash.items.length)
         : $t('trash.confirmDeleteMessage', { name: confirming.item.name })"
       :confirm-label="confirming.kind === 'all' ? $t('trash.emptyButton') : $t('trash.delete')"
       @confirm="confirmed"

@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue';
 import { folderRoute } from '../api/paths.ts';
 import { acceptDrag, droppedPaths } from '../dnd.ts';
-// `rootLabel`: the first crumb ("My storage", or a share's name); `editable`: crumbs take drops only where moves are allowed.
-const props = withDefaults(defineProps<{ source: string; path: string; rootLabel?: string; editable?: boolean }>(), { rootLabel: '', editable: true });
+// `rootLabel`: the first crumb ("My storage", a share's name, a cloud's provider); `rootNote`: a muted note beside it (a
+// cloud's account, #244); `editable`: crumbs take drops only where moves are allowed.
+const props = withDefaults(defineProps<{ source: string; path: string; rootLabel?: string; rootNote?: string; editable?: boolean }>(),
+  { rootLabel: '', rootNote: '', editable: true });
 // Every crumb is a drop target: dragging list items onto it moves them into that folder.
 const emit = defineEmits<{ drop: [string[], string] }>();
 const parts = computed(() => {
@@ -43,6 +45,11 @@ function onDrop(e: DragEvent, path: string) {
       >
         {{ p.name ?? (rootLabel || $t('nav.breadcrumbRoot')) }}
       </RouterLink>
+      <span
+        v-if="i === 0 && rootNote"
+        class="crumb-note"
+        :title="rootNote"
+      >{{ rootNote }}</span>
     </template>
   </nav>
 </template>

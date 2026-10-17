@@ -4,13 +4,17 @@ import { CreateFavouriteRequest, type Favourite, type FavouriteList } from '@fil
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
+import { lookupMime } from '../storage/mime.ts';
 import { resolveSource, sourceFor } from '../storage/resolveSource.ts';
 import { addFavourite, favouriteName, favouritesOf, removeFavourite, type FavouriteRow } from '../storage/favourites.ts';
 
 const FavouriteId = z.object({ id: z.coerce.number().int().positive() });
 
-const view = (row: FavouriteRow, available: boolean): Favourite => ({ id: row.id, source: row.source, name: favouriteName(row),
-  path: row.path, type: row.type, available, createdAt: row.created_at });
+const view = (row: FavouriteRow, available: boolean): Favourite => {
+  const name = favouriteName(row);
+  return { id: row.id, source: row.source, name, path: row.path, type: row.type, available, createdAt: row.created_at,
+    ...(row.type === 'file' ? { mime: lookupMime(name) } : {}) };
+};
 
 // A source that can no longer be resolved for the caller: an unlinked connection or a revoked or orphaned share.
 const GONE = new Set(['SOURCE_NOT_FOUND', 'SHARE_ORPHANED']);

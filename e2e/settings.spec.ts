@@ -111,7 +111,7 @@ test('the theme switch changes the tokens at once and on another device; "system
   await other.context().close();
 
   // "System": the device's preference, also when it changes while the page is open.
-  await radio(page, 'Wie das Gerät').check();
+  await radio(page, 'Wie auf dem Gerät').check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

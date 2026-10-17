@@ -73,7 +73,7 @@ const screens = (dir: string): Screen[] => [
 async function open(page: Page, s: Screen) {
   await page.goto(s.url);
   await expect(s.ready(page)).toBeVisible();
-  await expect(page.getByText('Loading …')).toHaveCount(0);
+  await expect(page.getByText('Loading…')).toHaveCount(0);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -122,7 +122,9 @@ test('axe finds no serious or critical violation on the main screens and dialogs
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
-    await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+    // A touch screen has no header button for it (#244); "?" opens it there too.
+    if (mobile(info)) await page.keyboard.press('?');
+    else await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
     await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
     await axe(page, `${theme} shortcuts`);
     await page.keyboard.press('Escape');
@@ -350,7 +352,8 @@ test('no dead controls: every button on the main screens does something visible 
   // The screens were not empty: the folder's rows, the trash row and the header were all clicked.
   expect(clicked.some((c) => c.startsWith('folder: Actions for notes.txt'))).toBe(true);
   expect(clicked.some((c) => c.startsWith('trash: Restore'))).toBe(true);
-  expect(clicked.some((c) => c.endsWith('Keyboard shortcuts'))).toBe(true);
+  // The keyboard help button is for a keyboard; a touch screen does not show it (#244).
+  expect(clicked.some((c) => c.endsWith('Keyboard shortcuts'))).toBe(!mobile(info));
 });
 
 test('the header shows the member\'s display name from OIDC', async ({ page, browser, baseURL }, info) => {
@@ -385,6 +388,8 @@ test('"?" and the header button open the keyboard shortcuts; Esc closes and focu
   await expect(help).toHaveCount(0);
 
   const button = page.getByRole('button', { name: 'Keyboard shortcuts' });
+  // A touch screen has no use for the header button (#244).
+  if (mobile(info)) { await expect(button).toBeHidden(); return; }
   await button.click();
   await expect(help).toBeVisible();
   await help.getByRole('button', { name: 'Close' }).click();

@@ -47,10 +47,10 @@ test('delete a file, restore it from the trash, and find it back in its folder',
 
   await openTrash(page);
   await expect(row(page, name)).toBeVisible();
-  await expect(row(page, name).locator('.origin')).toHaveText(`/${dir}`);
+  await expect(row(page, name).locator('.origin')).toHaveText(new RegExp(`^(Mein Speicher|My storage) › ${dir}$`)); // #244
   await row(page, name).getByRole('button', { name: /wiederherstellen|Restore/ }).click();
   await expect(status(page)).toContainText(name);
-  await expect(status(page)).toContainText(`/${dir}`);
+  await expect(status(page)).toContainText(new RegExp(`[„“](Mein Speicher|My storage) › ${dir}[“”]`)); // quoted (#247)
   await expect(row(page, name)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Papierkorb|Trash/ })).toBeFocused();
 

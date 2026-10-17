@@ -9,6 +9,7 @@ import type { Entry } from '@files/shared';
 import { useSearchStore } from '../stores/search.ts';
 import { folderRoute } from '../api/paths.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
+import { parentOf, useLocations } from '../location.ts';
 
 const DEBOUNCE_MS = 200;
 const { t } = useI18n();
@@ -21,14 +22,13 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 onBeforeUnmount(() => clearTimeout(timer));
 
 const connections = useConnectionsStore();
-// A connection's group is named like its sidebar entry (#148).
+const { sourceName, sourceAccount, folderLabel } = useLocations();
+// In a sentence a connection is named like its sidebar entry (#148), provider and account.
 const sourceLabel = (source: string) => {
   if (source === 'home') return t('nav.home');
   const c = connections.bySource(source);
   return c ? t('nav.connection', { provider: c.providerName, account: c.account }) : source;
 };
-const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
-const folderLabel = (source: string, p: string) => p === '/' ? sourceLabel(source) : p;
 
 type Result = { source: string; entry: Entry; id: string };
 // Groups with results, in the server's order (home first); every option has a stable id for aria-activedescendant.
@@ -131,15 +131,23 @@ function onFocusOut(e: FocusEvent) {
           v-for="g in groups"
           :key="g.source"
           role="group"
-          :aria-labelledby="`search-group-${g.gi}`"
+          :aria-labelledby="sourceAccount(g.source) ? `search-group-${g.gi} search-account-${g.gi}` : `search-group-${g.gi}`"
           class="search-group"
         >
           <div
-            :id="`search-group-${g.gi}`"
             role="presentation"
             class="search-group-title"
           >
-            {{ sourceLabel(g.source) }}
+            <!-- Only the provider is a label; the account beside it keeps its case (#244). -->
+            <span
+              :id="`search-group-${g.gi}`"
+              class="search-group-source"
+            >{{ sourceName(g.source) }}</span>
+            <span
+              v-if="sourceAccount(g.source)"
+              :id="`search-account-${g.gi}`"
+              class="search-group-account"
+            >{{ sourceAccount(g.source) }}</span>
           </div>
           <div
             v-for="r in g.results"

@@ -117,12 +117,12 @@ watch(source, async (s) => {
     if (!(e instanceof ApiFailure)) throw e; // handled: the listing of the same source reports the failure
   }
 }, { immediate: true });
-// A connection (#148) is named after its provider account, as in the sidebar.
+// A connection (#148) is named after its provider; the account is a muted note beside the root crumb (#244).
 const connection = computed(() => connections.bySource(source.value));
 const rootLabel = computed(() => source.value === 'home' ? t('nav.breadcrumbRoot')
-  : source.value.startsWith('conn:') ? (connection.value ? t('nav.connection', { provider: connection.value.providerName,
-    account: connection.value.account }) : t('nav.connections'))
+  : source.value.startsWith('conn:') ? (connection.value?.providerName ?? t('nav.connections'))
   : (shareName.value ?? t('nav.shared')));
+const rootNote = computed(() => connection.value?.account ?? '');
 const folderName = computed(() => path.value === '/' ? (source.value === 'home' ? t('nav.home') : rootLabel.value) : path.value.split('/').pop()!);
 // What the caller may do here: change only with `edit` (re-checked by the server on every request); share in their own
 // home and their own cloud connections, never in a share, since a share is never shared on (DECISIONS, #146, #208);
@@ -308,7 +308,7 @@ async function trash(entries: Entry[]) {
   failures.value = null;
   try {
     await folder.trash(at.source, entries.map((e) => e.path));
-    say(t('transfer.trashed', { count: entries.length }));
+    say(t('transfer.trashed', { count: entries.length }, entries.length));
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
     toast.value = null;
@@ -426,7 +426,7 @@ function onAction(action: ItemAction, entries: Entry[]) {
   else {
     const mode = action === 'cut' ? 'move' : 'copy';
     folder.clipboard = { mode, source: folder.source, entries };
-    say(t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length }));
+    say(t(mode === 'move' ? 'transfer.markedMove' : 'transfer.markedCopy', { count: entries.length }, entries.length));
   }
 }
 // Within one source items move and copy directly; from another source they become a transfer job (#152).
@@ -505,6 +505,7 @@ function onDrop(paths: string[], dir: string) {
         :source="source"
         :path="path"
         :root-label="rootLabel"
+        :root-note="rootNote"
         :editable="editable"
         @drop="onDrop"
       />

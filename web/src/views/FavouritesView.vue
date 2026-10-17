@@ -2,34 +2,27 @@
 // The member's favourites (#155) across their sources, in the order they were starred. A folder opens itself, a file
 // opens its folder with the file selected. A favourite whose source is gone (an unlinked connection, a revoked share) is
 // shown as unavailable and can only be removed.
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Favourite } from '@files/shared';
 import { useFavouritesStore } from '../stores/favourites.ts';
-import { useConnectionsStore } from '../stores/connections.ts';
 import { ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
+import { parentOf, useLocations } from '../location.ts';
+import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t } = useI18n();
 const favourites = useFavouritesStore();
-const connections = useConnectionsStore();
+const { folderLabel } = useLocations();
 const status = ref('');
 const failure = ref('');
 const title = ref<HTMLElement>();
 onMounted(() => { void favourites.load(); });
+// A thumbnail in the folder list's 28 px slot (#244), only while the source is there; a failed one shows the line icon.
+const thumbFailed = reactive(new Set<number>());
 
-const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
-function sourceLabel(source: string): string {
-  if (source === 'home') return t('nav.home');
-  const c = connections.bySource(source);
-  if (c) return t('nav.connection', { provider: c.providerName, account: c.account });
-  return source.startsWith('share:') ? t('nav.shared') : t('nav.connections');
-}
-const location = (f: Favourite) => {
-  const parent = parentOf(f.path);
-  return parent === '/' ? sourceLabel(f.source) : `${sourceLabel(f.source)}${parent}`;
-};
+const location = (f: Favourite) => folderLabel(f.source, parentOf(f.path));
 const target = (f: Favourite) => f.type === 'directory' ? folderRoute(f.source, f.path)
   : { path: folderRoute(f.source, parentOf(f.path)), query: { select: f.path } };
 
@@ -111,7 +104,16 @@ async function remove(f: Favourite) {
         >
           <td class="name">
             <div class="name-inner">
+              <img
+                v-if="f.available && hasThumbnail(f) && !thumbFailed.has(f.id)"
+                class="row-thumb"
+                :src="thumbnailHref(f.source, { path: f.path, modified: f.createdAt }, 128)"
+                alt=""
+                loading="lazy"
+                @error="thumbFailed.add(f.id)"
+              >
               <span
+                v-else
                 class="icon"
                 :class="f.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"

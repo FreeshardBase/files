@@ -34,7 +34,7 @@ test('copy a file from a cloud connection, paste it into the home, watch the tra
   await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
   await row(page, 'report.txt').getByRole('button', { name: /(Aktionen für|Actions for) report\.txt/ }).click();
   await page.getByRole('menu').getByRole('menuitem', { name: /^(Kopieren|Copy)$/ }).click();
-  await expect(page.getByRole('status')).toContainText(/1 zum Kopieren vorgemerkt|1 ready to copy/);
+  await expect(page.getByRole('status')).toContainText(/Ein Element zum Kopieren vorgemerkt|One item ready to copy/);
 
   // Into another source: the home, in this project's own folder.
   await openPlaces(page);

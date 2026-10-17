@@ -95,6 +95,16 @@ describe('favourites', () => {
     expect((await as(a, 'DELETE', `/api/v1/favourites/${file.id}`)).statusCode).toBe(404);
   });
 
+  it('carry a file\'s type, so the list can show its thumbnail; a folder has none (#244)', async () => {
+    const d = await fresh(a, 'thumbs');
+    await put(a, `${d}/photo.png`);
+    await starred(a, 'home', d);
+    await starred(a, 'home', `${d}/photo.png`);
+    const mine = (await favourites(a)).filter((f) => f.path.startsWith(d));
+    expect(mine.find((f) => f.type === 'file')!.mime).toBe('image/png');
+    expect(mine.find((f) => f.type === 'directory')).not.toHaveProperty('mime');
+  });
+
   it('refuses what the caller cannot reach: a missing item, an unknown source, another member\'s connection', async () => {
     expect((await star(a, 'home', '/does-not-exist')).json().code).toBe('NOT_FOUND');
     expect((await star(a, 'home', '/')).json().code).toBe('PATH_INVALID');

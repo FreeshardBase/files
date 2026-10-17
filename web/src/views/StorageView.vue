@@ -9,9 +9,11 @@ import { useConnectionsStore } from '../stores/connections.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatSize, intlLocale } from '../format.ts';
 import UsageBar from '../components/UsageBar.vue';
+import { useLocations } from '../location.ts';
 
 const { t, locale } = useI18n();
 const storage = useStorageStore();
+const { folderLabel } = useLocations();
 const connections = useConnectionsStore();
 onMounted(() => { void storage.load(); });
 
@@ -163,9 +165,9 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
                 />
                 <RouterLink
                   :to="folderRoute('home', f.path)"
-                  :aria-label="$t('storage.openLabel', { path: f.path })"
+                  :aria-label="$t('storage.openLabel', { path: folderLabel('home', f.path) })"
                 >
-                  {{ f.path }}
+                  {{ folderLabel('home', f.path) }}
                 </RouterLink>
               </div>
             </td>

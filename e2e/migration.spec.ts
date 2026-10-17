@@ -31,7 +31,7 @@ test('migrate a cloud folder with the wizard, read the summary, and delete only 
   const folder = `Move-${info.project.name}`;
 
   await openPlaces(page);
-  await nav(page).getByRole('link', { name: /Auf den Shard umziehen|Move to shard/ }).click();
+  await nav(page).getByRole('link', { name: /Auf den Shard umziehen|Move to the shard/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Auf den Shard umziehen|Move to the shard/ })).toBeVisible();
   // 1. The only connection is chosen; open its folder in the picker.
   await expect(page.getByRole('radio', { name: /Fake Cloud: testuser@example\.com/ })).toBeChecked();
@@ -124,7 +124,7 @@ test('the job page counts until the folders are listed, and its heading follows 
   await expect(page.getByTestId('scan-files')).toHaveText('1');
   await page.getByRole('button', { name: /Umzug starten|Start migration/ }).click();
   await expect(page).toHaveURL(/\/migrate\/[0-9a-f]{32}$/);
-  await expect(page.locator('.migrate-state')).toHaveText(/^(Wird gezählt …|Counting …)$/);
+  await expect(page.locator('.migrate-state')).toHaveText(/^(Wird gezählt …|Counting…)$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^(„${name}“ zieht auf den Shard um|Moving “${name}” to the shard)$`));
   await page.unroute('**/api/v1/transfers/events');
   await page.reload();

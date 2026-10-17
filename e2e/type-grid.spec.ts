@@ -159,7 +159,7 @@ test('state words use the UI face, sizes and dates the mono face (#239 H3)', asy
 
     // Members: "No quota" is a word in the quota column.
     await page.goto('/members');
-    const noQuota = page.locator('td.members-quota').getByText(/^(Kein Kontingent|No quota)$/).first();
+    const noQuota = page.locator('td.members-quota').getByText(/^(Kein Speicherlimit|No storage limit)$/).first();
     await expect(noQuota).toBeVisible();
     expect(await style(noQuota, 'font-family')).not.toMatch(MONO);
 

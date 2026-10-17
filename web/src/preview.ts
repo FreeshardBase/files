@@ -25,11 +25,11 @@ export function previewKind(mime: string | undefined): PreviewKind {
 // Types the server makes a thumbnail of (server/src/storage/thumbnails.ts); everything else keeps its line icon.
 const THUMBNAILED = new Set([...IMAGES, 'video/mp4', 'video/quicktime', 'video/webm', 'video/ogg', 'application/pdf']);
 
-export const hasThumbnail = (e: Entry): boolean =>
+export const hasThumbnail = (e: Pick<Entry, 'type' | 'mime'>): boolean =>
   e.type === 'file' && THUMBNAILED.has((e.mime ?? '').split(';')[0]!.trim().toLowerCase());
 
 /** The thumbnail route; `v` (the modified time) gives a changed file a new URL, so the browser may cache each one. */
-export const thumbnailHref = (source: string, e: Entry, size: ThumbSize): string =>
+export const thumbnailHref = (source: string, e: Pick<Entry, 'path' | 'modified'>, size: ThumbSize): string =>
   `${sourceApi(source)}/thumbnail?path=${encodeURIComponent(e.path)}&size=${size}&v=${encodeURIComponent(e.modified ?? '')}`;
 
 /** URL the viewers load: the content route without `download=1`, inline for the allowlist. */
