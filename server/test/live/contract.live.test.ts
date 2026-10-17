@@ -3,19 +3,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
 import sharp from 'sharp';
 import type { Entry } from '@files/shared';
-import { OAuthClient, systemClock, type Provider } from '../../src/cloud/oauth.ts';
-import { googleDriveProvider } from '../../src/cloud/googleDrive.ts';
-import { dropboxProvider } from '../../src/cloud/dropbox.ts';
 import type { StorageBackend } from '../../src/storage/backend.ts';
+import { DROPBOX, GDRIVE, liveBackend, liveEnv, PCLOUD } from './providers.ts';
 
 // The whole StorageBackend contract, live against each real provider whose LIVE_<P>_* variables are set (server/.env.live);
 // otherwise that provider's suite is skipped, never passed. Everything happens in one fresh folder that is deleted at the
 // end (it lands in the provider's trash). The fakes once diverged from the real APIs (#201); this is the net for that.
-type Live = { name: string; prefix: string; make: (c: { clientId: string; clientSecret: string }) => Provider };
-const PROVIDERS: Live[] = [
-  { name: 'Google Drive', prefix: 'GDRIVE', make: (c) => googleDriveProvider(c) },
-  { name: 'Dropbox', prefix: 'DROPBOX', make: (c) => dropboxProvider(c) },
-];
+const PROVIDERS = [GDRIVE, DROPBOX, PCLOUD];
 
 const MB = 1024 * 1024;
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
@@ -34,15 +28,11 @@ async function eventually<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms = 6
 }
 
 for (const p of PROVIDERS) {
-  const vars = ['REFRESH_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET'].map((v) => process.env[`LIVE_${p.prefix}_${v}`]);
-  describe.skipIf(vars.some((v) => !v))(`live contract: ${p.name} (LIVE_${p.prefix}_*)`, () => {
+  const env = liveEnv(p);
+  describe.skipIf(env === undefined)(`live contract: ${p.name} (LIVE_${p.prefix}_*)`, () => {
     it('passes every step of the StorageBackend contract', { timeout: 15 * 60_000 }, async () => {
-      const [refresh, clientId, clientSecret] = vars.map((v) => v!) as [string, string, string];
-      const provider = p.make({ clientId, clientSecret });
-      let stored = refresh;
-      const client = new OAuthClient(provider, { refreshToken: () => stored, saveRefreshToken: (t) => { stored = t; },
-        setStatus: () => undefined }, systemClock);
-      const b: StorageBackend = provider.backend(client, '');
+      const live = liveBackend(p, env!);
+      const b: StorageBackend = live.backend;
       const dir = `/freeshard-files-contract-${randomBytes(5).toString('hex')}`;
       const failures: string[] = [];
       const step = async (name: string, fn: () => Promise<void>) => {
@@ -203,7 +193,7 @@ for (const p of PROVIDERS) {
           await expect(b.stat(dir)).rejects.toMatchObject({ code: 'NOT_FOUND' });
         });
       }
-      if (stored !== refresh) console.warn(`${p.name} rotated the refresh token; re-export LIVE_${p.prefix}_REFRESH_TOKEN`);
+      if (live.rotated()) console.warn(`${p.name} rotated the refresh token; re-export LIVE_${p.prefix}_REFRESH_TOKEN`);
       expect(failures).toEqual([]);
     });
   });

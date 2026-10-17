@@ -5,7 +5,8 @@ import type { Db } from '../db.ts';
 import { AppError } from '../errors.ts';
 import type { ConnectedBackend } from '../storage/backend.ts';
 import { orphanSourceRefs, type PathTable } from '../storage/pathRefs.ts';
-import { authorizationUrl, exchangeCode, OAuthClient, type Clock, type LibraryPicker, type Provider, type TokenStore } from './oauth.ts';
+import { authorizationUrl, exchangeCode, OAuthClient, type CallbackParams, type Clock, type LibraryPicker, type Provider,
+  type TokenStore } from './oauth.ts';
 import { open, seal } from './secretBox.ts';
 
 /** A consent flow must come back within this time. */
@@ -23,7 +24,7 @@ const context = (id: string) => `connections/${id}/refresh_token`;
 const b64url = (b: Buffer) => b.toString('base64url');
 const challengeOf = (verifier: string) => b64url(createHash('sha256').update(verifier).digest());
 
-export type CallbackQuery = { code?: string; state?: string; error?: string };
+export type CallbackQuery = { code?: string; state?: string; error?: string } & CallbackParams;
 
 /**
  * The members' cloud connections (#148): rows, the consent flow, and one OAuthClient per connection for this process (so
@@ -182,12 +183,19 @@ export class CloudConnections {
     const provider = this.byId.get(attempt.provider);
     if (!provider) return failed('provider no longer offered');
     const { clock } = this.deps;
-    let tokens;
+    let refresh: string;
+    let tokens: { accessToken: string; expiresAt: number } | undefined;
     try {
-      tokens = await exchangeCode(provider, clock, { code: q.code, redirectUri: this.deps.redirectUri,
-        ...(attempt.verifier !== null ? { verifier: attempt.verifier } : {}) });
+      if (provider.longLived) {
+        // A token that never expires, kept as the connection's credential (pCloud, #211).
+        refresh = await provider.longLived.exchange(clock, { code: q.code, redirectUri: this.deps.redirectUri,
+          callback: { ...(q.hostname !== undefined ? { hostname: q.hostname } : {}), ...(q.locationid !== undefined ? { locationid: q.locationid } : {}) } });
+      } else {
+        const t = await exchangeCode(provider, clock, { code: q.code, redirectUri: this.deps.redirectUri,
+          ...(attempt.verifier !== null ? { verifier: attempt.verifier } : {}) });
+        tokens = t; refresh = t.refreshToken;
+      }
     } catch (err) { return failed('code exchange rejected', err); } // handled: becomes CONNECT_FAILED for the member
-    let refresh = tokens.refreshToken;
     const temp = new OAuthClient(provider, { refreshToken: () => refresh, saveRefreshToken: (t) => { refresh = t; }, setStatus: () => undefined },
       clock, tokens);
     let account;

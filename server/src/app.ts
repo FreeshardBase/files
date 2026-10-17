@@ -34,6 +34,7 @@ import { systemClock, type Clock, type Provider } from './cloud/oauth.ts';
 import { googleDriveProvider } from './cloud/googleDrive.ts';
 import { dropboxProvider } from './cloud/dropbox.ts';
 import { graphProviders } from './cloud/graph.ts';
+import { pcloudProvider } from './cloud/pcloud.ts';
 import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connections.ts';
 import { TransferEngine } from './storage/transfers.ts';
 import { registerTransferRoutes } from './routes/transfers.ts';
@@ -67,11 +68,11 @@ export type Connections = (user: User) => Promise<ConnectedBackend[]>;
 
 /**
  * The cloud providers the shard offers: each one whose client credentials are configured, with its fixed endpoints.
- * Google Drive (#149), Dropbox (#150), and OneDrive and SharePoint over Microsoft Graph (#151).
+ * Google Drive (#149), Dropbox (#150), OneDrive and SharePoint over Microsoft Graph (#151), and pCloud (#211).
  */
 export function configuredProviders(config: Config): Provider[] {
   return [...(config.google ? [googleDriveProvider(config.google)] : []), ...(config.dropbox ? [dropboxProvider(config.dropbox)] : []),
-    ...(config.graph ? graphProviders(config.graph) : [])];
+    ...(config.graph ? graphProviders(config.graph) : []), ...(config.pcloud ? [pcloudProvider(config.pcloud)] : [])];
 }
 
 export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) => void;

@@ -2,7 +2,8 @@
 // "Cloud accounts" (#148): the member's own connections with their status, signing in again, unlinking (asked first,
 // since shares into the account end), and one button per provider the shard offers. A failed consent comes back here
 // with `?error=<code>`, shown once and then dropped from the URL. A new SharePoint connection comes back with
-// `?pick=<id>` and opens the library picker (#151); until a library is picked, its row offers "Choose library".
+// `?pick=<id>` and opens the library picker (#151); until a library is picked, its row offers "Choose library". Each
+// provider's button carries its line icon (#211).
 import { nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -21,6 +22,10 @@ const alert = ref('');
 const unlinking = ref<Connection | null>(null);
 const picking = ref<Connection | null>(null);
 const heading = ref<HTMLElement>();
+
+/** A provider's line icon on its connect button: pCloud's own glyph (#211), the plain cloud for the others. */
+const PROVIDER_ICONS: Readonly<Record<string, string>> = { pcloud: 'icon-provider-pcloud' };
+const providerIcon = (id: string) => PROVIDER_ICONS[id] ?? 'icon-cloud';
 
 const report = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
@@ -218,8 +223,14 @@ async function unlink() {
           :key="p.id"
           type="button"
           class="button"
+          :data-provider="p.id"
           @click="signIn({ provider: p.id })"
         >
+          <span
+            class="icon"
+            :class="providerIcon(p.id)"
+            aria-hidden="true"
+          />
           {{ $t('connections.connect', { provider: p.name }) }}
         </button>
       </div>

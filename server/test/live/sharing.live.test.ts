@@ -1,20 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { OAuthClient, systemClock, type Provider } from '../../src/cloud/oauth.ts';
-import { googleDriveProvider } from '../../src/cloud/googleDrive.ts';
-import { dropboxProvider } from '../../src/cloud/dropbox.ts';
 import type { StorageBackend } from '../../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from '../support/harness.ts';
+import { DROPBOX, GDRIVE, liveBackend, liveEnv, PCLOUD } from './providers.ts';
 
-// Internal shares and public links on a real Google Drive and a real Dropbox (LIVE_<P>_*, server/.env.live), driven
+// Internal shares and public links on a real Google Drive, Dropbox and pCloud (LIVE_<P>_*, server/.env.live), driven
 // through the real app: the owner (testuser) has the connection, the member reaches it only through the share, the
 // visitor only through the link. Skipped, never passed, without the variables. Works in a fresh folder, deleted after.
-type Live = { name: string; prefix: string; make: (c: { clientId: string; clientSecret: string }) => Provider };
-const PROVIDERS: Live[] = [
-  { name: 'Google Drive', prefix: 'GDRIVE', make: (c) => googleDriveProvider(c) },
-  { name: 'Dropbox', prefix: 'DROPBOX', make: (c) => dropboxProvider(c) },
-];
+const PROVIDERS = [GDRIVE, DROPBOX, PCLOUD];
 const ORIGIN = 'https://files.example.com';
 type S = { cookie: string; csrf: string };
 type Res = { statusCode: number; body: string; headers: Record<string, unknown>; json: () => unknown };
@@ -26,8 +20,8 @@ async function bytes(stream: Readable): Promise<Buffer> {
 }
 
 for (const p of PROVIDERS) {
-  const vars = ['REFRESH_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET'].map((v) => process.env[`LIVE_${p.prefix}_${v}`]);
-  describe.skipIf(vars.some((v) => !v))(`live sharing: ${p.name} (LIVE_${p.prefix}_*)`, () => {
+  const env = liveEnv(p);
+  describe.skipIf(env === undefined)(`live sharing: ${p.name} (LIVE_${p.prefix}_*)`, () => {
     let t: TestApp; let owner: S; let member: S; let ownerId = ''; let memberId = '';
     let b: StorageBackend;
     const dir = `/freeshard-files-sharing-${randomBytes(4).toString('hex')}`;
@@ -47,17 +41,12 @@ for (const p of PROVIDERS) {
     const ok = (r: Res) => { expect(r.statusCode, r.body).toBeLessThan(300); return r; };
     const noProviderLeak = (r: Res) => {
       const text = `${JSON.stringify(r.headers)} ${r.headers['content-type']?.toString().includes('json') ? r.body : ''}`;
-      expect(text).not.toMatch(/googleapis|googleusercontent|dropbox(usercontent|api)?\.com|access_token|Bearer/i);
+      expect(text).not.toMatch(/googleapis|googleusercontent|dropbox(usercontent|api)?\.com|pcloud\.com|access_token|Bearer/i);
       expect(r.headers.location).toBeUndefined();
     };
 
     beforeAll(async () => {
-      const [refresh, clientId, clientSecret] = vars.map((v) => v!) as [string, string, string];
-      const provider = p.make({ clientId, clientSecret });
-      let stored = refresh;
-      const client = new OAuthClient(provider, { refreshToken: () => stored, saveRefreshToken: (x) => { stored = x; },
-        setStatus: () => undefined }, systemClock);
-      b = provider.backend(client, '');
+      b = liveBackend(p, env!).backend;
       t = await startTestApp({}, undefined, undefined,
         { connections: async (u) => (u.id === ownerId ? [{ id: 'cloud', backend: b }] : []) });
       owner = await login(t, 'testuser'); member = await login(t, 'member');

@@ -12,13 +12,16 @@ import { FakeDrive } from './fakeDrive.ts';
 import { FakeDropbox } from './fakeDropbox.ts';
 import { graphEndpoints, graphProviders } from '../../src/cloud/graph.ts';
 import { FakeGraph, msHostOf } from './fakeGraph.ts';
+import { PCLOUD_ENDPOINTS, pcloudProvider } from '../../src/cloud/pcloud.ts';
+import { FakePcloud } from './fakePcloud.ts';
 
 // A fake cloud provider (spec §3.9): an OAuth 2 authorization server with a consent page, plus a small file API with the
 // behaviour every real provider has and the backends must handle: pagination, 401 on an expired access token, rotated
 // refresh tokens, 429 with Retry-After, resumable upload sessions and content served through a 302 to a pre-signed URL.
 // The provider backends (#149–#151) extend it with each provider's own protocol subset: Google Drive's is `drive`
 // (support/fakeDrive.ts), reached through `driveProvider()`; Dropbox's is `dropbox` (support/fakeDropbox.ts), reached
-// through `dropboxProvider()`; Microsoft Graph's is `graph` (support/fakeGraph.ts), reached through `graphProviders()`.
+// through `dropboxProvider()`; Microsoft Graph's is `graph` (support/fakeGraph.ts), reached through `graphProviders()`;
+// pCloud's is `pcloud` (support/fakePcloud.ts, #211), with its own consent page and tokens, reached through `pcloudProvider()`.
 
 /** `query` is the query string (or a session chunk's Content-Range), `body` a parsed JSON body or Dropbox-API-Arg. */
 export type FakeRequest = { method: string; path: string; at: number; host?: string; token?: string; grant?: string; query?: string; body?: unknown };
@@ -56,6 +59,10 @@ export type FakeProvider = {
   graphProviders(o?: { chunkBytes?: number }): Provider[];
   /** The Microsoft Graph subset (support/fakeGraph.ts): drives, sites, sessions, monitors and controls. */
   graph: FakeGraph;
+  /** The real pCloud provider (`pcloudProvider`) with this server's API and content hosts in place of pCloud's. */
+  pcloudProvider(o?: { chunkBytes?: number }): Provider;
+  /** The pCloud subset (support/fakePcloud.ts): its items, uploads, tokens and controls. */
+  pcloud: FakePcloud;
   /** Puts a file (or, with `null`, a folder) into the fake's store; parent folders are created. */
   put(path: string, content: string | Buffer | null): void;
   /** What the generic file API reports as the account's storage (`GET /api/quota`, #156); tests may change it. */
@@ -113,6 +120,7 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   const drive = new FakeDrive(() => url, pageSize);
   const dropbox = new FakeDropbox(pageSize);
   const graph = new FakeGraph(() => url, pageSize);
+  const pcloud = new FakePcloud();
 
   const entry = (path: string, f: FakeFile): Entry => ({ name: nameOf(path) || '/', path, type: f.type, size: f.data.length,
     modified: f.modified, ...(f.type === 'file' ? { mime: mimeOf(nameOf(path)) } : {}) });
@@ -263,6 +271,17 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
   }
 
   // Pre-signed URLs, like the providers': no bearer token, the URL itself is the capability.
+  // pCloud answers in its own way (support/fakePcloud.ts): tokens of its own, errors as `result` codes in a 200. An
+  // injected failure still comes first on its API, as from any provider's front door.
+  async function pcloudApi(req: http.IncomingMessage, res: http.ServerResponse, u: URL, rec: FakeRequest) {
+    if (await pcloud.oauth(req, res, u)) return;
+    if (pcloud.content(req, res, u, rec)) return;
+    const fail = failures.shift();
+    if (fail) return json(res, fail.status, { error: 'injected' }, fail.headers);
+    if (await pcloud.api(req, res, u, rec)) return;
+    return json(res, 404, { error: 'not_found' });
+  }
+
   async function presigned(req: http.IncomingMessage, res: http.ServerResponse, u: URL, rec: FakeRequest) {
     if (await drive.presigned(req, res, u, rec)) return;
     if (await graph.presigned(req, res, u, rec)) return;
@@ -310,7 +329,8 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
     const driveApi = u.pathname.startsWith('/drive/') || u.pathname.startsWith('/dropbox/') || u.pathname.startsWith('/graph/')
       || (u.pathname.startsWith('/upload/drive/') && !u.searchParams.has('upload_id'))
       || u.pathname.startsWith('/drive-thumb/') || u.pathname === '/feeds/vt';
-    const handle = u.pathname.startsWith('/oauth/') ? oauth : u.pathname.startsWith('/api/') || driveApi ? api : presigned;
+    const handle = u.pathname.startsWith('/pcloud/') || u.pathname.startsWith('/pcloud-content/') ? pcloudApi
+      : u.pathname.startsWith('/oauth/') ? oauth : u.pathname.startsWith('/api/') || driveApi ? api : presigned;
     // Recorded on arrival, so a hook sees the state the request was sent in (`token`/`grant` are filled in while handling).
     requests.push(rec);
     fake.onRequest?.(rec);
@@ -358,6 +378,17 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
       ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
     }),
     graph,
+    pcloudProvider: (o = {}) => pcloudProvider({ clientId: FAKE_CLIENT.id, clientSecret: FAKE_CLIENT.secret }, {
+      // pCloud's two API hosts are paths on the fake; so is a content host, which must pass the production allowlist.
+      endpoints: { authorization: `${url}/pcloud/oauth2/authorize`,
+        api: new Map(['api.pcloud.com', 'eapi.pcloud.com'].map((h) => [h, `${url}/pcloud/${h}`])),
+        content: (host, path) => {
+          const real = PCLOUD_ENDPOINTS.content(host, path);
+          return real === undefined ? undefined : `${url}/pcloud-content/${host}${new URL(real).pathname}`;
+        } },
+      ...(o.chunkBytes !== undefined ? { chunkBytes: o.chunkBytes } : {}),
+    }),
+    pcloud,
     refreshGrants: () => refreshGrants,
     validRefreshTokens: () => [...refreshTokens.keys()],
     expireAccessTokens: () => accessTokens.clear(),
@@ -372,7 +403,9 @@ export async function startFakeProvider(opts: FakeProviderOptions = {}): Promise
       const form = new URLSearchParams({ redirect_uri: q.get('redirect_uri')!, state: q.get('state')!,
         account: o.account ?? 'acct-testuser', decision: o.deny ? 'deny' : 'allow',
         ...(q.get('code_challenge') ? { code_challenge: q.get('code_challenge')! } : {}) });
-      const r = await fetch(`${url}/oauth/consent`, { method: 'POST', body: form, redirect: 'manual' });
+      // pCloud's consent page is its own (support/fakePcloud.ts).
+      const consentPath = new URL(authorizeUrl).pathname.startsWith('/pcloud/') ? '/pcloud/oauth2/consent' : '/oauth/consent';
+      const r = await fetch(`${url}${consentPath}`, { method: 'POST', body: form, redirect: 'manual' });
       return new URL(r.headers.get('location')!);
     },
     close: () => new Promise((r) => { server.closeAllConnections(); server.close(() => r()); }),

@@ -346,6 +346,9 @@ test('no dead controls: every button on the main screens does something visible 
         const w = window as unknown as { changes?: number; before?: string };
         return w.changes === undefined || (w.changes ?? 0) > 0 || w.before !== location.href;
       }), { message: `${label} has no visible effect`, timeout: 3000 }).toBe(true);
+      // Sign-out (#222) lands on its page only after the server call and clearing the browser's storage; the next
+      // screen must not load before that, or the late `location.replace` signs out the page the loop is checking.
+      if (label.endsWith(': Sign out')) await page.waitForURL('**/signed-out');
       clicked.push(label);
     }
   }
