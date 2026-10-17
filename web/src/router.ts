@@ -6,6 +6,7 @@ import FavouritesView from './views/FavouritesView.vue';
 import TagView from './views/TagView.vue';
 import SmartFolderView from './views/SmartFolderView.vue';
 import SharedView from './views/SharedView.vue';
+import MySharesView from './views/MySharesView.vue';
 import PublicLinkView from './views/PublicLinkView.vue';
 import ConnectionsView from './views/ConnectionsView.vue';
 import MigrateView from './views/MigrateView.vue';
@@ -26,7 +27,7 @@ export const isPublicPage = (pathname: string): boolean =>
   pathname === SIGNED_OUT_PATH || /^\/[sr]\/[A-Za-z0-9_-]{22}$/.test(pathname);
 
 // The URL is /<source>/<folder path…>: `home`, `share:<id>` (#146) and `conn:<id>` (#148). `/trash`, `/recent`,
-// `/favourites`, `/tags`, `/smart`, `/shared`, `/connections`, `/storage`, `/duplicates`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
+// `/favourites`, `/tags`, `/smart`, `/shared`, `/my-shares`, `/connections`, `/storage`, `/duplicates`, `/members`, `/settings`, `/requests` and `/share-target` can never clash with a folder, since folders live
 // under their source. Every page has a name: an error report names the page by it, never by its path (#298).
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: (to) => ({ path: '/home', query: to.query, hash: to.hash }) },
@@ -38,6 +39,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/smart/:id([0-9a-f]{32})', name: 'smart-folder', component: SmartFolderView },
   { path: '/recent', name: 'recent', component: RecentView },
   { path: '/shared', name: 'shared', component: SharedView },
+  // The member's own public links and the shares they granted, across sources (#299).
+  { path: '/my-shares', name: 'my-shares', component: MySharesView },
   { path: '/connections', name: 'connections', component: ConnectionsView },
   { path: '/trash', name: 'trash', component: TrashView },
   // The storage overview for every member, and the admin's page of members and quotas (#156).

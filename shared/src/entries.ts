@@ -171,6 +171,18 @@ export type Share = z.infer<typeof ShareSchema>;
 export const ShareListSchema = z.object({ items: z.array(ShareSchema) });
 export type ShareList = z.infer<typeof ShareListSchema>;
 
+/** A share the caller granted, with its item in the caller's own source ("My shares", #299). */
+export const OutgoingShareSchema = ShareSchema.extend({
+  source: z.string(), path: z.string(), type: z.enum(['file', 'directory']),
+  /** The item was deleted: the share answers SHARE_ORPHANED until someone removes it. */
+  orphaned: z.boolean(),
+});
+export type OutgoingShare = z.infer<typeof OutgoingShareSchema>;
+
+/** `GET /api/v1/shares/outgoing`: every share the caller granted, across their sources, newest first. */
+export const OutgoingShareListSchema = z.object({ items: z.array(OutgoingShareSchema) });
+export type OutgoingShareList = z.infer<typeof OutgoingShareListSchema>;
+
 /** An item shared with the caller ("Shared with me"), opened as the source `share:<id>`. */
 export const IncomingShareSchema = z.object({
   id: z.string(),
@@ -238,6 +250,16 @@ export type PublicLink = z.infer<typeof PublicLinkSchema>;
 /** `GET /api/v1/links?source=&path=`: the caller's links to one item. */
 export const PublicLinkListSchema = z.object({ items: z.array(PublicLinkSchema) });
 export type PublicLinkList = z.infer<typeof PublicLinkListSchema>;
+
+/** One of the caller's public links with the item it opens ("My shares", #299). */
+export const MyLinkSchema = PublicLinkSchema.extend({
+  source: z.string(), path: z.string(), type: z.enum(['file', 'directory']),
+});
+export type MyLink = z.infer<typeof MyLinkSchema>;
+
+/** `GET /api/v1/links/mine`: every public link of the caller, across their sources, newest first. */
+export const MyLinkListSchema = z.object({ items: z.array(MyLinkSchema) });
+export type MyLinkList = z.infer<typeof MyLinkListSchema>;
 
 /**
  * `GET /s/<token>/info`: what a visitor may know. A locked link (password not entered yet) reveals only the item's name

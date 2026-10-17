@@ -111,7 +111,7 @@ test.describe('in the home', () => {
       // "Dateianfragen" may carry the badge of new files that other tests' file requests received (#217).
       const groups: [string, (string | RegExp)[]][] = [
         ['Orte', ['Mein Speicher', 'Cloud-Konten']],
-        ['Sammlungen', ['Favoriten', 'Zuletzt geändert', 'Für mich freigegeben', /^\s*Dateianfragen\s*(\d+\s*(eine neue Datei|\d+ neue Dateien)\s*)?$/, 'Papierkorb']],
+        ['Sammlungen', ['Favoriten', 'Zuletzt geändert', 'Für mich freigegeben', 'Meine Freigaben', /^\s*Dateianfragen\s*(\d+\s*(eine neue Datei|\d+ neue Dateien)\s*)?$/, 'Papierkorb']],
         ['Verwaltung', ['Speicherbelegung', 'Doppelte Dateien', 'Mitglieder', 'Einstellungen', 'Auf den Shard umziehen']],
       ];
       const hairline = await tokenColor(page, '--border');

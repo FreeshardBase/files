@@ -333,6 +333,16 @@ onMounted(async () => {
                 {{ $t('nav.shared') }}
               </RouterLink>
               <RouterLink
+                to="/my-shares"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-key"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.myShares') }}
+              </RouterLink>
+              <RouterLink
                 to="/requests"
                 active-class="active"
               >

@@ -351,6 +351,10 @@ a:where(:hover) { text-decoration: underline; }
 .link-alert.alert-banner { padding: var(--space-4); color: var(--ink); }
 .link-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
 .link-entries { margin-top: var(--space-3); }
+/* "My shares" (#299): each row starts with its item (a link to it) and where it lives; see DESIGN.md */
+.mine-rows .mine-item { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.mine-rows .mine-where { flex: 1 1 auto; min-width: 0; font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
+.mine-rows .share-name { flex-basis: 100%; }
 /* File requests (#217): the member's list with its badge of new files, and the visitor's drop zone; see DESIGN.md */
 .request-list .share-level { flex-basis: 100%; }
 .request-badge, .nav-badge {

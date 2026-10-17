@@ -35,6 +35,7 @@
     "sources": "Orte",
     "recent": "Zuletzt geändert",
     "shared": "Für mich freigegeben",
+    "myShares": "Meine Freigaben",
     "trash": "Papierkorb",
     "connections": "Cloud-Konten",
     "connection": "{provider}: {account}",
@@ -539,6 +540,17 @@
     "remove": "Aus der Liste entfernen",
     "removeLabel": "{name} aus der Liste entfernen",
     "removed": "„{name}“ aus der Liste entfernt"
+  },
+  "myShares": {
+    "title": "Meine Freigaben",
+    "empty": "Du hast noch nichts freigegeben. Öffentliche Links und Freigaben für Mitglieder, die du erstellst, erscheinen hier.",
+    "noLinks": "Keine öffentlichen Links.",
+    "noShares": "Nichts für Mitglieder freigegeben.",
+    "sharesHeading": "Für Mitglieder freigegeben",
+    "openLabel": "{name} öffnen",
+    "remove": "Zugriff entfernen",
+    "removeLabel": "Zugriff von {member} auf {name} entfernen",
+    "removed": "{member} hat keinen Zugriff mehr auf „{name}“"
   },
   "link": {
     "heading": "Öffentliche Links",
