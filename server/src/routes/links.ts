@@ -5,7 +5,7 @@ import { CreateLinkRequest, LinkToken, UnlockRequest, UpdateLinkRequest, type Er
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { cookieNames } from '../auth/cookies.ts';
-import { AttemptLimiter } from '../http/attempts.ts';
+import { AttemptLimiter, checkPassword, PASSWORD_PER_ITEM, PASSWORD_WINDOW_MS } from '../http/attempts.ts';
 import { readRanged, sendContent } from '../http/content.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { ownerSource, parseSource, resolveSource } from '../storage/resolveSource.ts';
@@ -13,10 +13,6 @@ import { ShareBackend } from '../storage/shares.ts';
 import { createLink, hashPassword, isExpired, linkByToken, linksOf, ownLink, parseExpiry, passwordStamp, removeLink,
   takeDownload, toPublicLink, updateLink, verifyPassword, type LinkRow } from '../storage/publicLinks.ts';
 const LinkId = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) });
-// Wrong passwords: 5 per link and 20 per address within 15 minutes, then 429 until the window ends (#104).
-const WINDOW_MS = 15 * 60_000;
-const PER_LINK = 5;
-const PER_IP = 20;
 // How long an entered password holds, for this link only.
 const UNLOCK_MS = 60 * 60_000;
 // The codes a visitor may see: the link's own state and the visitor's own request (#279).
@@ -26,11 +22,12 @@ const VISITOR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['NOT_FOUND', '
 
 // Public links (#147): the owner's management API under /api/v1/links (session and CSRF like every route), and the
 // visitor's side under /s/<token>/…, the one public route family. The SPA serves the share page itself at /s/<token>.
-export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
+// Wrong passwords: 5 per link, and 20 per address within 15 minutes counted with file requests' (`perIp`), then 429
+// until the window ends (#104).
+export async function registerLinkRoutes(app: FastifyInstance, perIp: AttemptLimiter): Promise<void> {
   const { db, config } = app.deps;
   const cookie = cookieNames(config).link;
-  const perLink = new AttemptLimiter(PER_LINK, WINDOW_MS);
-  const perIp = new AttemptLimiter(PER_IP, WINDOW_MS);
+  const perLink = new AttemptLimiter(PASSWORD_PER_ITEM, PASSWORD_WINDOW_MS);
 
   app.post('/api/v1/links', async (req, reply) => {
     const { user } = requireUser(req);
@@ -108,17 +105,9 @@ export async function registerLinkRoutes(app: FastifyInstance): Promise<void> {
     if (req.headers.origin !== config.publicUrl.origin) throw new AppError('CSRF');
     const { password } = UnlockRequest.parse(req.body);
     await backendOf(row);
-    if (row.password_hash === null) return reply.status(204).send();
-    const keys = [`link:${row.id}`, `ip:${req.ip}`] as const;
-    const wait = Math.max(perLink.blockedFor(keys[0]), perIp.blockedFor(keys[1]));
-    if (wait > 0) { reply.header('retry-after', String(wait)); throw new AppError('TOO_MANY_ATTEMPTS'); }
-    // Reserved before the first await, so parallel guesses see this one as counted (#196). A check that throws counts
-    // as a failure.
-    perLink.begin(keys[0]); perIp.begin(keys[1]);
-    let right = false;
-    try { right = await verifyPassword(row.password_hash, password); }
-    finally { perLink.end(keys[0], !right); perIp.end(keys[1], !right); }
-    if (!right) throw new AppError('PASSWORD_WRONG');
+    const hash = row.password_hash;
+    if (hash === null) return reply.status(204).send();
+    await checkPassword(reply, [[perLink, `link:${row.id}`], [perIp, `ip:${req.ip}`]], () => verifyPassword(hash, password));
     const until = Date.now() + UNLOCK_MS;
     reply.setCookie(cookie, unlockValue(row, until), { signed: true, httpOnly: true, sameSite: 'strict', path: `/s/${row.token}/`,
       secure: cookieNames(config).prefixed, maxAge: UNLOCK_MS / 1000 });

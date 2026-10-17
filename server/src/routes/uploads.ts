@@ -11,10 +11,34 @@ import { LocalBackend, UPLOAD_ID } from '../storage/local.ts';
 // (spec §2.1 Transfer, #140). Upload ids are scoped to the member: another member's id answers 404 like an unknown one.
 const TUS_VERSION = '1.0.0';
 const OFFSET_TYPE = 'application/offset+octet-stream';
-const Digits = z.string().regex(/^\d{1,16}$/).transform(Number).refine(Number.isSafeInteger);
+export const Digits = z.string().regex(/^\d{1,16}$/).transform(Number).refine(Number.isSafeInteger);
 const UploadMeta = z.object({ source: z.string().min(1), path: z.string().min(1), onCollision: CollisionPolicy.default('fail') });
 
-const httpDate = (iso: string) => new Date(iso).toUTCString();
+export const httpDate = (iso: string) => new Date(iso).toUTCString();
+
+/** Every tus request carries `Tus-Resumable: 1.0.0`, and so does every answer. Also used by file requests (#217). */
+export const tus = async (req: FastifyRequest, reply: FastifyReply) => {
+  reply.header('tus-resumable', TUS_VERSION);
+  if (req.headers['tus-resumable'] !== TUS_VERSION) {
+    reply.header('tus-version', TUS_VERSION).header('connection', 'close');
+    throw new AppError('PRECONDITION_FAILED');
+  }
+};
+/** A PATCH body is `application/offset+octet-stream`, checked before any parser runs. */
+export const offsetStream = async (req: FastifyRequest, reply: FastifyReply) => {
+  const base = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+  if (base !== OFFSET_TYPE) {
+    reply.header('connection', 'close');
+    throw new AppError('UNSUPPORTED_MEDIA_TYPE');
+  }
+};
+/** The PATCH body as a stream (the content type parser below hands it over unread). */
+export const bodyStream = (req: FastifyRequest): Readable => req.body instanceof Readable ? req.body : Readable.from([]);
+/** The declared Content-Length, if it is a usable number. */
+export const declaredLength = (req: FastifyRequest): number | undefined => {
+  const declared = Number(req.headers['content-length'] ?? NaN);
+  return Number.isSafeInteger(declared) ? declared : undefined;
+};
 
 // `Upload-Metadata`: comma-separated `key base64value` pairs. Unknown keys (e.g. a client's `filename`) are ignored.
 export function parseMetadata(header: string): Record<string, string> {
@@ -38,21 +62,6 @@ const uploadId = (req: FastifyRequest): string => {
 export async function registerUploadRoutes(app: FastifyInstance): Promise<void> {
   // The body stays a stream; the gate below runs before any parser, so no other content type is ever buffered.
   app.addContentTypeParser(OFFSET_TYPE, (_req, payload, done) => done(null, payload));
-
-  const tus = async (req: FastifyRequest, reply: FastifyReply) => {
-    reply.header('tus-resumable', TUS_VERSION);
-    if (req.headers['tus-resumable'] !== TUS_VERSION) {
-      reply.header('tus-version', TUS_VERSION).header('connection', 'close');
-      throw new AppError('PRECONDITION_FAILED');
-    }
-  };
-  const offsetStream = async (req: FastifyRequest, reply: FastifyReply) => {
-    const base = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
-    if (base !== OFFSET_TYPE) {
-      reply.header('connection', 'close');
-      throw new AppError('UNSUPPORTED_MEDIA_TYPE');
-    }
-  };
 
   app.options('/api/v1/uploads', async (_req, reply) => {
     return reply.status(204).header('tus-resumable', TUS_VERSION).header('tus-version', TUS_VERSION)
@@ -87,9 +96,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
   app.patch('/api/v1/uploads/:id', { onRequest: [tus, offsetStream] }, async (req, reply) => {
     const id = uploadId(req);
     const h = z.object({ 'upload-offset': Digits }).parse(req.headers);
-    const declared = Number(req.headers['content-length'] ?? NaN);
-    const body = req.body instanceof Readable ? req.body : Readable.from([]);
-    const s = await homeBackend(req).appendUpload(id, h['upload-offset'], body, Number.isSafeInteger(declared) ? declared : undefined)
+    const s = await homeBackend(req).appendUpload(id, h['upload-offset'], bodyStream(req), declaredLength(req))
       .catch((e: unknown) => {
         if (!req.raw.complete) reply.header('connection', 'close'); // refused or cut off before the body was read: stop draining it
         throw e;

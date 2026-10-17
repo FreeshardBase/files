@@ -37,8 +37,8 @@ test('file list is keyboard reachable and operable', async ({ page }, info) => {
   const rowName = () => page.evaluate(() => document.activeElement?.querySelector('.name')?.textContent?.trim());
   await page.locator('body').click({ position: { x: 1, y: 1 } });
   let presses = 0;
-  // The sidebar comes first; its entries for the admin (Storage usage, Members, #156) are on the way.
-  while ((await role()) !== 'row' && presses < 25) { await page.keyboard.press('Tab'); presses++; }
+  // The sidebar comes first; its entries for the admin (Storage usage, Members, #156) and File requests (#217) are on the way.
+  while ((await role()) !== 'row' && presses < 30) { await page.keyboard.press('Tab'); presses++; }
   expect(await role()).toBe('row');
   // Roving tab stop sits on the first body row; header row has no tabindex.
   const first = await rowName();

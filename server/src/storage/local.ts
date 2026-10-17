@@ -29,6 +29,18 @@ type VersionRow = { id: string; path: string; size: number; modified: string };
 type UploadRow = { id: string; source: string; path: string; length: number; received: number; on_collision: CollisionPolicy; expires_at: string };
 /** What HEAD reports; `entry` is set once the bytes have been placed at their target. */
 export type UploadState = { id: string; offset: number; length: number; expiresAt: string; entry?: Entry };
+/**
+ * Where a complete upload goes instead of the path it was opened with (a file request, #217): another home path (placed
+ * by rename like any upload), or a write into another backend (a cloud folder), after which the staged bytes are dropped.
+ * `placed` runs with the name the file got, inside the placing transaction for a home path and before the drop for a
+ * write, so the upload never counts as neither open nor placed.
+ */
+export type UploadPlacement = { placed: (name: string) => void } & ({ path: string } | { write: (body: Readable, length: number) => Promise<Entry> });
+/**
+ * A resumable upload to open. `source` is where it goes: `home` is placed in this home at `path`; any other source is
+ * only staged here and placed by the caller's `UploadPlacement` (a file request into a cloud folder, #217).
+ */
+export type CreateUpload = { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number };
 
 // One request at a time per upload (tus forbids concurrent PATCHes); the app runs as one process.
 const busyUploads = new Set<string>();
@@ -104,7 +116,7 @@ function addressable(name: string): boolean {
   catch { return false; } // handled: unaddressable on-disk name is skipped
 }
 
-function truncateBytes(s: string, max: number): string {
+export function truncateBytes(s: string, max: number): string {
   let out = ''; let bytes = 0;
   for (const ch of s) {
     const n = Buffer.byteLength(ch);
@@ -727,18 +739,21 @@ export class LocalBackend implements StorageBackend {
    * is stored: the size limit, the quota (counting what other open uploads still have to send), the path, a folder in
    * the way, and a taken name under `fail`. The bytes collect in `<home>/.files/uploads/<id>`.
    */
-  createUpload(u: { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number }): Promise<UploadState> {
+  createUpload(u: CreateUpload): Promise<UploadState> {
     return this.createUploadImpl(u).catch(rethrowMapped);
   }
 
-  private async createUploadImpl(u: { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number }) {
+  private async createUploadImpl(u: CreateUpload) {
     if (u.length > u.maxBytes) throw new AppError('PAYLOAD_TOO_LARGE');
     const nt = normalizeUserPath(u.path);
     if (nt === '/') throw new AppError('PATH_INVALID');
-    const target = await this.abs(nt);
-    const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
-    if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
-    if (st && u.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
+    // An upload for another source (a file request into a cloud folder) is only staged here: its path is not in this home.
+    if (u.source === 'home') {
+      const target = await this.abs(nt);
+      const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
+      if (st?.isDirectory() && u.onCollision !== 'keep-both') throw new AppError('IS_A_DIRECTORY');
+      if (st && u.onCollision === 'fail') throw new AppError('FILE_EXISTS', { name: basename(target) });
+    }
     const { db, userId } = this.index;
     const id = randomBytes(16).toString('hex');
     const now = new Date();
@@ -776,12 +791,14 @@ export class LocalBackend implements StorageBackend {
    * target with the upload's collision policy; a name taken meanwhile under `fail` answers FILE_EXISTS and keeps the
    * bytes for `finishUpload`.
    */
-  async appendUpload(id: string, offset: number, body: Readable, declared?: number): Promise<UploadState> {
+  async appendUpload(id: string, offset: number, body: Readable, declared?: number,
+    placement?: () => Promise<UploadPlacement>): Promise<UploadState> {
     this.ownUpload(id);
-    return withUpload(id, () => this.appendImpl(id, offset, body, declared)).catch(rethrowMapped);
+    return withUpload(id, () => this.appendImpl(id, offset, body, declared, placement)).catch(rethrowMapped);
   }
 
-  private async appendImpl(id: string, offset: number, body: Readable, declared?: number): Promise<UploadState> {
+  private async appendImpl(id: string, offset: number, body: Readable, declared?: number,
+    placement?: () => Promise<UploadPlacement>): Promise<UploadState> {
     const row = this.ownUpload(id);
     if (offset !== row.received) throw new AppError('OFFSET_MISMATCH', { offset: row.received });
     const rest = row.length - row.received;
@@ -816,7 +833,19 @@ export class LocalBackend implements StorageBackend {
     if (failure !== undefined) throw failure;
     const state: UploadState = { id, offset: size, length: row.length, expiresAt };
     if (size < row.length) return state;
-    return { ...state, entry: await this.placeUpload({ ...row, received: size }, row.on_collision) };
+    const complete = { ...row, received: size };
+    if (!placement) return { ...state, entry: await this.placeUpload(complete, row.on_collision) };
+    // Resolved only now, so the target is where it is at the end (a moved folder, a revoked request).
+    const p = await placement();
+    if ('path' in p) return { ...state, entry: await this.placeUpload({ ...complete, path: p.path }, row.on_collision, p.placed) };
+    const src = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stream = src.createReadStream({ autoClose: true });
+    // A write that fails leaves the bytes staged, so the next PATCH places them again; the stream closes the handle either way.
+    let entry: Entry;
+    try { entry = await p.write(stream, size); } finally { stream.destroy(); }
+    p.placed(entry.name);
+    await this.dropUpload(id);
+    return { ...state, entry };
   }
 
   /** Places a complete upload whose name was taken at the end, with the policy the user chose then. */
@@ -861,7 +890,9 @@ export class LocalBackend implements StorageBackend {
 
   // Moves the staged bytes to the target and deletes the row in one transaction (renames undone if the commit fails).
   // Missing parent folders are created, which is how a folder upload recreates its structure.
-  private async placeUpload(row: UploadRow, policy: CollisionPolicy): Promise<Entry> {
+  private async placeUpload(row: UploadRow, policy: CollisionPolicy, onPlaced?: (name: string) => void): Promise<Entry> {
+    // Staged for another source: only its caller's `UploadPlacement` places it (a file request into a cloud folder).
+    if (row.source !== 'home' && !onPlaced) throw new AppError('NOT_SUPPORTED');
     const nt = normalizeUserPath(row.path);
     const target = await this.abs(nt);
     await mkdir(dirname(target), { recursive: true }).catch((e) => {
@@ -869,7 +900,7 @@ export class LocalBackend implements StorageBackend {
       throw e;
     });
     const st = await lstat(target).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) return undefined; throw e; });
-    if (st?.isDirectory()) throw new AppError('IS_A_DIRECTORY');
+    if (st?.isDirectory() && policy !== 'keep-both') throw new AppError('IS_A_DIRECTORY');
     const staged = await this.uploadBytes(row.id);
     const versions = await this.internalDir('versions');
     const { db, userId } = this.index;
@@ -878,6 +909,7 @@ export class LocalBackend implements StorageBackend {
       if (policy === 'replace') { this.keepVersion(fs, versions, target, nt); fs.rename(staged, target); final = target; }
       else final = fs.linkInto(staged, policy === 'fail' ? [target] : Array.from({ length: 1000 }, (_, i) => i === 0 ? target : numbered(target, i)));
       db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(row.id, userId);
+      onPlaced?.(basename(final));
       recordRecent(db, userId, join(dirname(nt), basename(final)), 'file');
       this.indexPlaced(join(dirname(nt), basename(final)), final);
       return final;

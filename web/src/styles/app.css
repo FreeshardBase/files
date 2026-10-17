@@ -343,6 +343,22 @@ a:where(:hover) { text-decoration: underline; }
 .link-alert.alert-banner { padding: var(--space-4); color: var(--ink); }
 .link-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
 .link-entries { margin-top: var(--space-3); }
+/* File requests (#217): the member's list with its badge of new files, and the visitor's drop zone; see DESIGN.md */
+.request-list .share-level { flex-basis: 100%; }
+.request-badge, .nav-badge {
+  flex: none; padding: 0 var(--space-2); border: var(--border-w) solid var(--accent); border-radius: 999px;
+  font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--accent);
+}
+.nav-badge { margin-left: auto; }
+.request-form .folder-picker { margin-bottom: var(--space-2); }
+.request-name { margin-bottom: var(--space-3); }
+.request-drop {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-3);
+  padding: var(--space-6) var(--space-4); margin-bottom: var(--space-4); text-align: center; color: var(--ink-muted);
+  border: var(--border-w) dashed var(--border-control); border-radius: var(--radius-control);
+}
+.request-drop.dragging { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.request-progress { flex: 1 1 120px; accent-color: var(--accent); }
 @media (max-width: 600px) {
   .link-actions .button, .link-unlock .button { flex: 1 1 auto; justify-content: center; min-height: 44px; }
 }

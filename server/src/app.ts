@@ -22,6 +22,9 @@ import { registerRecentRoutes } from './routes/recent.ts';
 import { registerSearchRoutes } from './routes/search.ts';
 import { registerShareRoutes } from './routes/shares.ts';
 import { registerLinkRoutes } from './routes/links.ts';
+import { registerFileRequestRoutes } from './routes/fileRequests.ts';
+import { clearReservations } from './storage/fileRequests.ts';
+import { AttemptLimiter, PASSWORD_PER_IP, PASSWORD_WINDOW_MS } from './http/attempts.ts';
 import type { ConnectedBackend } from './storage/backend.ts';
 import type { User } from './users.ts';
 import { ThumbnailCache } from './storage/thumbnails.ts';
@@ -87,8 +90,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
       level: config.logLevel,
       ...(logStream ? { stream: logStream } : {}),
       redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
-      // A public link's token is a secret in the path (#147); the log keeps only that it was one.
-      serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0]!.replace(/^\/s\/[^/]*/, '/s/<token>'), id: req.id }) },
+      // A public link's or a file request's token is a secret in the path (#147, #217); the log keeps only that it was one.
+      serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0]!.replace(/^\/([sr])\/[^/]*/, '/$1/<token>'), id: req.id }) },
     },
     trustProxy: (_address, hop) => hop < 1, // trust exactly one proxy hop (number form is not in the typings)
     bodyLimit: 1024 * 1024,
@@ -114,7 +117,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   deps.transfers = new TransferEngine(deps, app.log);
   app.decorate('deps', deps);
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
-  app.addHook('onReady', async () => { await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log); });
+  app.addHook('onReady', async () => {
+    await sweepUploadTemps(config.dataDir, app.log); await thumbs.sweep(app.log);
+    clearReservations(db);
+  });
   // Expiry starts once the sweep is done and is awaited on close, so it never runs against a closed database.
   let expiry: { stop(): Promise<void> } | undefined;
   let uploadExpiry: { stop(): Promise<void> } | undefined;
@@ -134,7 +140,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerRecentRoutes(app);
   await registerSearchRoutes(app);
   await registerShareRoutes(app);
-  await registerLinkRoutes(app);
+  // Wrong passwords per address count across public links and file requests together.
+  const visitorAttempts = new AttemptLimiter(PASSWORD_PER_IP, PASSWORD_WINDOW_MS);
+  await registerLinkRoutes(app, visitorAttempts);
+  await registerFileRequestRoutes(app, visitorAttempts);
   await registerConnectionRoutes(app);
   await registerTransferRoutes(app);
   await registerMigrationRoutes(app);
