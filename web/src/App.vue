@@ -13,7 +13,9 @@ import { folderRoute } from './api/paths.ts';
 import { useFavouritesStore } from './stores/favourites.ts';
 import ShortcutsDialog from './components/ShortcutsDialog.vue';
 import StateAlert from './components/StateAlert.vue';
+import { useRequestsStore } from './stores/requests.ts';
 const session = useSessionStore();
+const requests = useRequestsStore();
 const connections = useConnectionsStore();
 const favourites = useFavouritesStore();
 const transfers = useTransfersStore();
@@ -37,6 +39,8 @@ const placesOpen = ref(false);
 // did not happen, until they dismiss the note.
 const actionLost = ref(false);
 watch(() => route.fullPath, () => { placesOpen.value = false; });
+// The badge of new files received through file requests (#217), brought up to date on every navigation.
+watch(() => route.path, () => { if (session.me) void requests.load(); });
 // The source the folder view shows (`home`, `conn:<id>`), so its sidebar entry stays current in every subfolder (#244).
 const inSource = (source: string) => route.params.source === source;
 // The member in the header as an initial (#244); the whole name is beside it on a wide screen and its tooltip.
@@ -62,6 +66,7 @@ onMounted(async () => {
   if (session.me) {
     void connections.load(); // the member's clouds in the sidebar (#148)
     void favourites.load(); // the star of every item (#155)
+    void requests.load(); // the badge of new files from file requests (#217)
     transfers.connect(); // the member's transfer jobs, live (#152)
     actionLost.value = takeInterruptedAction();
   }
@@ -300,6 +305,24 @@ onMounted(async () => {
                   aria-hidden="true"
                 />
                 {{ $t('nav.shared') }}
+              </RouterLink>
+              <RouterLink
+                to="/requests"
+                active-class="active"
+              >
+                <span
+                  class="icon icon-upload"
+                  aria-hidden="true"
+                />
+                {{ $t('nav.requests') }}
+                <span
+                  v-if="requests.newFiles > 0"
+                  class="nav-badge"
+                  :title="$t('nav.requestsNew', { count: requests.newFiles }, requests.newFiles)"
+                >
+                  <span aria-hidden="true">{{ requests.newFiles }}</span>
+                  <span class="visually-hidden">{{ $t('nav.requestsNew', { count: requests.newFiles }, requests.newFiles) }}</span>
+                </span>
               </RouterLink>
               <RouterLink
                 to="/trash"

@@ -52,6 +52,7 @@ describe('route inventory', () => {
     '/': 'static asset', '/index.html': 'static asset', '/assets/app.js': 'static asset',
     '/s/:token/*': 'public links (#147): visitors have no session; token, password, expiry and download limit guard it',
     '/api/v1/share-target': 'Web Share Target (#158): a share sheet POST has no CSRF token; it never reads the body and only redirects',
+    '/r/:token/*': 'file requests (#217): visitors have no session; token, password, expiry, revocation and the file and size limits guard it, and it never lists or serves a byte',
   };
 
   it('only the allowlisted routes and the static assets are public', () => {
@@ -63,6 +64,13 @@ describe('route inventory', () => {
   it('/s/:token/* is the one public route family of public links, for GET and POST only', () => {
     const links = probes(t.routes).filter((p) => p.pattern.startsWith('/s/'));
     expect(links.filter((p) => p.isPublic).map((p) => `${p.method} ${p.pattern}`).sort()).toEqual(['GET /s/:token/*', 'POST /s/:token/*']);
+  });
+
+  it('/r/:token/* is the one public route family of file requests, for its tus methods only', () => {
+    const requests = probes(t.routes).filter((p) => p.pattern.startsWith('/r/'));
+    expect(requests.filter((p) => p.isPublic).map((p) => `${p.method} ${p.pattern}`).sort())
+      .toEqual(['GET /r/:token/*', 'HEAD /r/:token/*', 'PATCH /r/:token/*', 'POST /r/:token/*']);
+    expect(requests.filter((p) => !p.isPublic)).toEqual([]);
   });
 
   it('the share target is public for POST only', () => {

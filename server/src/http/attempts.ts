@@ -1,3 +1,6 @@
+import type { FastifyReply } from 'fastify';
+import { AppError } from '../errors.ts';
+
 /**
  * Counts attempts per key in a fixed window that starts with the first attempt. An attempt is reserved with `begin` in
  * the same synchronous step as the check, counts while it is in flight, and is settled with `end`: a failure keeps its
@@ -47,4 +50,25 @@ export class AttemptLimiter {
     if (this.entries.size < 1024) return;
     for (const [k, e] of this.entries) if (e.resetAt <= now && e.pending === 0) this.entries.delete(k);
   }
+}
+
+/** Wrong passwords of a public link or a file request (#104, #217): 5 per item and 20 per address within 15 minutes. */
+export const PASSWORD_WINDOW_MS = 15 * 60_000;
+export const PASSWORD_PER_ITEM = 5;
+export const PASSWORD_PER_IP = 20;
+
+/**
+ * Checks a visitor's password under every limiter at once: 429 with `retry-after` while any key is blocked, else the
+ * attempt is reserved before the first await, so parallel guesses see it as counted (#196). A check that throws counts as
+ * a failure; a wrong password is PASSWORD_WRONG.
+ */
+export async function checkPassword(reply: FastifyReply, limits: readonly (readonly [AttemptLimiter, string])[],
+  verify: () => Promise<boolean>): Promise<void> {
+  const wait = Math.max(0, ...limits.map(([limiter, key]) => limiter.blockedFor(key)));
+  if (wait > 0) { reply.header('retry-after', String(wait)); throw new AppError('TOO_MANY_ATTEMPTS'); }
+  for (const [limiter, key] of limits) limiter.begin(key);
+  let right = false;
+  try { right = await verify(); }
+  finally { for (const [limiter, key] of limits) limiter.end(key, !right); }
+  if (!right) throw new AppError('PASSWORD_WRONG');
 }
