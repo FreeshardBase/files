@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createWriteStream, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startFakeIdp, type FakeIdp } from '../server/test/support/fakeIdp.ts';
@@ -14,10 +14,17 @@ async function stop(child: ChildProcess | undefined) {
   clearTimeout(timer);
 }
 
-/** Starts one server process and waits until /healthz answers; rejects if it exits first. */
+/**
+ * Starts one server process and waits until /healthz answers; rejects if it exits first. With `logFile`, its stdout (the
+ * log) goes there as well as to the runner's stdout.
+ */
 async function startServer(args: string[], env: NodeJS.ProcessEnv, origin: string, started: (c: ChildProcess) => void,
-  cwd = process.cwd()) {
-  const child = spawn(process.execPath, args, { stdio: 'inherit', env, cwd });
+  cwd = process.cwd(), logFile?: string) {
+  const child = spawn(process.execPath, args, { stdio: ['inherit', logFile ? 'pipe' : 'inherit', 'inherit'], env, cwd });
+  if (logFile) {
+    child.stdout!.pipe(process.stdout);
+    child.stdout!.pipe(createWriteStream(logFile));
+  }
   started(child);
   const died = new Promise<never>((_, reject) => {
     child.once('exit', (code, sig) => reject(new Error(`server ${args.at(-1)} exited before healthy (code ${code}, signal ${sig})`)));
@@ -42,6 +49,8 @@ export default async function globalSetup() {
   const cloudOrigin = `http://127.0.0.1:${cloudPort}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'files-e2e-'));
   const cloudDataDir = mkdtempSync(join(tmpdir(), 'files-e2e-cloud-'));
+  const serverLog = process.env.E2E_SERVER_LOG;
+  if (!serverLog) throw new Error('E2E_SERVER_LOG not set (playwright.config.ts sets it)');
   let idp: FakeIdp | undefined;
   const servers: ChildProcess[] = [];
   const cleanup = async () => {
@@ -49,6 +58,7 @@ export default async function globalSetup() {
     await idp?.close();
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(cloudDataDir, { recursive: true, force: true });
+    rmSync(serverLog, { force: true });
   };
   try {
     idp = await startFakeIdp({ port: await freePort() });
@@ -62,7 +72,7 @@ export default async function globalSetup() {
       FILES_OIDC_ROLE_CLAIM: 'groups', FILES_OIDC_ADMIN_VALUE: 'admin', FILES_LOG_LEVEL: 'warn',
       FILES_WEB_DIST: join(process.cwd(), 'web', 'dist'),
     };
-    await startServer(['server/dist/main.js'], env, origin, (c) => servers.push(c));
+    await startServer(['server/dist/main.js'], env, origin, (c) => servers.push(c), process.cwd(), serverLog);
     // The cloud server (e2e/cloudServer.ts) runs the same app from the sources with the fake provider (#148). It starts
     // in server/, where `tsx` (a server dev dependency) resolves.
     await startServer(['--import', 'tsx', join(process.cwd(), 'e2e', 'cloudServer.ts')],

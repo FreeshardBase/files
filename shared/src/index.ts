@@ -11,3 +11,4 @@ export * from './smartFolders.ts';
 export * from './comments.ts';
 export * from './batchRename.ts';
 export * from './duplicates.ts';
+export * from './clientErrors.ts';

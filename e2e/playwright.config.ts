@@ -1,10 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { freePort } from './freePort.ts';
 
 // Config is re-evaluated in worker processes; workers inherit env from the runner, so pick once.
 process.env.E2E_PORT ??= String(await freePort());
 // A second server with the fake cloud provider (#148, e2e/cloudServer.ts); e2e/connections.spec.ts runs against it.
 process.env.E2E_CLOUD_PORT ??= String(await freePort());
+// The main server's log as well as on stdout (globalSetup.ts), so a test can read what the server logged (#298).
+process.env.E2E_SERVER_LOG ??= join(tmpdir(), `files-e2e-server-${process.env.E2E_PORT}.log`);
 
 export default defineConfig({
   testDir: '.',
