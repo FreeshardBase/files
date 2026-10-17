@@ -92,7 +92,7 @@ test('every view title is an h2 of the scale; section headings are h3, the share
     await page.goto(`/home${dir}`);
     await menuButton(page, 'ledger.csv').click();
     await page.getByRole('menuitem', { name: /^Details$/ }).click();
-    const drawerHeading = page.getByRole('dialog').locator('.share-heading').first();
+    const drawerHeading = page.getByRole('dialog').locator('.fs-section-heading').first();
     await expect(drawerHeading).toBeVisible();
     expect(await style(drawerHeading, 'font-size')).toBe('13px');
     expect(await style(drawerHeading, 'font-weight')).toBe('600');

@@ -153,7 +153,7 @@ async function showFiles(r: FileRequest) {
     </p>
     <ul
       v-else
-      class="share-list request-list"
+      class="fs-entry-list request-list"
       :aria-label="t('requests.title')"
     >
       <li
@@ -437,7 +437,7 @@ async function showFiles(r: FileRequest) {
       </p>
       <ul
         v-else
-        class="share-list received-list"
+        class="fs-entry-list received-list"
         :aria-label="t('requests.filesTitle', { name: nameOf(showing) })"
       >
         <li

@@ -261,7 +261,7 @@ async function remove(c: Comment) {
       @submit.prevent="send"
     >
       <label
-        class="share-heading comment-label"
+        class="fs-section-heading comment-label"
         :for="inputId"
       >{{ t('comments.newLabel') }}</label>
       <textarea

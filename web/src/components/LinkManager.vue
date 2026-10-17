@@ -111,13 +111,13 @@ const downloads = (l: PublicLink) => l.maxDownloads === null
   >
     <h3
       :id="headingId"
-      class="share-heading"
+      class="fs-section-heading"
     >
       {{ t('link.heading') }}
     </h3>
     <ul
       v-if="links.length"
-      class="share-list link-list"
+      class="fs-entry-list fs-link-rows"
       :aria-labelledby="headingId"
     >
       <li

@@ -54,7 +54,7 @@ onMounted(load);
   <section v-if="!unsupported">
     <h3
       :id="headingId"
-      class="share-heading"
+      class="fs-section-heading"
     >
       {{ t('versions.title') }}
     </h3>
@@ -78,7 +78,7 @@ onMounted(load);
     </p>
     <ul
       v-else-if="newestFirst.length"
-      class="share-list"
+      class="fs-entry-list"
       :aria-labelledby="headingId"
     >
       <li

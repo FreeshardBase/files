@@ -229,7 +229,7 @@ const empty = computed(() => sentUploads.value.length === 0 && local.value.lengt
               @change="onPicked"
             >
           </div>
-          <h2 class="share-heading">
+          <h2 class="fs-section-heading">
             {{ t('request.page.yours') }}
           </h2>
           <p
@@ -240,7 +240,7 @@ const empty = computed(() => sentUploads.value.length === 0 && local.value.lengt
           </p>
           <ul
             v-else
-            class="share-list request-uploads"
+            class="fs-entry-list request-uploads"
             :aria-label="t('request.page.yours')"
           >
             <li
