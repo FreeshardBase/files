@@ -48,6 +48,9 @@ import { registerAppPasswordRoutes } from './routes/appPasswords.ts';
 import { registerDavRoutes } from './dav/routes.ts';
 import { registerShareTargetRoutes } from './routes/shareTarget.ts';
 import { registerSettingsRoutes } from './routes/settings.ts';
+import { registerRenameRoutes } from './routes/renames.ts';
+import { registerDuplicateRoutes } from './routes/duplicates.ts';
+import { DuplicateFinder } from './storage/duplicates.ts';
 
 declare module 'fastify' {
   /**
@@ -56,7 +59,7 @@ declare module 'fastify' {
    */
   interface FastifyContextConfig { public?: boolean; appPassword?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections; transfers: TransferEngine } }
+    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections; transfers: TransferEngine; duplicates: DuplicateFinder } }
 }
 
 /** A member's own cloud connections as backends: `conn:<id>` resolves only among these, as do search and shares. */
@@ -116,8 +119,10 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   const cloud = new CloudConnections({ db, key: config.encryptionKey, providers, clock, pathTables,
     redirectUri: new URL(CONNECT_CALLBACK_PATH, config.publicUrl).href });
   const deps: FastifyInstance['deps'] = { config, db, pathTables, trashTables, thumbs, cloud,
-    connections: connections ?? (async (user) => cloud.backends(user.id)), transfers: undefined as unknown as TransferEngine };
+    connections: connections ?? (async (user) => cloud.backends(user.id)), transfers: undefined as unknown as TransferEngine,
+    duplicates: undefined as unknown as DuplicateFinder };
   deps.transfers = new TransferEngine(deps, app.log);
+  deps.duplicates = new DuplicateFinder(deps, app.log);
   app.decorate('deps', deps);
   // listen() and inject() both wait for onReady, so no upload can be in flight while orphaned temp files are removed.
   app.addHook('onReady', async () => {
@@ -133,7 +138,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     // After the sweep, so a resumed transfer never races the removal of its own staged files (#152).
     app.deps.transfers.start();
   });
-  app.addHook('onClose', async () => { await expiry?.stop(); await uploadExpiry?.stop(); await app.deps.transfers.stop(); });
+  app.addHook('onClose', async () => { await expiry?.stop(); await uploadExpiry?.stop(); await app.deps.transfers.stop(); await app.deps.duplicates.stop(); });
 
   registerGuard(app);
   await registerAuthRoutes(app);
@@ -149,6 +154,8 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerFileRequestRoutes(app, visitorAttempts);
   await registerConnectionRoutes(app);
   await registerTransferRoutes(app);
+  await registerRenameRoutes(app);
+  await registerDuplicateRoutes(app);
   await registerMigrationRoutes(app);
   await registerVersionRoutes(app);
   await registerFavouriteRoutes(app);

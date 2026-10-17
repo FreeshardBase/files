@@ -112,7 +112,7 @@ test.describe('in the home', () => {
       const groups: [string, (string | RegExp)[]][] = [
         ['Orte', ['Mein Speicher', 'Cloud-Konten']],
         ['Sammlungen', ['Favoriten', 'Zuletzt geändert', 'Für mich freigegeben', /^\s*Dateianfragen\s*(\d+\s*(eine neue Datei|\d+ neue Dateien)\s*)?$/, 'Papierkorb']],
-        ['Verwaltung', ['Speicherbelegung', 'Mitglieder', 'Einstellungen', 'Auf den Shard umziehen']],
+        ['Verwaltung', ['Speicherbelegung', 'Doppelte Dateien', 'Mitglieder', 'Einstellungen', 'Auf den Shard umziehen']],
       ];
       const hairline = await tokenColor(page, '--border');
       for (const [i, [label, links]] of groups.entries()) {

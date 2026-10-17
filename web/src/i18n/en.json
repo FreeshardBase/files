@@ -41,6 +41,7 @@
     "favourites": "Favourites",
     "storage": "Storage usage",
     "members": "Members",
+    "duplicates": "Duplicates",
     "settings": "Settings",
     "requests": "File requests",
     "requestsNew": "one new file | {count} new files",
@@ -731,7 +732,92 @@
     "SOURCE_TIMEOUT": "This place took too long to answer.",
     "SEARCH_NEEDS_NAME": "This place can only be searched by part of a name or by a tag.",
     "SMART_FOLDER_LIMIT": "You can keep at most {max} smart folders.",
-    "COMMENT_INVALID": "A comment needs text of at most {max} characters, without control characters."
+    "COMMENT_INVALID": "A comment needs text of at most {max} characters, without control characters.",
+    "RENAME_CONFLICT": "Some new names are taken or not allowed. Choose what to do with each flagged name.",
+    "SCAN_RUNNING": "A search for duplicates is already running.",
+    "DUPLICATE_CHANGED": "Changed since the search, so it was kept.",
+    "DUPLICATE_LAST_COPY": "At least one copy has to stay."
+  },
+  "batchRename": {
+    "button": "Rename…",
+    "title": "Rename one item | Rename {count} items",
+    "find": "Find",
+    "replace": "Replace with",
+    "case": "Capitals",
+    "cases": {
+      "keep": "Keep as they are",
+      "lower": "all lower case",
+      "upper": "ALL CAPITALS",
+      "title": "Capital At Each Word"
+    },
+    "numbering": "Number the items",
+    "pattern": "Pattern",
+    "patternHint": "{n} is the number, {padded} pads it to three digits, {name} is the name so far.",
+    "start": "Start at",
+    "prefix": "Add before",
+    "suffix": "Add after",
+    "extension": "Change the file extension too",
+    "preview": "Preview",
+    "old": "Current name",
+    "new": "New name",
+    "check": "Check",
+    "ready": "Ready",
+    "unchanged": "Stays the same",
+    "skipped": "Skipped",
+    "conflict": {
+      "batch": "Another selected item gets or has this name",
+      "exists": "An item with this name is already here"
+    },
+    "problem": {
+      "empty": "The name is empty",
+      "slash": "A name cannot contain “/”",
+      "long": "The name is too long",
+      "reserved": "This name is reserved, or ends with a space or a dot"
+    },
+    "policyLabel": "What to do with “{name}”",
+    "policy": {
+      "choose": "Choose…",
+      "replace": "Replace the other item",
+      "keepBoth": "Keep both (add a number)",
+      "skip": "Skip this item"
+    },
+    "checking": "Checking the names…",
+    "blocked": "Resolve every flagged name first: choose what to do, or change the rules above.",
+    "nothing": "No name changes yet.",
+    "submit": "Rename one item | Rename {count} items",
+    "cancel": "Cancel"
+  },
+  "duplicates": {
+    "title": "Duplicates",
+    "intro": "Finds files with the same content. Nothing is deleted unless you pick it, and everything you pick goes to the trash.",
+    "where": "Where to look",
+    "cloudNote": "In a cloud, only files for which the provider reports a checksum are compared.",
+    "start": "Find duplicates",
+    "again": "Search again",
+    "listing": "Looking through {files} files…",
+    "hashing": "Comparing {hashed} of {candidates} files…",
+    "progressLabel": "Progress of the search",
+    "cancel": "Cancel",
+    "cancelled": "The search was cancelled.",
+    "none": "No duplicates found.",
+    "found": "One group of identical files | {count} groups of identical files",
+    "incomplete": "The search stopped after {max} files, so some duplicates may be missing.",
+    "unhashed": "One cloud file could not be compared. | {count} cloud files could not be compared.",
+    "failedSource": "{source} could not be searched: {reason}",
+    "groupTitle": "{count} copies of {size} each",
+    "keepOldest": "Keep the oldest, pick the rest",
+    "keepNewest": "Keep the newest, pick the rest",
+    "clear": "Pick none",
+    "pick": "Move “{name}” in {location} to the trash",
+    "oneStays": "One copy always stays.",
+    "modified": "Changed {date}",
+    "trash": "Move one file to the trash | Move {count} files to the trash",
+    "confirmTitle": "Move to the trash?",
+    "confirmText": "One file goes to the trash, where it can be restored. It is checked again first; if it changed since the search, it stays. | {count} files go to the trash, where they can be restored. Each is checked again first; a file that changed since the search stays.",
+    "confirm": "Move to the trash",
+    "trashed": "One file moved to the trash | {count} files moved to the trash",
+    "keptHeading": "Not moved:",
+    "keptItem": "{path}: {reason}"
   },
   "versions": {
     "title": "Versions",
@@ -789,7 +875,8 @@
       "copy": "Copy “{name}” to {target}",
       "move": "Move “{name}” to {target}",
       "migration": "Move “{name}” to {target}",
-      "cleanup": "Delete the originals of “{name}”"
+      "cleanup": "Delete the originals of “{name}”",
+      "rename": "Rename items in {target}"
     },
     "state": {
       "running": "{done} of {total} · {size}",
@@ -803,7 +890,8 @@
     "failedItem": "{path}: {reason}",
     "started": {
       "copy": "Copying one item; the progress is under “Transfers”. | Copying {count} items; the progress is under “Transfers”.",
-      "move": "Moving one item; the progress is under “Transfers”. | Moving {count} items; the progress is under “Transfers”."
+      "move": "Moving one item; the progress is under “Transfers”. | Moving {count} items; the progress is under “Transfers”.",
+      "rename": "Renaming one item; the progress is under “Transfers”. | Renaming {count} items; the progress is under “Transfers”."
     },
     "nothingToDo": "Nothing pasted: every item was skipped.",
     "summary": "Summary",

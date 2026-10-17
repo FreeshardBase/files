@@ -38,6 +38,8 @@ export const PATH_TABLES: readonly PathTable[] = [
   { table: 'tags', ownerColumn: 'user_id', pathColumn: 'path', sourceColumn: 'source', trashColumn: 'trash_id', goneColumn: 'gone_at' },
   // #213, asserted in server/test/comments.test.ts. The owner is the item's owner, not the author.
   { table: 'comments', ownerColumn: 'owner_id', pathColumn: 'path', sourceColumn: 'source', trashColumn: 'trash_id' },
+  // #216, asserted in server/test/duplicates.test.ts
+  { table: 'content_hashes', ownerColumn: 'user_id', pathColumn: 'path' },
 ];
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;

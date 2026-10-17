@@ -28,8 +28,11 @@ export type TransferStatus = z.infer<typeof TransferStatus>;
  */
 export const TransferJobSchema = z.object({
   id: TransferId,
-  /** `transfer` between sources (#152), `migration` from a connection to the home, or the `cleanup` of one (#153). */
-  kind: z.enum(['transfer', 'migration', 'cleanup']),
+  /**
+   * `transfer` between sources (#152), `migration` from a connection to the home, the `cleanup` of one (#153), or a
+   * batch `rename` within one folder (#215).
+   */
+  kind: z.enum(['transfer', 'migration', 'cleanup', 'rename']),
   /** A cleanup's migration, while that job is still listed. */
   origin: TransferId.nullable(),
   mode: z.enum(['copy', 'move']),

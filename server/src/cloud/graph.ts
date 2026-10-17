@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { GraphId, type CollisionPolicy, type Entry, type Library, type ProviderQuota, type Site, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
+import { RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import type { LibraryPicker, OAuthClient, Provider } from './oauth.ts';
@@ -54,7 +54,7 @@ const COPY_TIMEOUT_MS = 10 * 60 * 1000;
 const Item = z.object({
   id: z.string().min(1), name: z.string(), eTag: z.string().optional(), size: z.number().nonnegative().optional(),
   lastModifiedDateTime: z.string(),
-  file: z.object({}).optional(), folder: z.object({}).optional(), root: z.object({}).optional(),
+  file: z.object({ hashes: z.object({ sha1Hash: z.string().optional(), quickXorHash: z.string().optional() }).optional() }).optional(), folder: z.object({}).optional(), root: z.object({}).optional(),
   parentReference: z.object({ id: z.string().optional(), driveId: z.string().optional() }).optional(),
 });
 type Item = z.infer<typeof Item>;
@@ -155,7 +155,10 @@ export class GraphBackend implements StorageBackend {
   private entry(i: Item, path: string): Entry {
     const modified = new Date(i.lastModifiedDateTime).toISOString();
     if (isFolder(i)) return { name: path === '/' ? '/' : i.name, path, type: 'directory', size: 0, modified };
-    return { name: i.name, path, type: 'file', size: i.size ?? 0, modified, mime: lookupMime(i.name) };
+    // The duplicate finder (#216) compares Graph's own hash: SHA-1 where the drive lists it (OneDrive personal), else quickXorHash.
+    const h = i.file?.hashes;
+    return withHash({ name: i.name, path, type: 'file', size: i.size ?? 0, modified, mime: lookupMime(i.name) },
+      h?.sha1Hash ? { algorithm: 'sha1', value: h.sha1Hash.toLowerCase() } : h?.quickXorHash ? { algorithm: 'quickxor', value: h.quickXorHash } : undefined);
   }
   /** The entry of an item that now lives in `dir`, under Graph's name for it (which carries its case). */
   private placed(i: Item, dir: string): Entry { return this.entry(i, posix.join(dir, i.name)); }

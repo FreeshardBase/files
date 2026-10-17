@@ -49,6 +49,8 @@ const Schema = z.object({
   FILES_VERSIONS_MAX_BYTES: z.coerce.number().int().positive().default(1024 ** 3),
   // How long one source may take to answer a smart folder or the tag view (#214, #212); after that it is a failed group.
   FILES_SOURCE_TIMEOUT_MS: z.coerce.number().int().min(1).max(600_000).default(10_000),
+  // The duplicate finder's budget (#216): bytes per second it may read from the home to hash files, over all scans.
+  FILES_DUPLICATE_SCAN_BYTES_PER_SECOND: z.coerce.number().int().min(1024).default(32 * 1024 ** 2),
   FILES_PORT: z.coerce.number().int().min(0).max(65535).default(3005),
   FILES_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
   // The shard's OAuth client at Google (#149). Optional as a pair: without it Google Drive is not offered.
@@ -106,6 +108,7 @@ export function loadConfig(env: Record<string, string | undefined>) {
     thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,
     versions: { maxCount: e.FILES_VERSIONS_MAX_COUNT, maxBytes: e.FILES_VERSIONS_MAX_BYTES },
     sourceTimeoutMs: e.FILES_SOURCE_TIMEOUT_MS,
+    duplicateScanBytesPerSecond: e.FILES_DUPLICATE_SCAN_BYTES_PER_SECOND,
     port: e.FILES_PORT,
     logLevel: e.FILES_LOG_LEVEL,
     google: e.FILES_GOOGLE_CLIENT_ID !== undefined && e.FILES_GOOGLE_CLIENT_SECRET !== undefined

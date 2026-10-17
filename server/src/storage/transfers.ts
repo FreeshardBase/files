@@ -2,14 +2,16 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
 import { pipeline, Readable, Transform } from 'node:stream';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
-import type { CleanupPreview, CollisionPolicy, CreateMigrationRequest, CreateTransferRequest, ErrorCode, MigrationScan,
-  TransferJob, TransferStatus } from '@files/shared';
+import { planRenames, type CleanupPreview, type CollisionPolicy, type CreateMigrationRequest, type CreateTransferRequest,
+  type Entry, type ErrorCode, type MigrationScan, type RenamePlan, type RenameRequest, type TransferJob,
+  type TransferStatus } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { getUser, type User } from '../users.ts';
 import type { StorageBackend } from './backend.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
 import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
 import { deleteComments, keysOf } from './comments.ts';
+import { followMove } from './followRefs.ts';
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
 export const TRANSFER_CONCURRENCY = 2;
@@ -28,7 +30,7 @@ export const SCAN_MS = 15_000;
 const REPORT_PAGE = 500;
 
 type Deps = FastifyInstance['deps'];
-type Kind = 'transfer' | 'migration' | 'cleanup';
+type Kind = 'transfer' | 'migration' | 'cleanup' | 'rename';
 type JobRow = { id: string; user_id: string; kind: Kind; origin: string | null; mode: 'copy' | 'move'; from_source: string;
   to_source: string; dir: string; status: TransferStatus; created_at: string; finished_at: string | null;
   cleanup_token: string | null; cleanup_expires: string | null };
@@ -130,6 +132,51 @@ export class TransferEngine {
     if (items.some((i) => i.from === '/')) throw new AppError('VALIDATION');
     return this.insertJob({ user, kind: 'transfer', mode: req.mode, from: req.from, to: req.to, dir },
       items.map((i) => ({ from_path: i.from, to_path: posix.join(dir, posix.basename(i.from)), on_collision: i.onCollision })));
+  }
+
+  /**
+   * The plan of a batch rename (#215) as the member would get it now: the folder is listed, every item must be one of
+   * its entries, and `planRenames` (the same call the job makes) turns names, operations and chosen policies into rows.
+   * Needs `edit` on the source.
+   */
+  async previewRename(userId: string, req: RenameRequest): Promise<RenamePlan> {
+    return (await this.renamePlan(this.user(userId), req)).plan;
+  }
+
+  /**
+   * A batch rename (#215): the plan computed again from the folder as it is now, refused with RENAME_CONFLICT while any
+   * conflict lacks a policy; otherwise one job (kind `rename`) with one item per name that changes. Each item is one
+   * `move` of the source (atomic in the home), so a failure fails that item only and the job lists it.
+   */
+  async createRename(userId: string, req: RenameRequest): Promise<TransferJob> {
+    const user = this.user(userId);
+    const { plan, dir } = await this.renamePlan(user, req);
+    if (plan.blocked) throw new AppError('RENAME_CONFLICT');
+    const rows = plan.rows.filter((r) => r.action === 'rename');
+    if (!rows.length) throw new AppError('VALIDATION');
+    return this.insertJob({ user, kind: 'rename', mode: 'move', from: req.source, to: req.source, dir },
+      rows.map((r) => ({ from_path: r.path, to_path: posix.join(dir, r.to), on_collision: r.onCollision })));
+  }
+
+  private async renamePlan(user: User, req: RenameRequest): Promise<{ plan: RenamePlan; dir: string }> {
+    const src = await sourceFor(this.deps, user, req.source);
+    if (src.access !== 'edit') throw new AppError('FORBIDDEN');
+    const dir = normalizeUserPath(req.dir);
+    const paths = req.items.map((i) => normalizeUserPath(i.path));
+    if (new Set(paths).size !== paths.length || paths.some((p) => p === '/' || posix.dirname(p) !== dir)) throw new AppError('VALIDATION');
+    const listed = new Map<string, Entry>();
+    let cursor: string | undefined;
+    do {
+      const page = await src.backend.list(dir, cursor);
+      for (const e of page.entries) listed.set(e.name, e);
+      cursor = page.next;
+    } while (cursor);
+    const items = paths.map((p, i) => {
+      const e = listed.get(posix.basename(p));
+      if (!e) throw new AppError('NOT_FOUND');
+      return { path: p, name: e.name, type: e.type, ...(req.items[i]!.policy ? { policy: req.items[i]!.policy } : {}) };
+    });
+    return { plan: planRenames(items, [...listed.keys()], req.ops), dir };
   }
 
   /**
@@ -307,9 +354,9 @@ export class TransferEngine {
     for (const [key, n] of this.inflight) if (key.startsWith(`${id}:`)) flowing += n;
     const first = db.prepare(`SELECT from_path, coalesce(placed, to_path) AS target FROM transfer_items WHERE job_id = ? ORDER BY seq LIMIT 1`)
       .get(id) as { from_path: string; target: string } | undefined;
-    // A transfer is named by what was picked, a migration by its new folder (once placed, the free name it got), a
-    // cleanup by the migration's folder.
-    const name = job.kind === 'transfer' ? posix.basename(first!.from_path)
+    // A transfer and a rename are named by the first item picked, a migration by its new folder (once placed, the free
+    // name it got), a cleanup by the migration's folder.
+    const name = job.kind === 'transfer' || job.kind === 'rename' ? posix.basename(first!.from_path)
       : posix.basename(job.kind === 'migration' ? first!.target : job.dir);
     return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
       status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0, verifiedFiles: done.files,
@@ -375,6 +422,13 @@ export class TransferEngine {
         await this.removeOriginal(item, from.backend, to.backend);
         deleteComments(db, [keysOf(db, job.user_id, job.from_source)(item.from_path)]);
         this.setItem(jobId, seq, { status: 'done', error: null });
+        return;
+      }
+      if (job.kind === 'rename') {
+        // One move within the source, under the policy the plan gave it (#215); the rows on the item follow it.
+        const placed = await from.backend.move(item.from_path, item.to_path, item.on_collision);
+        followMove(db, job.user_id, job.from_source, item.from_path, placed.path);
+        this.setItem(jobId, seq, { status: 'done', error: null, placed: placed.path, type: placed.type });
         return;
       }
       const entry = await from.backend.stat(item.from_path);

@@ -156,7 +156,9 @@ export class FakeGraph {
     const parent = this.items.get(i.parent)!;
     const parentPath = this.pathOf(parent);
     return { ...base, parentReference: { driveId: i.drive, id: i.parent, path: `/drives/${i.drive}/root:${parentPath === '/' ? '' : parentPath}` },
-      ...(i.folder ? { folder: { childCount: this.childrenOf(i.id).length } } : { file: { mimeType: 'application/octet-stream' } }) };
+      ...(i.folder ? { folder: { childCount: this.childrenOf(i.id).length } } : { file: { mimeType: 'application/octet-stream',
+        // OneDrive lists SHA-1 of a file it holds (#216); only kept bytes have one here.
+        ...(i.content?.kind === 'bytes' ? { hashes: { sha1Hash: createHash('sha1').update(i.content.data).digest('hex').toUpperCase() } } : {}) } }) };
   }
 
   /** Moves or copies `i` (and everything beneath it) into `parent` under `name`. */
