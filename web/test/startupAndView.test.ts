@@ -23,7 +23,8 @@ beforeEach(() => { setActivePinia(createPinia()); });
 describe('startup failure', () => {
   it('shows an alert with the error text and retries /me on demand', async () => {
     let ok = false;
-    const f = vi.fn(async (url: string) => (String(url).includes('/list') ? json({ entries: [] }) : ok ? json(me) : json({ code: 'INTERNAL' }, 500)));
+    const f = vi.fn(async (url: string) => (String(url).includes('/list') ? json({ entries: [] })
+      : String(url).includes('/api/v1/tags') ? json({ items: [] }) : ok ? json(me) : json({ code: 'INTERNAL' }, 500)));
     vi.stubGlobal('fetch', f);
     const router = mk(); await router.push('/');
     const w = mount(App, { global: { plugins: [i18n(), router] } });

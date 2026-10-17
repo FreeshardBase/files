@@ -33,6 +33,8 @@ When a file in shard storage is replaced, its previous content is kept as a vers
 
 Name search answers from an index that the app keeps up to date on every change it makes. After files were changed on disk outside the app, or to recover a lost index, rebuild it with the same `FILES_*` environment as the server: `docker exec <container> node server/dist/reindex.js [userId…]` (all members without ids; it drops to uid 1000 itself), or `pnpm --filter @files/server reindex` in development. A change made while a home is being walked can be missed, so run it with the app idle or stopped.
 
+Smart folders (saved searches) and the tag view ask every source when they are opened; `FILES_SOURCE_TIMEOUT_MS` (default 10 000) is how long one source may take before it is shown as failed.
+
 ## Container and the `/data` volume
 
 Configuration comes from the environment; `cp .env.example .env` and fill in the required values. A missing or invalid value stops startup with a list of what is wrong.

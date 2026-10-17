@@ -15,5 +15,8 @@ export const downloadHref = (source: string, items: readonly { path: string; typ
 /** SPA location of a folder: `/<source>/<path…>`, each segment encoded. The source segment keeps folder
  * names such as `api` or `auth` from colliding with server routes on reload. A source's own `:` stays readable
  * (`/share:<id>/…`); a source id has no other character that needs encoding. */
+/** The tag view of one of the member's tags (#212). */
+export const tagRoute = (name: string): string => `/tags/${encodeURIComponent(name)}`;
+
 export const folderRoute = (source: string, path: string): string =>
   `/${encodeURIComponent(source).replace(/%3A/g, ':')}` + path.split('/').filter(Boolean).map((s) => '/' + encodeURIComponent(s)).join('');

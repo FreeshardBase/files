@@ -615,6 +615,13 @@ a:where(:hover) { text-decoration: underline; }
 @media (min-width: 601px) {
   .toolbar:has(.selection-bar) { position: sticky; top: 0; z-index: 3; background: var(--bg); }
   .toolbar:has(.selection-bar) .toolbar-actions { display: none; }
+  /* The bar keeps its one row beside the title (#212 added "Add tag"): the crumbs give way and the last one is cut with
+     an ellipsis while the selection lasts, instead of pushing the bar below them. */
+  .toolbar:has(.selection-bar) { flex-wrap: nowrap; }
+  .toolbar:has(.selection-bar) .selection-bar { flex: none; }
+  .toolbar:has(.selection-bar) .breadcrumbs { flex: 1 1 auto; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  .toolbar:has(.selection-bar) .breadcrumbs > * { min-width: 0; }
+  .toolbar:has(.selection-bar) .breadcrumbs a[aria-current='page'] { overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 600px) {
   .selection-bar {
@@ -947,6 +954,12 @@ a:where(:hover) { text-decoration: underline; }
 @media (max-width: 600px) { .settings-choices { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; } }
 
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
+.icon-tag {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3.5 4.5v6.3l9.2 9.2 7.3-7.3-9.2-9.2H4.5z'/%3E%3Ccircle cx='8' cy='8' r='1.5'/%3E%3C/svg%3E");
+}
+/* "Add tag" in the selection bar (#212) is the icon alone, so the bar keeps its one row beside a long folder title. */
+.selection-bar .tag-button { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 36px; }
+.selection-bar .tag-button .icon { width: 18px; height: 18px; }
 .icon-star, .icon-star-filled {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z'/%3E%3C/svg%3E");
 }
@@ -958,6 +971,51 @@ a:where(:hover) { text-decoration: underline; }
 .star-button { display: inline-flex; align-items: center; gap: var(--space-2); }
 .star-button .icon { width: 16px; height: 16px; }
 .favourite-unavailable { display: block; font-size: var(--fs-small); color: var(--danger); }
+
+/* Tags (#212): an outlined pill in the ink tone with a dot in the tag's colour, one of five guide tokens (DESIGN.md). */
+.tag-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; min-width: 0; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 16em; padding: 1px var(--space-2);
+  border: var(--border-w) solid var(--border-cool); border-radius: var(--radius-pill); background: var(--surface);
+  color: var(--ink); font-size: var(--fs-small); line-height: 1.5; text-decoration: none;
+}
+a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
+.tag-chip a { color: inherit; text-decoration: none; }
+.tag-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.tag-dot-title { display: inline-block; width: 12px; height: 12px; margin-right: var(--space-2); vertical-align: middle; }
+:is(.tag-chip[data-color='line'] .tag-dot, .tag-dot[data-color='line']) { background: var(--line); }
+:is(.tag-chip[data-color='accent'] .tag-dot, .tag-dot[data-color='accent']) { background: var(--accent); }
+:is(.tag-chip[data-color='danger'] .tag-dot, .tag-dot[data-color='danger']) { background: var(--danger); }
+:is(.tag-chip[data-color='ink'] .tag-dot, .tag-dot[data-color='ink']) { background: var(--ink); }
+:is(.tag-chip[data-color='ink-muted'] .tag-dot, .tag-dot[data-color='ink-muted']) { background: var(--ink-muted); }
+.tag-more { align-self: center; color: var(--ink-muted); font-size: var(--fs-small); }
+.file-list .name-inner .tag-chips { flex: 0 1 auto; }
+/* In the gallery the chips lie over the foot of the square (the tile is as wide as its square, 100cqi), so every tile
+   keeps the height the windowing counts on. One line; what does not fit is cut. */
+.gallery > li:has(> .gallery-tags) { container-type: inline-size; }
+.gallery-tags {
+  position: absolute; left: var(--space-2); right: var(--space-2); top: calc(100cqi - 24px - var(--space-2)); z-index: 1;
+  flex-wrap: nowrap; overflow: hidden; pointer-events: none;
+}
+.gallery-tags .tag-chip, .gallery-tags .tag-more { pointer-events: auto; }
+.gallery-tags .tag-more { padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--surface); }
+.tag-editor .tag-chips { margin-bottom: var(--space-2); }
+.tag-editor .tag-chip { padding-right: 2px; }
+.tag-remove { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--ink-muted); cursor: pointer; }
+.tag-remove:hover { color: var(--danger); }
+.tag-remove .icon { width: 12px; height: 12px; }
+.tag-add { display: flex; gap: var(--space-2); }
+.tag-add .fs-input { flex: 1 1 auto; min-width: 0; }
+
+/* Smart folders (#214): one group per place, titled like a search group; a failed place says so in its group. */
+.nav-smart-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.smart-group { margin-top: var(--space-5); }
+.smart-group-title { margin: 0 0 var(--space-2); font-size: var(--fs-small); font-weight: 600; color: var(--ink-muted); }
+.smart-failed { margin: 0; font-size: var(--fs-small); color: var(--danger); }
+.smart-size { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.search-save { padding: var(--space-2) var(--space-3); border-top: var(--border-w) solid var(--border); }
 
 @media (max-width: 600px) { .app-main { padding: var(--space-4); } }
 /* Phone and tablet width (≤900 px, #237): header row hidden, size and date fold into one secondary line under the name.

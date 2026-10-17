@@ -589,7 +589,9 @@ export class LocalBackend implements StorageBackend {
       const target = this.claim(fs, trash, dst, nt, policy, replacedSize);
       fs.rename(src, target);
       const rel = join(dirname(nt), basename(target));
-      // Rows that went to the trash with the item (versions) are live again where it lands, before the row goes.
+      // The target is free here, so rows still pointing there are stale (as in a move) and give way to the item's own.
+      deletePathRefs(this.index.db, this.index.pathTables, this.index.userId, rel);
+      // Rows that went to the trash with the item (versions, tags) are live again where it lands, before the row goes.
       restoreTrashRefs(this.index.db, this.index.trashTables, id, nt, rel);
       this.index.db.prepare('DELETE FROM trash WHERE id = ? AND user_id = ?').run(id, this.index.userId);
       recordRecent(this.index.db, this.index.userId, rel, row.type);

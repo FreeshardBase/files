@@ -5,7 +5,8 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import type { Entry } from '@files/shared';
+import type { Entry, SmartFolder, SmartQuery } from '@files/shared';
+import SmartFolderDialog from './SmartFolderDialog.vue';
 import { useSearchStore } from '../stores/search.ts';
 import { folderRoute } from '../api/paths.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
@@ -80,6 +81,20 @@ function onKey(e: KeyboardEvent) {
     if (open.value) { open.value = false; active.value = -1; }
     else { text.value = ''; onInput(); }
   }
+}
+
+// "Save as smart folder" (#214): the typed text is the name and the name filter to start from.
+const saving = ref<{ name: string; query: SmartQuery } | null>(null);
+function saveAsSmart() {
+  const q = text.value.trim();
+  if (!q) return;
+  open.value = false; active.value = -1;
+  saving.value = { name: q, query: { name: q } };
+}
+function onSaved(f: SmartFolder) {
+  saving.value = null;
+  text.value = ''; search.clear();
+  void router.push(`/smart/${f.id}`);
 }
 
 const root = ref<HTMLElement>();
@@ -202,7 +217,24 @@ function onFocusOut(e: FocusEvent) {
       >
         {{ $t('search.more', { source: sourceLabel(g.source) }) }}
       </p>
+      <!-- The search as a smart folder (#214): the dialog starts with the typed text as the name filter. -->
+      <div class="search-save">
+        <button
+          type="button"
+          class="button"
+          @mousedown.prevent
+          @click="saveAsSmart"
+        >
+          {{ $t('smart.saveSearch') }}
+        </button>
+      </div>
     </div>
+    <SmartFolderDialog
+      v-if="saving"
+      :initial="saving"
+      @saved="onSaved"
+      @cancel="saving = null"
+    />
     <!-- A live region without role="status", so the folder view's status line stays the page's status. -->
     <p
       class="visually-hidden"

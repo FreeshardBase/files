@@ -13,10 +13,12 @@ import { nameParts } from '../format.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
+import TagChips from './TagChips.vue';
 
+// `tags`: the member's tags by path (#212), as chips over the foot of the tile's square (the tile keeps its height).
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source: string; selected?: string[];
-  editable?: boolean; shareable?: boolean; starred?: string[] }>(),
-{ selected: () => [], editable: true, shareable: false, starred: () => [] });
+  editable?: boolean; shareable?: boolean; starred?: string[]; tags?: Record<string, string[]> }>(),
+{ selected: () => [], editable: true, shareable: false, starred: () => [], tags: () => ({}) });
 const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: [] }>();
 const grid = ref<HTMLElement>();
 // The menus of the rendered tiles by index, collected anew on every render.
@@ -160,6 +162,14 @@ defineExpose({
               :title="e.name"
             ><span class="gallery-name-head">{{ nameParts(e.name)[0] }}</span><span class="gallery-name-tail">{{ nameParts(e.name)[1] }}</span></span>
           </button>
+          <!-- The tags lie over the foot of the square, outside the button, which holds no links (#212). -->
+          <TagChips
+            class="gallery-tags"
+            :tags="tags[e.path] ?? []"
+            :name="e.name"
+            :max="2"
+            in-row
+          />
           <!-- Beside the tile, not inside it: a button holds no other controls. The label is the 44 px touch target. -->
           <label
             class="check-target gallery-check"

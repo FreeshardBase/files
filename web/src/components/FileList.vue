@@ -9,6 +9,7 @@ import { hasThumbnail, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
+import TagChips from './TagChips.vue';
 
 // `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
 // offered, the change keys do nothing and rows are not dragged. `shareable`: the items are the caller's own (#146).
@@ -17,9 +18,11 @@ import ItemMenu from './ItemMenu.vue';
 // the header row is hidden and the folder's sort menu is the control; the header keeps a plain label for screen readers.
 // Large folders (#225): only the rows near the viewport are in the DOM (`useWindowedRows`); the table carries
 // aria-rowcount and every row its aria-rowindex, so assistive technology still counts the whole folder.
+// `tags`: the member's tags by path (#212), shown as chips after the name; each opens the tag view.
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source?: string; selected?: string[];
-  editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort }>(),
-{ source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }) });
+  editable?: boolean; shareable?: boolean; starred?: string[]; sort?: Sort; tags?: Record<string, string[]> }>(),
+{ source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }),
+  tags: () => ({}) });
 const emit = defineEmits<{
   open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string];
   sort: [SortKey];
@@ -278,6 +281,11 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                     :title="e.name"
                   >{{ e.name }}</span>
                 </button>
+                <TagChips
+                  :tags="tags[e.path] ?? []"
+                  :name="e.name"
+                  in-row
+                />
               </div>
             </td>
             <td

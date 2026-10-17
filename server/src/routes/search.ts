@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { errorStatus, SearchQuery, type SearchGroup, type SearchResponse } from '@files/shared';
+import { SearchQuery, type SearchGroup, type SearchResponse } from '@files/shared';
 import { requireUser } from '../auth/guard.ts';
-import { AppError } from '../errors.ts';
 import { searchableSources } from '../storage/resolveSource.ts';
+import { sourceFailure } from '../storage/askSources.ts';
 
 /** Results per source; one more is asked for, to tell whether there are more. */
 export const SEARCH_LIMIT = 50;
@@ -20,9 +20,7 @@ export async function registerSearchRoutes(app: FastifyInstance): Promise<void> 
         const found = await backend.search!(q, SEARCH_LIMIT + 1);
         return { source, items: found.slice(0, SEARCH_LIMIT), more: found.length > SEARCH_LIMIT };
       } catch (e) { // handled: reported as this source's error code next to the other sources' results; logged if unexpected
-        const code = e instanceof AppError ? e.code : 'SEARCH_FAILED';
-        if (!(e instanceof AppError) || errorStatus[code] >= 500) req.log.error({ err: e, source }, 'search failed for a source');
-        return { source, items: [], more: false, error: { code } };
+        return { source, items: [], more: false, error: { code: sourceFailure(e, req.log, source) } };
       }
     }));
     return { groups };
