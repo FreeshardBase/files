@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The member's file requests (#217): each with its address, its folder, how many files came in and how many of them are
-// new (the badge), and copy, files, edit and revoke. One dialog creates or edits a request (folder, title, expiry,
+// new (the badge) and how many visitors' uploads are unfinished, and copy, files, edit, discard the unfinished and revoke. One dialog creates or edits a request (folder, title, expiry,
 // limits, password, the uploader name field); another lists the files a request received, which marks them seen.
 import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -90,6 +90,17 @@ async function revoke(r: FileRequest) {
   } catch (e) { fail(e); }
 }
 
+// Visitors' unfinished uploads hold the member's quota (#304): dropped here, the request stays open.
+async function discard(r: FileRequest) {
+  error.value = ''; status.value = '';
+  try {
+    await api.delete(`/api/v1/requests/${encodeURIComponent(r.id)}/uploads`);
+    await requests.load();
+    status.value = t('requests.discarded', { name: nameOf(r) });
+    await nextTick(); newButton.value?.focus(); // the focused button is gone once nothing is pending
+  } catch (e) { fail(e); }
+}
+
 const inputs = new Map<string, HTMLInputElement>();
 const setInput = (id: string, el: unknown) => { if (el instanceof HTMLInputElement) inputs.set(id, el); else inputs.delete(id); };
 async function copy(r: FileRequest) {
@@ -169,6 +180,7 @@ async function showFiles(r: FileRequest) {
         <span class="share-level">
           {{ t('requests.into', { where: folderLabel(r.source, r.path) }) }} ·
           {{ t('requests.received', { count: r.files }, r.files) }}
+          <template v-if="r.pending > 0"> · {{ t('requests.pending', { count: r.pending }, r.pending) }}</template>
           <template v-if="r.revoked"> · {{ t('requests.isRevoked') }}</template>
           <template v-else-if="r.orphaned"> · {{ t('requests.isOrphaned') }}</template>
           <template v-else-if="expired(r)"> · {{ t('requests.isExpired') }}</template>
@@ -209,6 +221,15 @@ async function showFiles(r: FileRequest) {
             @click="open(r)"
           >
             {{ t('requests.edit') }}
+          </button>
+          <button
+            v-if="r.pending > 0"
+            type="button"
+            class="button"
+            :aria-label="t('requests.discardLabel', { name: nameOf(r) })"
+            @click="discard(r)"
+          >
+            {{ t('requests.discard') }}
           </button>
           <button
             v-if="!r.revoked"

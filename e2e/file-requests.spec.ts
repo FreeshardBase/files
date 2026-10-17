@@ -136,3 +136,85 @@ test('a request with a file limit refuses the next file; a revoked request says 
   await expect(v.getByTestId('request-picker')).toHaveCount(0);
   await v.context().close();
 });
+
+// #304: an unfinished upload of a visitor: the tus creation of HELD bytes and half of them, through the visitor's own
+// session. It holds HELD bytes of the owner's quota (half staged, half reserved).
+const HELD = 400_000;
+async function unfinished(v: Page, address: string, name: string) {
+  await v.goto(address);
+  await expect(v.getByText('You have not sent any files yet.')).toBeVisible();
+  const token = new URL(address).pathname.split('/')[2]!;
+  const tus = { origin: new URL(address).origin, 'tus-resumable': '1.0.0' };
+  const c = await v.request.post(`/r/${token}/uploads`, { headers: { ...tus, 'upload-length': String(HELD),
+    'upload-metadata': `name ${Buffer.from(name).toString('base64')}` } });
+  expect(c.status()).toBe(201);
+  const p = await v.request.patch(c.headers().location!, { data: Buffer.alloc(HELD / 2, 1),
+    headers: { ...tus, 'upload-offset': '0', 'content-type': 'application/offset+octet-stream' } });
+  expect(p.status()).toBe(204);
+}
+
+/** The storage page's "uploads in progress" figure. */
+async function uploadsFigure(page: Page): Promise<string> {
+  await page.goto('/storage');
+  const figure = page.locator('.storage-breakdown div').filter({ hasText: /Laufende Uploads|Uploads in progress/ }).locator('dd');
+  await expect(figure).toBeVisible();
+  return (await figure.textContent())!.trim();
+}
+
+test('revoking a request drops a visitor\'s unfinished upload: the uploads figure is back and the owner uploads', async ({ page, browser, baseURL }, info) => {
+  const dir = `request-halfway-${tag(info)}`;
+  await setup(page, dir);
+  const before = await uploadsFigure(page);
+  const title = `Halfway ${tag(info)}`;
+  const address = await createRequest(page, dir, title);
+  // A quota that leaves 100 kB once the visitor's upload holds its bytes: what the home uses now, what the owner's own
+  // open uploads still reserve, the visitor's upload and 100 kB (testuser is the admin and sets their own).
+  const { csrfToken, id } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string; id: string };
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const used = (await (await page.request.get('/api/v1/storage')).json() as { home: { usage: { total: number } } }).home.usage.total;
+  const own = (await (await page.request.get('/api/v1/uploads')).json() as { items: { length: number; offset: number }[] }).items
+    .reduce((n, u) => n + u.length - u.offset, 0);
+  const setQuota = (quotaBytes: number | null) => page.request.put(`/api/v1/admin/members/${id}/quota`, { headers, data: { quotaBytes } });
+  expect((await setQuota(used + own + HELD + 100_000)).status()).toBe(200);
+  try {
+    const v = await visitor(browser, info, baseURL!);
+    await unfinished(v, address, 'half.bin');
+    expect(await uploadsFigure(page)).not.toBe(before);
+
+    await openRequests(page);
+    const item = page.getByRole('list', { name: /Dateianfragen|File requests/ }).getByRole('listitem').filter({ hasText: title });
+    await expect(item).toContainText(/ein unfertiger Upload|one unfinished upload/);
+    await item.getByRole('button', { name: new RegExp(`(${escape(title)} widerrufen|Revoke ${escape(title)})`) }).click();
+    await expect(item).toContainText(/Widerrufen|Revoked/);
+    await expect(item).not.toContainText(/unfertig|unfinished/);
+    expect(await uploadsFigure(page)).toBe(before);
+
+    // 300 kB fit only because the visitor's upload no longer holds the quota.
+    await page.goto(`/home/${encodeURIComponent(dir)}`);
+    await page.getByTestId('upload-input').setInputFiles({ name: 'mine.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(300_000, 2) });
+    await expect(page.locator('tbody .name').getByText('mine.bin', { exact: true })).toBeVisible();
+    await v.context().close();
+  } finally { expect((await setQuota(null)).status()).toBe(200); }
+});
+
+test('the owner discards a visitor\'s unfinished uploads and the request stays open', async ({ page, browser, baseURL }, info) => {
+  const dir = `request-discard-${tag(info)}`;
+  await setup(page, dir);
+  const title = `Dropping ${tag(info)}`;
+  const address = await createRequest(page, dir, title);
+  const v = await visitor(browser, info, baseURL!);
+  await unfinished(v, address, 'first.bin');
+
+  await page.reload();
+  const item = page.getByRole('list', { name: /Dateianfragen|File requests/ }).getByRole('listitem').filter({ hasText: title });
+  await expect(item).toContainText(/ein unfertiger Upload|one unfinished upload/);
+  await item.getByRole('button', { name: new RegExp(`(Unfertige Uploads an ${escape(title)} verwerfen|Discard the unfinished uploads to ${escape(title)})`) }).click();
+  await expect(item).not.toContainText(/unfertig|unfinished/);
+  await expect(item.getByRole('button', { name: /^(Unfertige|Discard the unfinished)/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Neue Dateianfrage|New file request/ })).toBeFocused();
+  // Still open: the visitor sends a whole file now.
+  await v.reload();
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'whole.txt', mimeType: 'text/plain', buffer: Buffer.from('whole') }]);
+  await expect(v.getByRole('list', { name: 'Your files' }).getByRole('listitem').filter({ hasText: 'whole.txt' })).toContainText('Sent');
+  await v.context().close();
+});
