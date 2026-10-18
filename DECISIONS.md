@@ -1171,3 +1171,14 @@ Question: the issue fixes the fallback order but leaves open where the generic l
 - **Migration 028 clears stored names that equal the `sub`**, the old fallback. The next login fills in whatever the claims carry then. A name stored from the old email fallback (the whole address) stays until that member logs in again.
 
 Why: the API keeps reporting what the IdP delivered. The language of the label follows the person looking at it, not the person who logged in.
+
+## 2026-10-18: Opening what a file request received (#311)
+
+Question: the issue offers two ways to give the dialog a target (a stored path per file, or the request's source and path plus the stored name) and leaves open what an orphaned request shows.
+
+- **No new API field.** The dialog already holds the request, whose `source` and `path` are the target folder, and each received file's `name` is the name it was saved under there. The link is `folderRoute(source, path)?select=<path>/<name>`, the same target as Recent and Favourites (#235).
+- **Each name is a link, and the action row has an outline "Open folder"** (`.button`, beside "Close") that opens the folder itself.
+- **An orphaned request links nowhere.** Its folder was deleted or its account unlinked; the names stay plain text and "Open folder" is not shown. A revoked request still links, since its folder is still there.
+- **A file the owner has since moved or renamed** opens the folder with nothing selected. The request does not track files after they arrive.
+
+Why: this is the smallest change that gets the owner from the badge to the file. It reuses the folder view's `?select=`.

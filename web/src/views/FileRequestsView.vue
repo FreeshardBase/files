@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // The member's file requests (#217): each with its address, its folder, how many files came in and how many of them are
 // new (the badge) and how many visitors' uploads are unfinished, and copy, files, edit, discard the unfinished and revoke. One dialog creates or edits a request (folder, title, expiry,
-// limits, password, the uploader name field); another lists the files a request received, which marks them seen.
+// limits, password, the uploader name field); another lists the files a request received, which marks them seen, each a
+// link to the request's folder with it selected (#311).
 import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { CreateFileRequest, FileRequest, ReceivedFile, ReceivedFileList, UpdateFileRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
+import { folderRoute } from '../api/paths.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import { useLocations } from '../location.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
@@ -129,6 +131,10 @@ async function showFiles(r: FileRequest) {
     }
   } catch (e) { fail(e, filesError); }
 }
+// A received file opens the request's folder with it selected, as from Recent (#235). An orphaned request's folder is
+// gone, so nothing links there.
+const fileTarget = (r: FileRequest, f: ReceivedFile) =>
+  ({ path: folderRoute(r.source, r.path), query: { select: `${r.path.replace(/\/$/, '')}/${f.name}` } });
 </script>
 
 <template>
@@ -469,7 +475,17 @@ async function showFiles(r: FileRequest) {
             class="icon icon-file"
             aria-hidden="true"
           />
-          <span class="share-name">{{ f.name }}</span>
+          <RouterLink
+            v-if="!showing.orphaned"
+            class="share-name"
+            :to="fileTarget(showing, f)"
+          >
+            {{ f.name }}
+          </RouterLink>
+          <span
+            v-else
+            class="share-name"
+          >{{ f.name }}</span>
           <span
             v-if="f.new"
             class="request-badge"
@@ -483,6 +499,13 @@ async function showFiles(r: FileRequest) {
         </li>
       </ul>
       <div class="app-dialog-actions">
+        <RouterLink
+          v-if="!showing.orphaned"
+          class="button"
+          :to="folderRoute(showing.source, showing.path)"
+        >
+          {{ t('requests.openFolder') }}
+        </RouterLink>
         <button
           type="button"
           class="button"

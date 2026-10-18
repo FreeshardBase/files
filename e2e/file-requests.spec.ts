@@ -236,3 +236,40 @@ test('the owner discards a visitor\'s unfinished uploads and the request stays o
   await expect(v.getByRole('list', { name: 'Your files' }).getByRole('listitem').filter({ hasText: 'whole.txt' })).toContainText('Sent');
   await v.context().close();
 });
+
+// #311: the Files dialog leads to what came in: a name opens the request's folder with that file selected, and
+// "Open folder" opens the folder itself.
+test('a received file in the Files dialog opens the request\'s folder with it selected', async ({ page, browser, baseURL }, info) => {
+  const dir = `request-open-${tag(info)}`;
+  await setup(page, dir, { 'Anderes.txt': 'owner only' });
+  const title = `Belege ${tag(info)}`;
+  const address = await createRequest(page, dir, title);
+  const v = await visitor(browser, info, baseURL!);
+  await v.goto(address);
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'Quittung.txt', mimeType: 'text/plain', buffer: Buffer.from('12,50') }]);
+  await expect(v.getByRole('list', { name: 'Your files' }).getByRole('listitem').filter({ hasText: 'Quittung.txt' })).toContainText('Sent');
+  await v.context().close();
+
+  const row = (name: string) => page.locator('tbody tr').filter({ has: page.locator('.name').getByText(name, { exact: true }) });
+  const showFiles = async () => {
+    await page.goto('/requests');
+    const item = page.getByRole('list', { name: /Dateianfragen|File requests/ }).getByRole('listitem').filter({ hasText: title });
+    await item.getByRole('button', { name: new RegExp(`(Dateien anzeigen, die über ${escape(title)}|Show the files received through ${escape(title)})`) }).click();
+    const files = page.getByRole('dialog', { name: new RegExp(escape(title)) });
+    await expect(files.getByRole('listitem')).toHaveCount(1);
+    return files;
+  };
+
+  let files = await showFiles();
+  await files.getByRole('link', { name: 'Quittung.txt', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/home/${encodeURIComponent(dir)}\\?select=`));
+  await expect(row('Quittung.txt')).toHaveAttribute('aria-selected', 'true');
+  await expect(row('Quittung.txt')).toBeFocused();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  files = await showFiles();
+  await files.getByRole('link', { name: /^(Ordner öffnen|Open folder)$/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/home/${encodeURIComponent(dir)}$`));
+  await expect(row('Anderes.txt')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
