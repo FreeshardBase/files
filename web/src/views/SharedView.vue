@@ -12,6 +12,7 @@ import PreviewDialog from '../components/PreviewDialog.vue';
 import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 import { formatDate, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 
 const { t, locale } = useI18n();
 const shared = useSharedStore();
@@ -110,7 +111,7 @@ async function remove(item: IncomingShare) {
             </div>
           </td>
           <td class="origin">
-            {{ item.owner.displayName }}
+            {{ memberName(item.owner) }}
           </td>
           <td class="origin">
             <span

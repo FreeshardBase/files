@@ -17,8 +17,27 @@ describe('openDb', () => {
     openDb(file).close();
     const again = openDb(file);
     try {
-      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }, { name: '023_rename_jobs.sql' }, { name: '024_content_hashes.sql' }, { name: '025_user_layout.sql' }, { name: '026_name_fold_accents.sql' }, { name: '027_comments_author.sql' }]);
+      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }, { name: '023_rename_jobs.sql' }, { name: '024_content_hashes.sql' }, { name: '025_user_layout.sql' }, { name: '026_name_fold_accents.sql' }, { name: '027_comments_author.sql' }, { name: '028_display_name_not_sub.sql' }]);
     } finally { again.close(); }
+  });
+
+  it('clears a display name that is the login’s `sub` and keeps real names (#337)', () => {
+    const dir = tmp();
+    mkdirSync(join(dir, 'm'));
+    for (const f of readdirSync(DEFAULT_MIGRATIONS).filter((n) => n < '028')) copyFileSync(join(DEFAULT_MIGRATIONS, f), join(dir, 'm', f));
+    const file = join(dir, 'f.db');
+    const old = openDb(file, join(dir, 'm'));
+    const user = old.prepare(`INSERT INTO users (id, iss, sub, display_name, role, created_at, last_login)
+      VALUES (?, 'https://idp.example.com', ?, ?, 'member', 'now', 'now')`);
+    user.run('u1', '317b500d-c0d1-402b-9a1e-000000000000', '317b500d-c0d1-402b-9a1e-000000000000');
+    user.run('u2', 'testuser', 'Test User');
+    old.close();
+
+    const db = openDb(file);
+    try {
+      expect(db.prepare('SELECT id, display_name FROM users ORDER BY id').all())
+        .toEqual([{ id: 'u1', display_name: '' }, { id: 'u2', display_name: 'Test User' }]);
+    } finally { db.close(); }
   });
 
   it('keeps every transfer job and item when it rebuilds the tables for rename jobs (#215), with their references', () => {

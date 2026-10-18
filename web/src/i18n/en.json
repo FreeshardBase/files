@@ -165,6 +165,7 @@
     }
   },
   "members": {
+    "unnamed": "Member",
     "title": "Members",
     "intro": "Everyone who has signed in to “Files” at least once. A storage limit caps what a member can store on the shard: files, trash, versions and uploads in progress. Nothing already stored is removed.",
     "columns": {

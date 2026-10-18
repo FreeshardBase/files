@@ -8,6 +8,7 @@ import type { MemberUsage } from '@files/shared';
 import { useMembersStore } from '../stores/storage.ts';
 import { ApiFailure } from '../api/client.ts';
 import { formatSize, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 
 const UNITS = { MB: 1e6, GB: 1e9 } as const;
 type Unit = keyof typeof UNITS;
@@ -31,8 +32,8 @@ async function save(m: MemberUsage, quotaBytes: number | null) {
   status.value = ''; alert.value = '';
   try {
     const r = await members.setQuota(m.id, quotaBytes);
-    status.value = r.quota === null ? t('members.removed', { name: r.displayName })
-      : t('members.saved', { name: r.displayName, quota: size(r.quota) });
+    status.value = r.quota === null ? t('members.removed', { name: memberName(r) })
+      : t('members.saved', { name: memberName(r), quota: size(r.quota) });
   } catch (e) { // handled: an API refusal is shown in the alert line; anything else is rethrown
     if (!(e instanceof ApiFailure)) throw e;
     alert.value = t(`errors.${e.code}`);
@@ -112,7 +113,7 @@ function submit(m: MemberUsage) {
           <td class="name">
             <div class="name-inner members-name">
               <span>
-                {{ m.displayName }}
+                {{ memberName(m) }}
                 <span
                   v-if="m.role === 'admin'"
                   class="fs-pill members-role"
@@ -148,14 +149,14 @@ function submit(m: MemberUsage) {
                 class="fs-input members-amount"
                 type="text"
                 inputmode="decimal"
-                :aria-label="$t('members.amountLabel', { name: m.displayName })"
+                :aria-label="$t('members.amountLabel', { name: memberName(m) })"
                 :aria-invalid="formOf(m.id).invalid ? 'true' : undefined"
                 :aria-describedby="formOf(m.id).invalid ? `quota-error-${m.id}` : undefined"
               >
               <select
                 v-model="formOf(m.id).unit"
                 class="fs-input members-unit"
-                :aria-label="$t('members.unitLabel', { name: m.displayName })"
+                :aria-label="$t('members.unitLabel', { name: memberName(m) })"
               >
                 <option value="MB">
                   {{ $t('members.units.MB') }}
@@ -167,7 +168,7 @@ function submit(m: MemberUsage) {
               <button
                 type="submit"
                 class="button"
-                :aria-label="$t('members.setLabel', { name: m.displayName })"
+                :aria-label="$t('members.setLabel', { name: memberName(m) })"
               >
                 {{ $t('members.set') }}
               </button>
@@ -175,7 +176,7 @@ function submit(m: MemberUsage) {
                 v-if="m.quota !== null"
                 type="button"
                 class="button"
-                :aria-label="$t('members.removeLabel', { name: m.displayName })"
+                :aria-label="$t('members.removeLabel', { name: memberName(m) })"
                 @click="save(m, null)"
               >
                 {{ $t('members.remove') }}

@@ -10,6 +10,7 @@ import type { Entry, MyLink, MyLinkList, OutgoingShare, OutgoingShareList } from
 import { api, ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 import { parentOf, useLocations } from '../location.ts';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
@@ -85,7 +86,7 @@ async function removeShare(s: OutgoingShare) {
   try {
     await api.delete(`/api/v1/shares/${encodeURIComponent(s.id)}`);
     await load();
-    status.value = t('myShares.removed', { name: nameOf(s), member: s.grantee.displayName });
+    status.value = t('myShares.removed', { name: nameOf(s), member: memberName(s.grantee) });
     title.value?.focus(); // the focused button is gone with its row
   } catch (e) { fail(e); }
 }
@@ -241,7 +242,7 @@ async function removeShare(s: OutgoingShare) {
             <span class="mine-item-name">{{ nameOf(s) }}</span>
           </RouterLink>
           <span class="mine-where">{{ where(s) }}</span>
-          <span class="share-name">{{ s.grantee.displayName }}</span>
+          <span class="share-name">{{ memberName(s.grantee) }}</span>
           <span
             class="fs-pill"
             :data-tone="s.orphaned ? 'danger' : undefined"
@@ -249,7 +250,7 @@ async function removeShare(s: OutgoingShare) {
           <button
             type="button"
             class="button danger"
-            :aria-label="t('myShares.removeLabel', { name: nameOf(s), member: s.grantee.displayName })"
+            :aria-label="t('myShares.removeLabel', { name: nameOf(s), member: memberName(s.grantee) })"
             @click="removeShare(s)"
           >
             {{ t('myShares.remove') }}

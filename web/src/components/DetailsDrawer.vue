@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n';
 import type { Access, Comment, Entry, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 import { fileKind } from '../fileKind.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
@@ -191,7 +192,7 @@ onMounted(async () => {
           v-for="s in shares ?? []"
           :key="s.id"
         >
-          <span class="share-name">{{ s.grantee.displayName }}</span>
+          <span class="share-name">{{ memberName(s.grantee) }}</span>
           <span class="share-level fs-pill">{{ t(`share.${s.access}`) }}</span>
         </li>
       </ul>

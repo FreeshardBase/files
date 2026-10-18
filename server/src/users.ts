@@ -3,10 +3,20 @@ import type { Db } from './db.ts';
 
 export type User = { id: string; displayName: string; email?: string; role: 'admin' | 'member' };
 
-export function upsertUserFromClaims(db: Db, c: { iss: string; sub: string; name?: string; email?: string; isAdmin: boolean }): User {
+/**
+ * #337: `name`, then `preferred_username`, then the email's local part. With none of them the name stays empty and the
+ * web shows the localized "Mitglied" (`web/src/memberName.ts`); never the internal id or `sub`.
+ */
+function displayNameFromClaims(c: { name?: string; preferredUsername?: string; email?: string }): string {
+  return c.name?.trim() || c.preferredUsername?.trim() || c.email?.split('@')[0]?.trim() || '';
+}
+
+export function upsertUserFromClaims(db: Db, c: { iss: string; sub: string; name?: string; preferredUsername?: string;
+  email?: string; isAdmin: boolean }): User {
   const now = new Date().toISOString();
   const role: User['role'] = c.isAdmin ? 'admin' : 'member';
-  const displayName = c.name?.trim() || c.email || c.sub;
+  // Taken at every login, so a changed claim reaches every place the member is shown.
+  const displayName = displayNameFromClaims(c);
   return db.transaction(() => {
     const existing = db.prepare('SELECT id FROM users WHERE iss = ? AND sub = ?').get(c.iss, c.sub) as { id: string } | undefined;
     const id = existing?.id ?? randomUUID();

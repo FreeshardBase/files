@@ -67,6 +67,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const isAdmin = admin !== undefined && (Array.isArray(roleValue) ? roleValue.includes(admin.value) : roleValue === admin.value);
     const user = upsertUserFromClaims(db, { iss: claims.iss, sub: claims.sub, isAdmin,
       ...(typeof claims.name === 'string' ? { name: claims.name } : {}),
+      ...(typeof claims.preferred_username === 'string' ? { preferredUsername: claims.preferred_username } : {}),
       ...(typeof claims.email === 'string' ? { email: claims.email } : {}) });
     if (req.session) deleteSession(db, req.session.idHash); // session fixation hygiene
     const s = createSession(db, user.id);

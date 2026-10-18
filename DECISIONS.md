@@ -1161,3 +1161,13 @@ Question: the issue asks for a middle cut "beyond two lines" but leaves open how
 - **On the phone the tag chips wrap under a name that needs the line.** A chip wider than the name block cuts its text. On wider screens the name keeps at least 8rem beside its chips.
 
 Why: this is the smallest change that keeps the star and the menu in place. It reuses the gallery's cut, and nothing is hidden that the title and the accessible name do not still give in full.
+
+## 2026-10-18: A member without a name claim (#337)
+
+Question: the issue fixes the fallback order but leaves open where the generic label lives, what English shows, and what happens to names already stored as the `sub`.
+
+- **The server stores an empty display name** when `name`, `preferred_username` and the email's local part are all missing or blank. The label is a UI string, so the web adds it (`members.unnamed`: "Mitglied" in both German locales, "Member" in English), through one helper `memberName` wherever a member is shown: top bar and avatar initial, settings, share dialog, details drawer, My shares, Shared with me, comments, members page.
+- **The share dialog's filter matches the stored name only.** A member without a name appears in the unfiltered list and is picked by clicking or the arrow keys; typing "Mitglied" does not find them. Matching the label would make the filter depend on the UI language.
+- **Migration 028 clears stored names that equal the `sub`**, the old fallback. The next login fills in whatever the claims carry then. A name stored from the old email fallback (the whole address) stays until that member logs in again.
+
+Why: the API keeps reporting what the IdP delivered. The language of the label follows the person looking at it, not the person who logged in.

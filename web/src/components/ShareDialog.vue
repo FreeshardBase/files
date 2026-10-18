@@ -11,6 +11,7 @@ import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Access, CreateShareRequest, Entry, Member, MemberList, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
+import { memberName } from '../memberName.ts';
 import AppDialog from './AppDialog.vue';
 import LinkManager from './LinkManager.vue';
 
@@ -59,7 +60,7 @@ function onInput() {
   if (only && more.length === 0 && only.displayName.toLocaleLowerCase() === text.value.trim().toLocaleLowerCase()) pick(only);
 }
 function pick(m: Member) {
-  chosen.value = m; text.value = m.displayName;
+  chosen.value = m; text.value = memberName(m);
   open.value = false; active.value = -1; error.value = '';
 }
 function move(by: number) {
@@ -98,7 +99,7 @@ async function submit() {
     const body: CreateShareRequest = { source: props.source, path: props.entry.path, grantee: m.id, access: access.value };
     const s = await api.post<Share>('/api/v1/shares', body);
     await loadShares();
-    status.value = t('share.shared', { name: s.grantee.displayName, access: t(`share.${s.access}`) });
+    status.value = t('share.shared', { name: memberName(s.grantee), access: t(`share.${s.access}`) });
     text.value = ''; chosen.value = null; access.value = 'read';
   } catch (e) { fail(e); } finally { busy.value = false; }
 }
@@ -107,7 +108,7 @@ async function revoke(s: Share) {
   try {
     await api.delete(`/api/v1/shares/${encodeURIComponent(s.id)}`);
     await loadShares();
-    status.value = t('share.removed', { name: s.grantee.displayName });
+    status.value = t('share.removed', { name: memberName(s.grantee) });
     picker.value?.focus(); // the focused button is gone with its row; the member field is where sharing starts again
   } catch (e) { fail(e); }
 }
@@ -172,7 +173,7 @@ async function revoke(s: Share) {
                 @mousedown.prevent
                 @click="pick(m)"
               >
-                {{ m.displayName }}
+                {{ memberName(m) }}
               </li>
             </ul>
           </div>
@@ -241,12 +242,12 @@ async function revoke(s: Share) {
         v-for="s in shares"
         :key="s.id"
       >
-        <span class="share-name">{{ s.grantee.displayName }}</span>
+        <span class="share-name">{{ memberName(s.grantee) }}</span>
         <span class="share-level fs-pill">{{ t(`share.${s.access}`) }}</span>
         <button
           type="button"
           class="button danger"
-          :aria-label="t('share.removeLabel', { name: s.grantee.displayName })"
+          :aria-label="t('share.removeLabel', { name: memberName(s.grantee) })"
           @click="revoke(s)"
         >
           {{ t('share.remove') }}
