@@ -156,6 +156,26 @@ test('the language "automatic" goes back to the browser language', async ({ page
   await expect(radio(page, /^Automatic/)).toBeChecked();
 });
 
+// #312: the folder-layout checkboxes stand each on their own line with the muted hint under their label, also in German,
+// where the first hint used to leave room for "Tabs" mid-line after it.
+test('each folder-layout checkbox has its own line with its hint under it', async ({ page }, info) => {
+  if (!info.project.use.isMobile) await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/settings');
+  const group = page.getByRole('group', { name: 'Ordneransicht' });
+  await expect(group.getByRole('checkbox', { name: 'Tabs' })).toBeVisible();
+  const boxes = await group.evaluate((fs) => [...fs.querySelectorAll('label, .settings-hint')].map((el) => {
+    const r = el.getBoundingClientRect();
+    return { hint: el.classList.contains('settings-hint'), top: r.top, bottom: r.bottom, left: r.left };
+  }));
+  expect(boxes.map((b) => b.hint)).toEqual([false, true, false, true]);
+  const [dual, dualHint, tabs, tabsHint] = boxes;
+  expect(dualHint.top).toBeGreaterThanOrEqual(dual.bottom - 0.5);
+  expect(tabs.top).toBeGreaterThanOrEqual(dualHint.bottom - 0.5);
+  expect(tabsHint.top).toBeGreaterThanOrEqual(tabs.bottom - 0.5);
+  expect(Math.abs(tabs.left - dual.left)).toBeLessThan(1);
+  expect(Math.abs(tabsHint.left - dualHint.left)).toBeLessThan(1);
+});
+
 // Screenshot baselines of the folder view in both themes and all three languages. The modification dates change with
 // every run and are masked; everything else in the folder is fixed.
 for (const theme of ['light', 'dark'] as const) {

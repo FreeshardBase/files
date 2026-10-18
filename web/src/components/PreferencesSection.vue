@@ -131,7 +131,7 @@ function save() {
         {{ $t(`settings.theme.${th}`) }}
       </label>
     </fieldset>
-    <fieldset class="settings-choices">
+    <fieldset class="settings-choices settings-stack">
       <legend class="fs-label">
         {{ $t('settings.layout.heading') }}
       </legend>

@@ -10,6 +10,7 @@ import { ApiFailure } from '../api/client.ts';
 import { requestInfo, sendFile, unlockRequest } from '../api/fileRequest.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import StateAlert from '../components/StateAlert.vue';
+import AppTitle from '../components/AppTitle.vue';
 
 const route = useRoute();
 const { t, locale } = useI18n();
@@ -90,7 +91,7 @@ const empty = computed(() => sentUploads.value.length === 0 && local.value.lengt
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <span class="app-title">{{ t('app.name') }}</span>
+      <AppTitle />
     </header>
     <main class="app-main link-page">
       <section v-if="failure">

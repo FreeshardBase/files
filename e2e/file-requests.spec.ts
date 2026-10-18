@@ -62,6 +62,11 @@ test('an anonymous visitor uploads two files; the owner sees the badge, the file
   const v = await visitor(browser, info, baseURL!);
   await v.goto(address);
   await expect(v.getByTestId('request-title')).toHaveText(title);
+  // The app's brand mark (#314): the 22 px line folder glyph in front of the name, as in the signed-in header.
+  const glyph = v.locator('.app-header .app-title .icon-folder.app-logo');
+  await expect(glyph).toBeVisible();
+  expect((await glyph.boundingBox())?.width).toBe(22);
+  await expect(v.locator('.app-header .app-title')).toHaveText('Files');
   await expect(v.getByText('You have not sent any files yet.')).toBeVisible();
   // The folder is never shown: neither its name nor what is in it.
   await expect(v.locator('body')).not.toContainText('private.txt');
