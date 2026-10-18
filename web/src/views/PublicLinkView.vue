@@ -12,6 +12,7 @@ import { linkContentHref, linkInfo, linkList, pageError, unlockLink } from '../a
 import { previewKind } from '../preview.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import StateAlert from '../components/StateAlert.vue';
+import AppTitle from '../components/AppTitle.vue';
 
 const route = useRoute();
 const { t, locale } = useI18n();
@@ -83,7 +84,7 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <span class="app-title">{{ t('app.name') }}</span>
+      <AppTitle />
     </header>
     <main class="app-main link-page">
       <p

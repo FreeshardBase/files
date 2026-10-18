@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Where sign-out lands (#222). No session is loaded and nothing redirects to the login: with the shard's single sign-on
 // that would sign the member straight back in. Signing in again is the link, the member's own choice.
+import AppTitle from '../components/AppTitle.vue';
 </script>
 
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <span class="app-title">{{ $t('app.name') }}</span>
+      <AppTitle />
     </header>
     <main class="app-main signed-out">
       <h1

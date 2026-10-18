@@ -127,3 +127,36 @@ test('the tag view of more than 500 items lists the first 500 and says there are
   await expect(page.locator('tbody tr').last().locator('.name')).toHaveText('d-500');
   await expect(page.getByText('d-501', { exact: true })).toHaveCount(0);
 });
+
+// #313: in German the drawer's "Tag hinzufügen" button keeps its label on one line; the input takes the rest of the row.
+test('the drawer\'s add-tag button keeps its German label on one line', async ({ page }, info) => {
+  if (!info.project.use.isMobile) await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/home');
+  await expect(nav(page)).toBeAttached();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const settings = (locale: 'de-du' | null) => page.request.put('/api/v1/settings', { headers, data: { locale, theme: 'system' } });
+  expect((await settings('de-du')).status()).toBe(200);
+  try {
+    const dir = `tag-button-${tag(info)}`;
+    expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+    expect((await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/plan.txt`)}&onCollision=fail`,
+      { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: 'the plan' })).status()).toBe(201);
+    await page.goto(`/home/${dir}`);
+    await row(page, 'plan.txt').getByRole('button', { name: 'Aktionen für plan.txt' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Details' }).click();
+    const drawer = page.getByRole('dialog', { name: /plan\.txt/ });
+    const button = drawer.getByRole('button', { name: 'Tag hinzufügen', exact: true });
+    await expect(button).toBeVisible();
+    const m = await button.evaluate((b) => {
+      const range = document.createRange();
+      range.selectNodeContents(b);
+      return { lines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size,
+        scrollWidth: b.scrollWidth, clientWidth: b.clientWidth };
+    });
+    expect(m.lines).toBe(1);
+    expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth);
+  } finally {
+    expect((await settings(null)).status()).toBe(200);
+  }
+});

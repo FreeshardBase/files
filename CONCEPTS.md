@@ -315,6 +315,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `dnd.ts` | Drag & drop payload of list items (own MIME type: the paths and their source, so a drop from the other pane is told apart, #218); desktop drops of files and folders (entries walked recursively). |
 | `components/Breadcrumbs.vue` | Path navigation; every crumb is a drop target. |
 | `components/UploadButton.vue` | File picker and folder picker emitting chosen files with their relative path; exposes the file input as the focus target for dialogs it causes. |
+| `components/AppTitle.vue` | The brand mark in every header: the 22 px line folder glyph and the app name; the shell, the public link and file request pages and the signed-out page use it (#314). |
 | `components/AppDialog.vue` | The only dialog primitive (lint-enforced): `role="dialog"`, `aria-modal`, labelled title, focus trap, inert background, root scroll lock, Esc emits `close`, focus restored on unmount. |
 | `components/CollisionDialog.vue` | Replace / keep both / skip for one taken name, with "apply to all remaining"; Esc skips this item only. Used by upload, rename, move, copy and restore. |
 | `i18n/index.ts` | vue-i18n setup, `resolveLocale` (the member's setting, browser, default Deutsch Du) and `applyLocale` (also caches the setting on the device for the next first paint and the public share page). |

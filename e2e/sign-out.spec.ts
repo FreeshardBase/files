@@ -29,6 +29,10 @@ async function signIn(page: Page) {
 async function expectSignedOut(page: Page) {
   await expect(signedOutHeading(page)).toBeVisible();
   await expect(page).toHaveURL(/\/signed-out$/);
+  // The app's brand mark (#314): the 22 px line folder glyph in front of the name, as in the signed-in header.
+  const glyph = page.locator('.app-header .app-title .icon-folder.app-logo');
+  await expect(glyph).toBeVisible();
+  expect((await glyph.boundingBox())?.width).toBe(22);
   expect((await page.request.get('/api/v1/me')).status()).toBe(401);
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
   const inbox = await page.evaluate(() => new Promise<number>((resolve, reject) => {

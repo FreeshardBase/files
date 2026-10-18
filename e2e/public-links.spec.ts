@@ -45,6 +45,14 @@ async function visitor(browser: Browser, info: TestInfo, baseURL: string): Promi
   return ctx.newPage();
 }
 
+/** The visitor page carries the app's brand mark (#314): the 22 px line folder glyph in front of the name. */
+async function expectBrandMark(v: Page) {
+  const glyph = v.locator('.app-header .app-title .icon-folder.app-logo');
+  await expect(glyph).toBeVisible();
+  expect((await glyph.boundingBox())?.width).toBe(22);
+  await expect(v.locator('.app-header .app-title')).toHaveText('Files');
+}
+
 test('a link with password and limit 1: the visitor unlocks, downloads once, and a second download is refused', async ({ page, browser, baseURL }, info) => {
   const dir = `link-limit-${tag(info)}`;
   await setup(page, dir, { 'report.txt': 'quarterly numbers' });
@@ -70,6 +78,7 @@ test('a link with password and limit 1: the visitor unlocks, downloads once, and
   v.on('dialog', (x) => { dialogs.push(x.message()); void x.dismiss(); });
   await v.goto(address);
   await expect(v.getByTestId('link-name')).toHaveText('report.txt');
+  await expectBrandMark(v);
   await expect(v.getByText('This link is protected by a password.')).toBeVisible();
   await expect(v.getByRole('link', { name: 'Download' })).toHaveCount(0);
   await v.getByLabel('Password').fill('wrong');

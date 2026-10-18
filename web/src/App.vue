@@ -8,6 +8,7 @@ import TransferPanel from './components/TransferPanel.vue';
 import { useTransfersStore } from './stores/transfers.ts';
 import { useUploadsStore } from './stores/uploads.ts';
 import SearchBox from './components/SearchBox.vue';
+import AppTitle from './components/AppTitle.vue';
 import { isPublicPage } from './router.ts';
 import { useConnectionsStore } from './stores/connections.ts';
 import { folderRoute } from './api/paths.ts';
@@ -102,10 +103,7 @@ onMounted(async () => {
     class="app-shell"
   >
     <header class="app-header">
-      <span class="app-title"><span
-        class="icon icon-folder app-logo"
-        aria-hidden="true"
-      />{{ $t('app.name') }}</span>
+      <AppTitle />
       <SearchBox v-if="session.me" />
       <template v-if="session.me">
         <span

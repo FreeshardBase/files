@@ -1009,6 +1009,8 @@ a:where(:hover) { text-decoration: underline; }
 .settings-radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--data); }
 /* One choice per line on the phone (#245): a wrapped row left one choice alone under the others. */
 @media (max-width: 600px) { .settings-choices { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; } }
+/* Checkboxes with a hint (#312): one per line at every width, the hint right under its label (its margin spaces them). */
+.settings-choices.settings-stack { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; row-gap: 0; }
 
 /* Favourites (#155): an outlined star, filled in the accent once the item is a favourite. */
 .icon-tag {
@@ -1065,6 +1067,8 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
 .tag-remove .icon { width: 12px; height: 12px; }
 .tag-add { display: flex; gap: var(--space-2); }
 .tag-add .fs-input { flex: 1 1 auto; min-width: 0; }
+/* The button keeps its label on one line (#313: German "Tag hinzufügen" broke in two); the input takes the rest. */
+.tag-add .button { flex: none; white-space: nowrap; }
 
 /* Comments (#213): the drawer's tabs are underlined text (the current one in --line, as the search option's bar), the
    thread a hairline list, the badge in the list a muted line icon with the count; see DESIGN.md. */
