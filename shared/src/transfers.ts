@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CollisionPolicy } from './entries.ts';
 import { ERROR_CODES } from './errors.ts';
+import { NameIssue } from './nameRules.ts';
 
 /** A transfer job's id: 16 random bytes as hex. */
 export const TransferId = z.string().regex(/^[0-9a-f]{32}$/);
@@ -14,7 +15,12 @@ export const CreateTransferRequest = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
   dir: z.string().min(1),
-  items: z.array(z.object({ path: z.string().min(1), onCollision: CollisionPolicy }).strict()).min(1).max(1000),
+  items: z.array(z.object({ path: z.string().min(1), onCollision: CollisionPolicy,
+    /**
+     * The name the member chose for the item in the target (#342), checked against the target's name rules. Without it
+     * the item keeps its name, or, if the target's rules refuse that, lands under the suggestion and the job lists it.
+     */
+    name: z.string().min(1).max(255).optional() }).strict()).min(1).max(1000),
 }).strict();
 export type CreateTransferRequest = z.infer<typeof CreateTransferRequest>;
 
@@ -59,6 +65,11 @@ export const TransferJobSchema = z.object({
   failed: z.array(z.object({ path: z.string(), code: z.enum(ERROR_CODES) })),
   /** What an import left out of its archives (#322), each named as `<archive>/<path in it>`; empty for other kinds. */
   skipped: z.array(z.object({ path: z.string(), reason: z.enum(['photos', 'other']) })),
+  /**
+   * Items the job renamed on its own because the target's name rules refuse their names (#342): the source path, the
+   * name it got and why.
+   */
+  renamed: z.array(z.object({ path: z.string(), name: z.string(), issues: z.array(NameIssue) })),
   /** Bytes copied so far, verified items plus the items in flight. */
   bytes: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),

@@ -37,7 +37,7 @@ export async function registerSourceRoutes(app: FastifyInstance): Promise<void> 
     const q = z.object({
       path: z.string().min(1), cursor: z.string().optional(), limit: z.coerce.number().int().optional(),
     }).parse(req.query);
-    return { ...await backend.list(q.path, q.cursor, q.limit), access };
+    return { ...await backend.list(q.path, q.cursor, q.limit), access, nameRules: backend.nameRules ?? 'universal' };
   });
 
   app.get('/api/v1/sources/:source/stat', async (req) => {

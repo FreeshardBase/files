@@ -3,9 +3,9 @@ import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import sharp from 'sharp';
 import { z } from 'zod';
-import { GraphId, type CollisionPolicy, type Entry, type Library, type ProviderQuota, type Site, type ThumbSize } from '@files/shared';
+import { GraphId, type CollisionPolicy, type Entry, type Library, type NameRuleSet, type ProviderQuota, type Site, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
+import { assertNameAllowed, RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import type { LibraryPicker, OAuthClient, Provider } from './oauth.ts';
@@ -59,7 +59,7 @@ const Item = z.object({
 });
 type Item = z.infer<typeof Item>;
 const Page = z.object({ value: z.array(Item), '@odata.nextLink': z.string().optional() });
-const GraphError = z.object({ error: z.object({ code: z.string() }) });
+const GraphError = z.object({ error: z.object({ code: z.string(), message: z.string().optional() }) });
 const Monitor = z.object({ status: z.string(), error: z.object({ code: z.string().optional() }).optional() });
 
 const lower = (p: string) => p.toLowerCase();
@@ -78,9 +78,13 @@ const isRedirect = (res: Response) => res.status >= 300 && res.status < 400;
  */
 async function failure(res: Response, what: string, name?: string): Promise<never> {
   const text = await res.text();
-  let code: string;
-  try { code = GraphError.parse(JSON.parse(text)).error.code; }
+  let code: string; let message = '';
+  try { ({ code, message = '' } = GraphError.parse(JSON.parse(text)).error); }
   catch { code = ''; } // handled: a body that is not Graph's JSON error leaves the status to decide
+  // A name Graph refuses although the rules let it pass (#342): the member sees Graph's own reason, not a failure.
+  if (res.status === 400 && code === 'invalidRequest' && name !== undefined && /name/i.test(message)) {
+    throw new AppError('NAME_NOT_ALLOWED', { name, reason: message.slice(0, 200) });
+  }
   if (res.status === 404 || code === 'itemNotFound') throw new AppError('NOT_FOUND');
   if (res.status === 409 || code === 'nameAlreadyExists') throw new AppError('FILE_EXISTS', name !== undefined ? { name } : undefined);
   if (res.status === 412 || code === 'resourceModified') throw new AppError('PRECONDITION_FAILED');
@@ -92,9 +96,12 @@ async function failure(res: Response, what: string, name?: string): Promise<neve
 export class GraphBackend implements StorageBackend {
   /** `…/me/drive` or `…/drives/{id}`: every item request is below it. */
   private base: string;
+  /** OneDrive's and SharePoint's rules are the same; the set names which one the member is told about. */
+  readonly nameRules: NameRuleSet;
 
   constructor(private client: OAuthClient, private ep: GraphEndpoints, private chunkBytes: number, drive: string) {
     this.base = drive === '' ? `${ep.api}/me/drive` : `${ep.api}/drives/${GraphId.parse(drive)}`;
+    this.nameRules = drive === '' ? 'onedrive' : 'sharepoint';
   }
 
   // --- requests ---------------------------------------------------------------------------------------------------
@@ -249,6 +256,7 @@ export class GraphBackend implements StorageBackend {
     const size = opts.size;
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, p);
     const dir = posix.dirname(p);
     let name = posix.basename(p);
     const existing = await this.metaOrNone(p);
@@ -325,6 +333,7 @@ export class GraphBackend implements StorageBackend {
   async mkdir(path: string): Promise<Entry> {
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('FILE_EXISTS', { name: '/' });
+    assertNameAllowed(this.nameRules, p);
     const parent = await this.folderAt(posix.dirname(p));
     return this.placed(await this.createFolder(parent.id, posix.basename(p)), posix.dirname(p));
   }
@@ -333,6 +342,7 @@ export class GraphBackend implements StorageBackend {
     const f = normalizeUserPath(from); let t = normalizeUserPath(to);
     if (f === t) return this.stat(f);
     if (f === '/' || t === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, t);
     if (inside(t, f)) throw new AppError('TARGET_INSIDE_SOURCE');
     const item = await this.meta(f);
     // A rename that only changes the case is the item itself in the way, never a collision; Graph renames it as it is.
@@ -361,6 +371,7 @@ export class GraphBackend implements StorageBackend {
   async copy(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
     const f = normalizeUserPath(from); let t = normalizeUserPath(to);
     if (f === '/' || t === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, t);
     if (inside(t, f)) throw new AppError('TARGET_INSIDE_SOURCE');
     const item = await this.meta(f);
     // Onto its own name (in any case): "fail" asks, "replace" leaves it as it is, "keep both" duplicates.

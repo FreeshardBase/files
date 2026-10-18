@@ -3,9 +3,13 @@
 // `error` and keeps the dialog open with the field focused. Esc or "Cancel" creates nothing.
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { suggestName, type NameRuleSet } from '@files/shared';
 import AppDialog from './AppDialog.vue';
+import { nameRefusal } from '../nameRules.ts';
 
-const props = defineProps<{ error?: string | null; busy?: boolean }>();
+// `rules` and `dir`: as in RenameDialog (#342).
+const props = withDefaults(defineProps<{ error?: string | null; busy?: boolean; rules?: NameRuleSet; dir?: string }>(),
+  { error: null, busy: false, rules: 'universal', dir: '/' });
 const emit = defineEmits<{ submit: [string]; cancel: [] }>();
 const { t } = useI18n();
 const value = ref('');
@@ -14,7 +18,13 @@ const input = ref<HTMLInputElement>();
 const formId = useId();
 const errorId = useId();
 const refused = ref<string | null>(null);
-const message = computed(() => invalid.value ? t('folder.invalid') : refused.value);
+const ruleRefusal = computed(() => (value.value.trim() === '' ? null : nameRefusal(t, props.rules, value.value.trim(), props.dir)));
+const suggestion = computed(() => (ruleRefusal.value === null ? null : suggestName(props.rules, value.value.trim(), props.dir).name));
+const message = computed(() => invalid.value ? t('folder.invalid') : ruleRefusal.value ?? refused.value);
+function useSuggestion() {
+  value.value = suggestion.value!;
+  input.value?.focus();
+}
 
 watch(() => props.error, async (e) => {
   refused.value = e ?? null;
@@ -28,7 +38,7 @@ function submit() {
   const name = value.value.trim();
   // The server checks names too; this only saves a round trip for the obvious cases.
   invalid.value = name === '' || name === '.' || name === '..' || name.includes('/');
-  if (invalid.value) { input.value?.focus(); return; }
+  if (invalid.value || ruleRefusal.value !== null) { input.value?.focus(); return; }
   emit('submit', name);
 }
 </script>
@@ -65,6 +75,14 @@ function submit() {
       >
         {{ message }}
       </p>
+      <button
+        v-if="suggestion !== null"
+        type="button"
+        class="button name-rules-use"
+        @click="useSuggestion"
+      >
+        {{ t('nameRules.useSuggestion', { name: suggestion }) }}
+      </button>
     </form>
     <template #actions>
       <button

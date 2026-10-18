@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ERROR_CODES } from './errors.ts';
+import { NameRuleSet } from './nameRules.ts';
 import { LayoutSchema, SettingsSchema, SortSchema } from './settings.ts';
 
 export const EntrySchema = z.object({
@@ -27,6 +28,8 @@ export const ListResponseSchema = z.object({
   next: z.string().optional(),
   /** The caller's access to the source, re-checked on this request; the SPA offers changes only with `edit`. */
   access: Access,
+  /** The source's name rules (#342), so the SPA checks a name before it sends it. */
+  nameRules: NameRuleSet,
 });
 export type ListResponse = z.infer<typeof ListResponseSchema>;
 

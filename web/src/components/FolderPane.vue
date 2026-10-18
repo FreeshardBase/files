@@ -8,7 +8,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { SORT_KEYS, type CollisionPolicy, type Entry, type ErrorCode, type RenameRequest, type Sort, type SortKey } from '@files/shared';
+import { checkName, nameTaken, SORT_KEYS, suggestName, type CollisionPolicy, type NameRuleSet, type Entry, type ErrorCode, type RenameRequest, type Sort, type SortKey } from '@files/shared';
 import { join, listAll, useClipboardStore, useFolderStore } from '../stores/folder.ts';
 import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
@@ -21,6 +21,7 @@ import UploadButton from './UploadButton.vue';
 import ItemMenu, { type MenuItem } from './ItemMenu.vue';
 import UploadPanel from './UploadPanel.vue';
 import CollisionDialog, { type CollisionChoice } from './CollisionDialog.vue';
+import NameRulesDialog, { type NameChoice } from './NameRulesDialog.vue';
 import RenameDialog from './RenameDialog.vue';
 import NewFolderDialog from './NewFolderDialog.vue';
 import BatchRenameDialog from './BatchRenameDialog.vue';
@@ -235,6 +236,11 @@ watch(() => folder.loading, async (loading) => {
 });
 const ask = (name: string, remaining: number, returnFocus?: HTMLElement | null) => new Promise<CollisionChoice>((resolve) => {
   conflict.value = { name, remaining, returnFocus, answer: (c) => { conflict.value = null; resolve(c); } };
+});
+// The open name question (#342), answered like the collision question.
+const badName = ref<{ name: string; rules: NameRuleSet; dir: string; remaining: number; answer: (c: NameChoice) => void } | null>(null);
+const askName = (name: string, rules: NameRuleSet, dir: string, remaining: number) => new Promise<NameChoice>((resolve) => {
+  badName.value = { name, rules, dir, remaining, answer: (c) => { badName.value = null; resolve(c); } };
 });
 
 type Outcome = { done: number; skipped: number; placed: Entry[]; failed: { name: string; code: ErrorCode | 'NETWORK' }[] };
@@ -535,7 +541,7 @@ async function paste() {
   acting.value = true;
   try {
     if (clip.source !== folder.source) {
-      await startJob(clip.mode, clip.source, clip.entries, folder.source, folder.path, folder.entries.map((e) => e.name));
+      await startJob(clip.mode, clip.source, clip.entries, folder.source, folder.path, folder.entries.map((e) => e.name), folder.nameRules);
     } else await transfer(clip.mode, clip.entries.map((e) => ({ from: e.path, name: e.name })), folder.path, clip.source);
   } finally {
     acting.value = false;
@@ -544,20 +550,33 @@ async function paste() {
 // The target folder's listing (`taken`) tells which names are taken; each one asks the collision question before the job
 // starts, so the job runs without asking. The job reports in the transfer panel; the folders it touched relist once it
 // has ended.
+// A name the target's rules refuse (#342) is asked about first, with the suggestion; the chosen name then goes through
+// the collision question like any other (in a source that ignores case, `A.txt` collides with `a.txt`).
 async function startJob(mode: 'move' | 'copy', from: string, entries: { path: string; name: string }[], to: string, dir: string,
-  taken: string[]) {
+  taken: string[], rules: NameRuleSet) {
   failures.value = null;
-  const names = new Set(taken);
-  const items: { path: string; onCollision: CollisionPolicy }[] = [];
+  const items: { path: string; onCollision: CollisionPolicy; name?: string }[] = [];
   let forAll: CollisionChoice['policy'] | null = null; // "apply to all remaining"
+  let suggestAll = false; // "use the suggestions for all"
   for (const [i, e] of entries.entries()) {
-    if (!names.has(e.name)) { items.push({ path: e.path, onCollision: 'fail' }); continue; }
+    let chosen: string | undefined;
+    if (checkName(rules, e.name, dir).length) {
+      if (suggestAll) chosen = suggestName(rules, e.name, dir).name;
+      else {
+        const c = await askName(e.name, rules, dir, entries.length - i - 1);
+        if (c.name === null) continue;
+        chosen = c.name; if (c.all) suggestAll = true;
+      }
+    }
+    const name = chosen ?? e.name;
+    const named = chosen !== undefined ? { name: chosen } : {};
+    if (!nameTaken(rules, name, taken)) { items.push({ path: e.path, onCollision: 'fail', ...named }); continue; }
     let policy = forAll;
     if (!policy) {
-      const c = await ask(e.name, entries.length - i - 1);
+      const c = await ask(name, entries.length - i - 1);
       policy = c.policy; if (c.all) forAll = c.policy;
     }
-    if (policy !== 'skip') items.push({ path: e.path, onCollision: policy });
+    if (policy !== 'skip') items.push({ path: e.path, onCollision: policy, ...named });
   }
   if (!items.length) { say(t('transfers.nothingToDo')); return; }
   try {
@@ -583,7 +602,7 @@ async function onDrop(paths: string[], dir: string, from: string) {
   acting.value = true;
   try {
     const taken = dir === folder.path ? folder.entries.map((e) => e.name) : (await listAll(folder.source, dir)).map((e) => e.name);
-    await startJob('copy', from, items, folder.source, dir, taken);
+    await startJob('copy', from, items, folder.source, dir, taken, folder.nameRules);
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
     failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] }; // handled: the target could not be listed
@@ -602,7 +621,7 @@ async function toOther(mode: 'move' | 'copy', entries = selectedEntries.value) {
   acting.value = true;
   try {
     if (to.source === folder.source) await transfer(mode, entries.map((e) => ({ from: e.path, name: e.name })), to.path);
-    else await startJob(mode, folder.source, entries, to.source, to.path, to.names);
+    else await startJob(mode, folder.source, entries, to.source, to.path, to.names, to.nameRules);
   } finally {
     acting.value = false;
   }
@@ -835,10 +854,21 @@ defineExpose({
       :return-focus="conflict.returnFocus"
       @choose="conflict.answer"
     />
+    <NameRulesDialog
+      v-if="badName"
+      :key="`${badName.dir}/${badName.name}`"
+      :name="badName.name"
+      :rules="badName.rules"
+      :dir="badName.dir"
+      :remaining="badName.remaining"
+      @choose="badName.answer"
+    />
     <RenameDialog
       v-if="renaming"
       :name="renaming.entry.name"
       :is-folder="renaming.entry.type === 'directory'"
+      :rules="folder.nameRules"
+      :dir="parentOf(renaming.entry.path)"
       :error="renaming.error"
       :busy="renaming.busy"
       @submit="rename"
@@ -856,6 +886,8 @@ defineExpose({
     />
     <NewFolderDialog
       v-if="creating"
+      :rules="folder.nameRules"
+      :dir="folder.path"
       :error="creating.error"
       :busy="creating.busy"
       @submit="createFolder"

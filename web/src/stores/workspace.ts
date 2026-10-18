@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { nextTick, ref, watch } from 'vue';
+import type { NameRuleSet } from '@files/shared';
 import { disposeFolderStore } from './folder.ts';
 
 // The open locations (#218 two panes, #219 tabs). There are always two panes, each with at least one tab; which of them
@@ -12,7 +13,7 @@ export type Tab = { id: string; source: string; path: string; view: View };
 export type Pane = { tabs: Tab[]; active: number };
 export type Workspace = { panes: [Pane, Pane]; focused: 0 | 1 };
 /** The folder the other pane shows, as a pane sees it: where "to the other pane" goes and which names are taken there. */
-export type OtherPane = { source: string; path: string; editable: boolean; names: string[] };
+export type OtherPane = { source: string; path: string; editable: boolean; names: string[]; nameRules: NameRuleSet };
 
 /** List or gallery (#144) on this device: the view a new tab starts with, and the only one without tabs. */
 export const VIEW_KEY = 'files.view';

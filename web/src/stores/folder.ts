@@ -1,5 +1,5 @@
 import { defineStore, getActivePinia } from 'pinia';
-import type { Access, CollisionPolicy, DeleteRequest, Entry, ListResponse, TransferRequest } from '@files/shared';
+import type { Access, CollisionPolicy, DeleteRequest, Entry, ListResponse, NameRuleSet, TransferRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { sourceApi } from '../api/paths.ts';
 
@@ -25,6 +25,8 @@ const defineFolderStore = (id: string) => defineStore(id, {
     // What the caller may do in the source, from the newest listing (#146). The home is always `edit`; a share starts
     // as `read`, so no change is offered before the server has said it is allowed.
     access: 'edit' as Access,
+    /** The source's name rules from the newest listing (#342); a name is checked against them before it is sent. */
+    nameRules: 'universal' as NameRuleSet,
   }),
   actions: {
     async open(path: string, opts: { refresh?: boolean; source?: string } = {}) {
@@ -41,7 +43,7 @@ const defineFolderStore = (id: string) => defineStore(id, {
         do {
           const page: ListResponse = await api.get(`${base}/list`, cursor ? { path, cursor } : { path });
           if (id !== this.seq) return;
-          all.push(...page.entries); cursor = page.next; this.access = page.access;
+          all.push(...page.entries); cursor = page.next; this.access = page.access; this.nameRules = page.nameRules;
         } while (cursor);
         this.entries = all;
       } catch (e) {

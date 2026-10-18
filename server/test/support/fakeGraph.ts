@@ -71,6 +71,10 @@ export class FakeGraph {
   quota = { used: 9876, total: 5 * 1024 ** 3 };
   /** Drives that answer without the `quota` facet, as Graph does for some SharePoint libraries (the facet is optional). */
   readonly quotaless = new Set<string>();
+  /** Names refused on top of Graph's rules, to play a rule the app does not know yet (#342). */
+  readonly refusedNames = new Set<string>();
+  /** Names that reached the fake although its rules refuse them, i.e. the app sent them anyway. */
+  readonly refusedRequests: string[] = [];
   private roots = new Map<string, string>(); // drive → root id
   private sessions = new Map<string, Session>();
   private blobs = new Map<string, { id: string; thumb: boolean }>();
@@ -184,6 +188,14 @@ export class FakeGraph {
     const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
       res.writeHead(status, { 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
     const fail = (status: number, code: string) => json(status, { error: { code, message: code } });
+    // Graph refuses a name it does not allow with 400 `invalidRequest` and says why in the message (#342).
+    const refuse = (name: string) => {
+      const why = this.refusal(name);
+      if (why === null) return false;
+      this.refusedRequests.push(name);
+      json(400, { error: { code: 'invalidRequest', message: why } });
+      return true;
+    };
     const method = req.method ?? 'GET';
     const rest = u.pathname.slice('/graph/v1.0'.length);
     let body: Record<string, unknown> = {};
@@ -268,6 +280,7 @@ export class FakeGraph {
 
     if (method === 'POST' && suffix === '/createUploadSession') {
       if (!pathTarget?.parent?.folder) { fail(404, 'itemNotFound'); return true; }
+      if (refuse(pathTarget.name)) return true;
       const ifMatch = req.headers['if-match'];
       if (ifMatch !== undefined && (!item || ifMatch !== this.json(item).eTag)) { fail(412, 'resourceModified'); return true; }
       const sid = randomBytes(12).toString('hex');
@@ -278,6 +291,7 @@ export class FakeGraph {
     }
     if (method === 'PUT' && suffix === '/content') {
       if (!pathTarget?.parent?.folder) { fail(404, 'itemNotFound'); return true; }
+      if (refuse(pathTarget.name)) return true;
       const placed = this.place(drive, pathTarget.parent.id, pathTarget.name, conflictOf(u.searchParams.get('@microsoft.graph.conflictBehavior')),
         { kind: 'bytes', data: raw! });
       if (typeof placed === 'string') { fail(409, placed); return true; }
@@ -299,6 +313,7 @@ export class FakeGraph {
       case 'POST /children': {
         if (!item.folder) { fail(400, 'invalidRequest'); return true; }
         const name = String(body.name ?? '');
+        if (refuse(name)) return true;
         if (this.child(item.id, name)) { fail(409, 'nameAlreadyExists'); return true; }
         json(201, this.json(this.create(drive, item.id, name, undefined)));
         return true;
@@ -311,6 +326,7 @@ export class FakeGraph {
           if (p.id === item.id) { fail(400, 'invalidRequest'); return true; }
         }
         const name = typeof body.name === 'string' ? body.name : item.name;
+        if (refuse(name)) return true;
         const taken = this.child(parent.id, name);
         if (taken && taken.id !== item.id) { fail(409, 'nameAlreadyExists'); return true; }
         json(200, this.json(this.relocate(item, parent.id, name, false)));
@@ -334,6 +350,7 @@ export class FakeGraph {
         const parent = this.items.get(parentRef?.id ?? '');
         if (!parent?.folder || parent.drive !== drive || parentRef?.driveId !== drive) { fail(400, 'invalidRequest'); return true; }
         const name = typeof body.name === 'string' ? body.name : item.name;
+        if (refuse(name)) return true;
         const mid = randomBytes(9).toString('hex');
         if (this.child(parent.id, name)) this.monitors.set(mid, { target: '', error: 'nameAlreadyExists', polls: 0 });
         else this.monitors.set(mid, { target: this.relocate(item, parent.id, name, true).id, polls: 0 });
@@ -370,6 +387,19 @@ export class FakeGraph {
     }
     fail(400, `fake graph: no endpoint ${method} ${suffix}`);
     return true;
+  }
+
+  /**
+   * Graph's name rules, written out here on their own (not taken from the app), so a rule the app misses reaches the fake
+   * and is refused as Microsoft would. The whole-path limit is not played.
+   */
+  private refusal(name: string): string | null {
+    if (this.refusedNames.has(name)) return 'The name is not allowed.';
+    if (/["*:<>?\\|]/.test(name)) return 'The provided name cannot contain any illegal characters.';
+    if (/^ | $|\.$/.test(name)) return 'The provided name cannot begin or end with a space or end with a period.';
+    if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i.test(name) || /^(\.lock|desktop\.ini)$/i.test(name) || name.startsWith('~$')
+      || /_vti_/i.test(name)) return 'The provided name is reserved.';
+    return null;
   }
 
   private page<T>(res: http.ServerResponse, u: URL, all: T[], view: (x: T) => unknown, next: (skip: number) => string, top = 200) {

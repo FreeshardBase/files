@@ -53,7 +53,8 @@ function otherOf(p: P): OtherPane | null {
   const tab = ws.activeTab(p === 0 ? 1 : 0);
   const f = useFolderStore(tab.id);
   const ready = !f.loading && !f.error && f.source === tab.source && f.path === tab.path;
-  return { source: f.source, path: f.path, editable: ready && f.access === 'edit', names: f.entries.map((e) => e.name) };
+  return { source: f.source, path: f.path, editable: ready && f.access === 'edit', names: f.entries.map((e) => e.name),
+    nameRules: f.nameRules };
 }
 const others = computed(() => [otherOf(0), otherOf(1)] as const);
 
