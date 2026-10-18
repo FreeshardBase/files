@@ -133,15 +133,19 @@ test('two actions in a list row share it at equal width on the phone (#245 M2)',
     const purge = r.getByRole('button', { name: /endgültig löschen|permanently/ });
     await expect(restore).toBeVisible();
     const [a, b] = [await box(restore), await box(purge)];
-    expect(Math.abs(a.y - b.y)).toBeLessThan(1); // one row, on both widths
     expect(await style(purge, 'border-top-color')).toBe(await resolved(page, 'var(--danger)'));
     if (mobile(info)) {
+      expect(Math.abs(a.y - b.y)).toBeLessThan(1); // one row
+
       expect(Math.abs(a.width - b.width)).toBeLessThan(1);
       const cell = await box(r.locator('td.actions'));
       expect(a.x).toBeCloseTo(cell.x, 0);
       expect(b.x + b.width).toBeCloseTo(cell.x + cell.width, 0);
     } else {
-      expect(b.x).toBeGreaterThan(a.x + a.width);
+      // Above 1200 px the trash's two actions stand one over the other at equal width (#309).
+      expect(b.y).toBeGreaterThan(a.y + a.height);
+      expect(Math.abs(a.width - b.width)).toBeLessThan(1);
+      expect(Math.abs(a.x - b.x)).toBeLessThan(1);
     }
   }
 });

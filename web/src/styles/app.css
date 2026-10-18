@@ -210,6 +210,13 @@ a:where(:hover) { text-decoration: underline; }
 }
 .trash-list .actions { width: 1%; white-space: nowrap; }
 .trash-list .actions .button + .button { margin-left: var(--space-2); }
+/* The trash's columns with "Wiederherstellen" and "Endgültig löschen" side by side need some 1000 px, more than the
+   960 px page column (#309), so above the stacked rows its two actions stand one over the other at equal width. */
+@media (min-width: 1201px) {
+  .trash .trash-list td.actions { white-space: normal; }
+  .trash .trash-list td.actions .button { width: 100%; justify-content: center; white-space: nowrap; }
+  .trash .trash-list td.actions .button + .button { margin-left: 0; margin-top: var(--space-2); }
+}
 
 /* ---- folder view ---- */
 .visually-hidden {

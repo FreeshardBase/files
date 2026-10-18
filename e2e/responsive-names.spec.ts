@@ -282,3 +282,27 @@ for (const scheme of SCHEMES) {
     }
   });
 }
+
+// #309: the page column is at most 960 px, so on a wide window the German trash row (a 12rem name, the location,
+// "Wiederherstellen" and "Endgültig löschen") must fit in it at every desktop width, like every other list.
+for (const width of [1280, 1920]) {
+  test(`the German trash list stays inside the page column at ${width} px (#309)`, async ({ page, browser, baseURL }, info) => {
+    await putSettings(page, 'de-du', 'system');
+    const p = await tablet(browser, info, baseURL!, { width, height: 800 });
+    await mock(p, '**/api/v1/trash', trashBody(LONG, DEEP));
+    await p.goto('/trash');
+    const r = row(p, LONG);
+    await expect(r).toBeVisible();
+    await expect(r.getByRole('button', { name: 'Endgültig löschen' })).toBeVisible();
+    const right = (sel: string) => p.locator(sel).evaluate((el) => el.getBoundingClientRect().right);
+    const column = await right('.page');
+    expect(await right('table.trash-list'), 'the table ends past the page column').toBeLessThanOrEqual(column + 0.5);
+    for (const b of await r.locator('td.actions .button').all()) {
+      const b0 = await box(b);
+      expect(b0.height, 'a wrapped button').toBeLessThanOrEqual(44);
+      expect(b0.x + b0.width, 'a button past the page column').toBeLessThanOrEqual(column + 0.5);
+    }
+    expect((await box(r.locator('td.name'))).width, 'the name\'s width').toBeGreaterThanOrEqual(REM12);
+    await p.context().close();
+  });
+}
