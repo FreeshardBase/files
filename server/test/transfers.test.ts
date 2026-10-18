@@ -121,6 +121,42 @@ describe('transfer jobs between sources', () => {
     expect(done).toMatchObject({ status: 'completed_with_errors', done: 0, failed: [{ path: `${dir}/x.txt`, code: 'VERIFY_FAILED' }] });
   });
 
+  it('no report cell starts with a formula character, even for a name that starts with one (#306)', async () => {
+    // Excel and LibreOffice evaluate a CSV cell that starts with = + - @ tab or CR. Every path in the report is absolute,
+    // so such a name only ever follows a `/`; the other cells are statuses, types, sizes, checks and error codes.
+    const name = '=HYPERLINK("example.com","x")';
+    const { m, source: cloud } = mem();
+    m.put(`/${name}`, 'from the cloud');
+    const dir = fresh(t, a, 'formula');
+    writeFileSync(join(home(t, a), dir, name), 'from the home');
+    const cells = async (id: string) => {
+      const r = await as(t, a, 'GET', `/api/v1/transfers/${id}/report`);
+      expect(r.statusCode, r.body).toBe(200);
+      return r.body.trimEnd().split('\r\n').map((line) => {
+        const quoted = [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((c) => c[0]);
+        expect(quoted.join(','), 'the line is quoted cells and nothing else').toBe(line);
+        return quoted.map((c) => c.slice(1, -1).replace(/""/g, '"'));
+      });
+    };
+    const down = await settled(t, a, (await start(t, a,
+      { from: cloud, to: 'home', dir, paths: [`/${name}`], onCollision: 'keep-both' })).id);
+    const up = await settled(t, a, (await start(t, a,
+      { from: 'home', to: cloud, dir: '/', paths: [`${dir}/${name}`], onCollision: 'keep-both' })).id);
+    for (const job of [down, up]) expect(job).toMatchObject({ status: 'completed', done: 1 });
+    const downRows = await cells(down.id);
+    const upRows = await cells(up.id);
+    expect(downRows).toHaveLength(2);
+    expect(upRows).toHaveLength(2);
+    expect(downRows[1]!.slice(0, 2)).toEqual(['done', `/${name}`]);
+    expect(downRows[1]![2]!.startsWith(`${dir}/=HYPERLINK(`)).toBe(true);
+    expect(upRows[1]!.slice(0, 2)).toEqual(['done', `${dir}/${name}`]);
+    expect(upRows[1]![2]!.startsWith('/=HYPERLINK(')).toBe(true);
+    for (const row of [...downRows, ...upRows]) {
+      expect(row, JSON.stringify(row)).toHaveLength(7); // every cell is quoted, so none escapes the check below
+      for (const cell of row) expect(cell, JSON.stringify(row)).not.toMatch(/^[=+\-@\t\r]/);
+    }
+  });
+
   it('a target that stores other bytes of the same size fails the hash check', async () => {
     const { m: target, source: to } = mem({ withDigest: true });
     target.corruptWrites = true;
