@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
     paths-ignore: [ '**.md' ]
+  # Every merge to main gets its own run: the driver waits for it (--merge squash-after-ci) and heals a red main.
+  push:
+    branches: [ main ]
+    paths-ignore: [ '**.md' ]
   workflow_dispatch:
 
 permissions:
