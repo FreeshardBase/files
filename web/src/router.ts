@@ -11,6 +11,7 @@ import PublicLinkView from './views/PublicLinkView.vue';
 import ConnectionsView from './views/ConnectionsView.vue';
 import MigrateView from './views/MigrateView.vue';
 import MigrationJobView from './views/MigrationJobView.vue';
+import ImportView from './views/ImportView.vue';
 import StorageView from './views/StorageView.vue';
 import DuplicatesView from './views/DuplicatesView.vue';
 import MembersView from './views/MembersView.vue';
@@ -56,6 +57,8 @@ export const routes: RouteRecordRaw[] = [
   // A cloud folder or account onto the shard (#153): the wizard, and one migration's progress, summary and cleanup.
   { path: '/migrate', name: 'migrate', component: MigrateView },
   { path: '/migrate/:id([0-9a-f]{32})', name: 'migration', component: MigrationJobView },
+  // Export archives of iCloud Drive, Google Takeout or any ZIP into a home folder (#322).
+  { path: '/import', name: 'import', component: ImportView },
   // The Web Share Target (#158): the service worker sends a share here with the id of its inbox entry.
   { path: '/share-target/:id([0-9a-f-]{36})?', name: 'share-target', component: ShareTargetView },
   // A public link's share page (#147): for visitors, outside the signed-in shell (App.vue).

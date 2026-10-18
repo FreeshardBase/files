@@ -2,8 +2,8 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
 import { pipeline, Readable, Transform } from 'node:stream';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
-import { PICKED_NAMES, planRenames, type CleanupPreview, type CollisionPolicy, type CreateMigrationRequest, type CreateTransferRequest,
-  type Entry, type ErrorCode, type MigrationScan, type RenamePlan, type RenameRequest, type TransferJob,
+import { PICKED_NAMES, planRenames, type CleanupPreview, type CollisionPolicy, type CreateImportRequest, type CreateMigrationRequest,
+  type CreateTransferRequest, type Entry, type ErrorCode, type MigrationScan, type RenamePlan, type RenameRequest, type TransferJob,
   type TransferStatus } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { getUser, type User } from '../users.ts';
@@ -12,6 +12,7 @@ import { normalizeUserPath } from './resolveInRoot.ts';
 import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
 import { deleteComments, keysOf } from './comments.ts';
 import { followMove } from './followRefs.ts';
+import { entryStream, openArchive, planArchive, type OpenedArchive } from './archive.ts';
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
 export const TRANSFER_CONCURRENCY = 2;
@@ -30,7 +31,7 @@ export const SCAN_MS = 15_000;
 const REPORT_PAGE = 500;
 
 type Deps = FastifyInstance['deps'];
-type Kind = 'transfer' | 'migration' | 'cleanup' | 'rename';
+type Kind = 'transfer' | 'migration' | 'cleanup' | 'rename' | 'import';
 type JobRow = { id: string; user_id: string; kind: Kind; origin: string | null; mode: 'copy' | 'move'; from_source: string;
   to_source: string; dir: string; status: TransferStatus; created_at: string; finished_at: string | null;
   cleanup_token: string | null; cleanup_expires: string | null };
@@ -94,6 +95,8 @@ export class TransferEngine {
   private lastProgress = new Map<string, number>();
   private finishing = new Map<string, Promise<void>>();
   private listeners = new Map<string, Set<(job: TransferJob) => void>>();
+  /** The archives of running imports (#322), opened once per archive item (`job:seq`) and closed when the job ends. */
+  private archives = new Map<string, Promise<OpenedArchive>>();
   private stopping = false;
 
   constructor(private deps: Deps, private log: FastifyBaseLogger) {}
@@ -114,6 +117,7 @@ export class TransferEngine {
     for (const a of this.active.values()) a.ctl.abort('stop' satisfies AbortReason);
     await Promise.all([...this.active.values()].map((a) => a.promise));
     await Promise.all(this.finishing.values());
+    for (const key of [...this.archives.keys()]) this.closeArchive(key);
     this.listeners.clear();
   }
 
@@ -197,6 +201,22 @@ export class TransferEngine {
     if ((await to.backend.stat(dir)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
     return this.insertJob({ user, kind: 'migration', mode: 'copy', from: req.from, to: 'home', dir },
       [{ from_path: path, to_path: target, on_collision: 'keep-both', type: 'directory' }]);
+  }
+
+  /**
+   * An import of export archives (#322): ZIPs in the member's home extracted into the home folder `dir`, one item per
+   * archive. Each archive item reads the archive's directory, refuses an unsafe one as a whole, and adds one item per
+   * entry it imports (folders merge, files follow `onCollision`) and a `skipped` item per part it leaves out.
+   */
+  async createImport(userId: string, req: CreateImportRequest): Promise<TransferJob> {
+    const user = this.user(userId);
+    const home = await sourceFor(this.deps, user, 'home');
+    const dir = normalizeUserPath(req.dir);
+    if ((await home.backend.stat(dir)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
+    const archives = [...new Set(req.archives.map((a) => normalizeUserPath(a)))];
+    for (const a of archives) if ((await home.backend.stat(a)).type !== 'file') throw new AppError('IS_A_DIRECTORY');
+    return this.insertJob({ user, kind: 'import', mode: 'copy', from: 'home', to: 'home', dir },
+      archives.map((a) => ({ from_path: a, to_path: dir, on_collision: req.onCollision })));
   }
 
   /**
@@ -362,16 +382,20 @@ export class TransferEngine {
       .get(id) as { from_path: string; target: string } | undefined;
     // A transfer and a rename are named by the first item picked, a migration by its new folder (once placed, the free
     // name it got), a cleanup by the migration's folder.
-    const name = job.kind === 'transfer' || job.kind === 'rename' ? posix.basename(first!.from_path)
+    // An import by its first archive.
+    const byPick = job.kind === 'transfer' || job.kind === 'rename' || job.kind === 'import';
+    const name = byPick ? posix.basename(first!.from_path)
       : posix.basename(job.kind === 'migration' ? first!.target : job.dir);
     // What the member picked (#234): the items without a parent. A migration and a cleanup are one thing, named as above.
-    const byPick = job.kind === 'transfer' || job.kind === 'rename';
     const picked = byPick ? db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND parent IS NULL`).pluck().get(id) as number : 1;
     const names = byPick ? (db.prepare(`SELECT from_path FROM transfer_items WHERE job_id = ? AND parent IS NULL ORDER BY seq LIMIT ?`)
       .pluck().all(id, PICKED_NAMES) as string[]).map((p) => posix.basename(p)) : [name];
+    // What an import left out (#322) is listed, not counted.
+    const skipped = (db.prepare(`SELECT from_path, error FROM transfer_items WHERE job_id = ? AND status = 'skipped' ORDER BY seq`)
+      .all(id) as { from_path: string; error: 'photos' | 'other' }[]).map((r) => ({ path: r.from_path, reason: r.error }));
     return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
-      picked, names,
-      status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0), done: counts.done ?? 0, verifiedFiles: done.files,
+      picked, names, skipped,
+      status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0) - skipped.length, done: counts.done ?? 0, verifiedFiles: done.files,
       files: known.files, listing: job.status === 'running' && known.unlisted > 0, cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
       createdAt: job.created_at, finishedAt: job.finished_at };
   }
@@ -443,6 +467,11 @@ export class TransferEngine {
         this.setItem(jobId, seq, { status: 'done', error: null, placed: placed.path, type: placed.type });
         return;
       }
+      if (job.kind === 'import') {
+        if (item.parent === null) await this.listArchive(item, from.backend);
+        else await this.importEntry(item, from.backend, to.backend, signal);
+        return;
+      }
       const entry = await from.backend.stat(item.from_path);
       this.setItem(jobId, seq, { type: entry.type });
       if (entry.type === 'directory') await this.copyFolder(item, from.backend, to.backend);
@@ -469,10 +498,85 @@ export class TransferEngine {
     return { from, to };
   }
 
-  /** Streams one file and verifies the target; returns the verified size and the checks it passed. */
-  private async copyFile(item: ItemRow, from: StorageBackend, to: StorageBackend, signal: AbortSignal): Promise<{ bytes: number; verified: string }> {
+  // The archive of an archive item, opened once (after a restart, again) and kept until its job ends.
+  private archive(jobId: string, seq: number, path: string, backend: StorageBackend): Promise<OpenedArchive> {
+    const key = `${jobId}:${seq}`;
+    let opened = this.archives.get(key);
+    if (!opened) {
+      opened = backend.stat(path).then((e) => openArchive(backend, path, e.size));
+      this.archives.set(key, opened);
+      // A failed open is not kept: the next item tries again (and fails on its own if the archive is still unreadable).
+      opened.then(() => undefined, () => { if (this.archives.get(key) === opened) this.archives.delete(key); }); // handled: the caller awaits the same promise and gets the error
+    }
+    return opened;
+  }
+
+  private closeArchive(key: string): void {
+    const opened = this.archives.get(key);
+    this.archives.delete(key);
+    opened?.then((a) => { a.zip.close(); }, () => undefined); // handled: a failed open has nothing to close
+  }
+
+  /** An archive item of an import (#322): refused as a whole if unsafe, otherwise one item per entry it imports. */
+  private async listArchive(item: ItemRow, home: StorageBackend): Promise<void> {
+    const archive = await this.archive(item.job_id, item.seq, item.from_path, home);
+    const plan = planArchive(archive, (await home.stat(item.from_path)).size);
+    const { db } = this.deps;
+    db.transaction(() => {
+      let seq = db.prepare(`SELECT max(seq) FROM transfer_items WHERE job_id = ?`).pluck().get(item.job_id) as number;
+      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, parent, from_path, to_path, on_collision, type, src_modified,
+        status, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      // An entry's own name follows the archive's path, so the report shows where it came from and the item finds it again.
+      for (const e of plan.items) {
+        insert.run(item.job_id, ++seq, item.seq, `${item.from_path}/${e.name}`, posix.join(item.to_path, e.rel), item.on_collision,
+          e.type, e.modified, 'pending', null);
+      }
+      for (const s of plan.skipped) {
+        insert.run(item.job_id, ++seq, item.seq, `${item.from_path}/${s.name}`, item.to_path, item.on_collision, null, null, 'skipped', s.reason);
+      }
+      this.setItem(item.job_id, item.seq, { status: 'done', error: null });
+    }).immediate();
+  }
+
+  /** One entry of an import: its folders made (merging with what is there), a file streamed out of the archive and verified. */
+  private async importEntry(item: ItemRow, home: StorageBackend, to: StorageBackend, signal: AbortSignal): Promise<void> {
+    if (item.type === 'directory') {
+      await this.ensureDir(to, item.to_path);
+      this.setItem(item.job_id, item.seq, { status: 'done', error: null });
+      return;
+    }
+    const parent = this.deps.db.prepare(`SELECT from_path FROM transfer_items WHERE job_id = ? AND seq = ?`)
+      .pluck().get(item.job_id, item.parent) as string;
+    const archive = await this.archive(item.job_id, item.parent!, parent, home);
+    const entry = archive.entries.get(item.from_path.slice(parent.length + 1));
+    if (!entry) throw new AppError('ARCHIVE_INVALID');
+    await this.ensureDir(to, posix.dirname(item.to_path));
+    const stream = await entryStream(archive, entry);
+    this.setItem(item.job_id, item.seq, { status: 'done', error: null, ...await this.copyFile(item, home, to, signal,
+      { stream, entry: { size: entry.uncompressedSize, ...(item.src_modified ? { modified: item.src_modified } : {}) } }) });
+  }
+
+  // A folder and its parents in the target; one that exists is used as it is, a file in the way is FILE_EXISTS.
+  private async ensureDir(to: StorageBackend, path: string): Promise<void> {
+    const there = await statOrNull(to, path);
+    if (there?.type === 'directory') return;
+    if (there) throw new AppError('FILE_EXISTS', { name: posix.basename(path) });
+    await this.ensureDir(to, posix.dirname(path));
+    try { await to.mkdir(path); } catch (e) { // handled: the other worker made it meanwhile; it must be a folder
+      if (!(e instanceof AppError && e.code === 'FILE_EXISTS')) throw e;
+      if ((await to.stat(path)).type !== 'directory') throw e;
+    }
+  }
+
+  /**
+   * Streams one file and verifies the target; returns the verified size and the checks it passed. `archived` is an
+   * import's entry (#322), read from its archive instead of `from`.
+   */
+  private async copyFile(item: ItemRow, from: StorageBackend, to: StorageBackend, signal: AbortSignal,
+    archived?: { stream: Readable; entry: { size: number; modified?: string } }): Promise<{ bytes: number; verified: string }> {
     const key = `${item.job_id}:${item.seq}`;
-    const src = await from.read(item.from_path);
+    const src: { stream: Readable; entry: { size: number; modified?: string }; unsized?: boolean; hash?: { algorithm: 'md5'; value: string } }
+      = archived ?? await from.read(item.from_path);
     const hash = createHash('sha256');
     const providerHash = src.hash && !src.unsized ? { ...src.hash, hash: createHash(src.hash.algorithm) } : undefined;
     let sent = 0;
@@ -493,7 +597,7 @@ export class TransferEngine {
     let written;
     try {
       written = await to.write(target, meter, { onCollision: item.placed ? 'replace' : item.on_collision, maxBytes: MAX_BYTES,
-        ...(src.unsized ? {} : { size: src.entry.size }) });
+        ...(src.unsized ? {} : { size: src.entry.size }), ...(archived?.entry.modified ? { modified: archived.entry.modified } : {}) });
     } finally {
       signal.removeEventListener('abort', abort);
       src.stream.destroy();
@@ -507,8 +611,9 @@ export class TransferEngine {
     if (stored.type !== 'file' || stored.size !== sent) throw new AppError('VERIFY_FAILED');
     const checks = ['size'];
     if (to.digest && await to.digest(written.path) !== sum) throw new AppError('VERIFY_FAILED');
-    if (from.digest && await from.digest(item.from_path) !== sum) throw new AppError('VERIFY_FAILED');
-    if (to.digest || from.digest) checks.push('sha256');
+    // An archive entry has no stored SHA-256; its bytes are checked against its declared size while they are read.
+    if (!archived && from.digest && await from.digest(item.from_path) !== sum) throw new AppError('VERIFY_FAILED');
+    if (to.digest || (!archived && from.digest)) checks.push('sha256');
     // The provider's own hash of the file (#153): the bytes received must be the ones it stores.
     if (providerHash) {
       if (providerHash.hash.digest('hex') !== providerHash.value) throw new AppError('VERIFY_FAILED');
@@ -590,10 +695,13 @@ export class TransferEngine {
     // A cleanup is a `move` only for the rights it needs; its items delete their originals themselves.
     const moves = job.mode === 'move' && job.kind === 'transfer';
     if (job.status !== 'running' && (!moves || job.status !== 'cancelled')) return;
+    for (const key of [...this.archives.keys()]) if (key.startsWith(`${jobId}:`)) this.closeArchive(key);
     const work = (async () => {
       if (moves) await this.deleteMovedSources(job);
       if (job.status === 'running') {
-        const notDone = db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND status != 'done'`).pluck().get(jobId) as number;
+        // What an import skipped on purpose (#322) is not an error.
+        const notDone = db.prepare(`SELECT count(*) FROM transfer_items WHERE job_id = ? AND status NOT IN ('done', 'skipped')`)
+          .pluck().get(jobId) as number;
         db.prepare(`UPDATE transfer_jobs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'`)
           .run(notDone === 0 ? 'completed' : 'completed_with_errors', new Date().toISOString(), jobId);
       }

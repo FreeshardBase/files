@@ -1,5 +1,5 @@
 import { constants, createWriteStream, linkSync, lstatSync, renameSync, unlinkSync, type Stats } from 'node:fs';
-import { copyFile, link, lstat, mkdir, open, readdir, rm, truncate, unlink } from 'node:fs/promises';
+import { copyFile, link, lstat, mkdir, open, readdir, rm, truncate, unlink, utimes } from 'node:fs/promises';
 import { basename, dirname, extname, join, posix } from 'node:path';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Transform, type Readable } from 'node:stream';
@@ -1084,6 +1084,7 @@ export class LocalBackend implements StorageBackend {
     try {
       await pipeline(body, limiter, createWriteStream(tmp, { flags: 'wx' }));
       if (opts.size !== undefined && written !== opts.size) throw new AppError('SIZE_MISMATCH');
+      if (opts.modified !== undefined) { const m = new Date(opts.modified); await utimes(tmp, m, m); }
       const fh = await open(tmp, 'r+'); await fh.sync(); await fh.close();
       checkIfMatch(await current());
       const { db, userId } = this.index;

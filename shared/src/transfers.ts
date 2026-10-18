@@ -33,9 +33,9 @@ export const TransferJobSchema = z.object({
   id: TransferId,
   /**
    * `transfer` between sources (#152), `migration` from a connection to the home, the `cleanup` of one (#153), or a
-   * batch `rename` within one folder (#215).
+   * batch `rename` within one folder (#215), or the `import` of export archives from the home (#322).
    */
-  kind: z.enum(['transfer', 'migration', 'cleanup', 'rename']),
+  kind: z.enum(['transfer', 'migration', 'cleanup', 'rename', 'import']),
   /** A cleanup's migration, while that job is still listed. */
   origin: TransferId.nullable(),
   mode: z.enum(['copy', 'move']),
@@ -57,6 +57,8 @@ export const TransferJobSchema = z.object({
   listing: z.boolean(),
   cancelled: z.number().int().nonnegative(),
   failed: z.array(z.object({ path: z.string(), code: z.enum(ERROR_CODES) })),
+  /** What an import left out of its archives (#322), each named as `<archive>/<path in it>`; empty for other kinds. */
+  skipped: z.array(z.object({ path: z.string(), reason: z.enum(['photos', 'other']) })),
   /** Bytes copied so far, verified items plus the items in flight. */
   bytes: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
@@ -101,6 +103,18 @@ export const CleanupPreviewSchema = z.object({
   bytes: z.number().int().nonnegative(),
 });
 export type CleanupPreview = z.infer<typeof CleanupPreviewSchema>;
+
+/**
+ * Body of `POST /api/v1/imports` (#322): extract export archives (ZIPs in the home: iCloud Drive, Google Takeout or a
+ * plain ZIP) into the home folder `dir`. The parts of a split export land in one tree; folders merge with folders already
+ * there, a file whose name is taken follows `onCollision`.
+ */
+export const CreateImportRequest = z.object({
+  archives: z.array(z.string().min(1)).min(1).max(100),
+  dir: z.string().min(1),
+  onCollision: CollisionPolicy,
+}).strict();
+export type CreateImportRequest = z.infer<typeof CreateImportRequest>;
 
 /** Body of `POST /api/v1/migrations/:id/cleanup`. */
 export const StartCleanupRequest = z.object({ token: CleanupToken }).strict();

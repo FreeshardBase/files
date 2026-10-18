@@ -1204,3 +1204,18 @@ Question: the issue wants "user name = the member's login shown on the page", bu
 - **The server needed nothing else.** The replayed client sequences (OPTIONS, PROPFIND depth 1 `allprop`, Depth: infinity refused with 403 and `propfind-finite-depth`, LOCK/UNLOCK, MOVE with `Overwrite`, a chunked 3 MiB PUT with `Expect: 100-continue`) already pass; `server/test/davClients.test.ts` pins them.
 
 Why: the smallest change that gives the page a real login to show, without exposing it to other members and without breaking existing WebDAV clients.
+
+## 2026-10-18: importing export archives (#322)
+
+Questions the issue left open, decided from the spec and YAGNI:
+
+- **Where the archives come from.** Only ZIPs in the member's home. The import page uploads picked ZIPs by tus (resumable, any size) into the target folder and ticks them, or the member ticks ZIPs already there. The archives stay after the import; the member deletes them.
+- **Streaming without a temp copy.** The ZIP is read through the home's ranged `read` (yauzl's random-access reader): the central directory once per archive item, then each entry's bytes straight into the home's `write`. yauzl moves from a dev to a runtime dependency of the server.
+- **Unsafe means the whole archive.** One absolute path, `..`, backslash, NUL, symlink or device entry refuses the archive before anything is written (`ARCHIVE_UNSAFE`), not just that entry. Zip bombs: over 200,000 entries, or a declared expansion over 1 GiB and over 100 times the archive's size, is `ARCHIVE_TOO_LARGE`; an entry whose bytes do not match its declared size fails while it streams.
+- **Layouts.** Takeout: only `Takeout/Drive/…` is imported; `Google Photos` (also `Google Fotos`, `Google Foto`) is skipped as `photos`, every other Takeout product or file (`archive_browser.html`) as `other`. Apple: `iCloud Drive/…` is imported, `iCloud Photos` skipped as `photos`. Anything else is a plain ZIP, taken as it is. One skipped row per top folder, not per photo.
+- **Collisions.** Folders merge (that is how the parts of a split export become one tree); a file whose name is taken follows the request's policy. The page sends "keep both", so nothing the member has is replaced.
+- **Modified times.** Files keep the entry's time (Info-ZIP's UTC timestamp where present, else the DOS time). Folders do not: their time changes as soon as anything is written into them.
+- **Verification.** An entry has no SHA-256 to compare; the target's size and SHA-256 are checked against what was streamed, the size against the entry's declared size.
+- **The panel.** An ended import does not leave the transfer panel by itself (like a migration), so its page keeps the report of what was skipped.
+
+Why: an export is the member's only copy of years of files, so the import never replaces anything, refuses doubtful archives whole, and keeps photos out of Files as the owner decided (2026-10-17).

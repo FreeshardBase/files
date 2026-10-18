@@ -867,7 +867,10 @@
     "SCAN_RUNNING": "Eine Suche nach doppelten Dateien läuft schon.",
     "DUPLICATE_CHANGED": "Seit der Suche geändert, deshalb behalten.",
     "DUPLICATE_LAST_COPY": "Mindestens eine Kopie muss bleiben.",
-    "CONNECT_DENIED": "Sie haben den Zugriff nicht erlaubt, darum wurde kein Konto verbunden."
+    "CONNECT_DENIED": "Sie haben den Zugriff nicht erlaubt, darum wurde kein Konto verbunden.",
+    "ARCHIVE_INVALID": "Diese Datei ist kein ZIP-Archiv, das Dateien lesen kann.",
+    "ARCHIVE_UNSAFE": "Das Archiv enthält Pfade außerhalb seines Ordners, Verknüpfungen oder Geräte, darum wurde nichts daraus importiert.",
+    "ARCHIVE_TOO_LARGE": "Das Archiv enthält zu viele Dateien oder entpackt sich zu weit mehr als seiner Größe, darum wurde nichts daraus importiert."
   },
   "batchRename": {
     "button": "Umbenennen …",
@@ -1007,7 +1010,8 @@
       "move": "„{name}“ nach {target} verschieben",
       "migration": "„{name}“ nach {target} umziehen",
       "cleanup": "Originale von „{name}“ löschen",
-      "rename": "Elemente in {target} umbenennen"
+      "rename": "Elemente in {target} umbenennen",
+      "import": "„{name}“ nach {target} importieren"
     },
     "state": {
       "running": "{done} von {total} · {size}",
@@ -1040,6 +1044,28 @@
     "foldedFailed": "eine mit Fehlern | {count} mit Fehlern",
     "show": "Anzeigen",
     "hide": "Ausblenden"
+  },
+  "archiveImport": {
+    "link": "Export-Archiv importieren",
+    "title": "Export-Archiv importieren",
+    "intro": "Holen Sie die Dateien eines iCloud-Drive-Exports (privacy.apple.com) oder eines Google Takeout von Drive auf den Shard, oder ein beliebiges anderes ZIP. Alle Teile eines Exports landen zusammen in einem Ordnerbaum.",
+    "photos": "Fotos werden hier nicht importiert: Die Foto-Teile eines Exports (iCloud-Fotos, Google Fotos) werden übersprungen. Importieren Sie sie in Immich.",
+    "target": "Ordner auf dem Shard",
+    "upload": "ZIP-Archive in diesen Ordner hochladen",
+    "archives": "ZIP-Archive in diesem Ordner",
+    "none": "In diesem Ordner liegt noch kein ZIP-Archiv.",
+    "start": "Import starten",
+    "running": "Import läuft: {done} von {total}",
+    "completed": "Import fertig: {count} Dateien importiert.",
+    "completed_with_errors": "Import mit Fehlern beendet: {count} Dateien importiert.",
+    "cancelled": "Import abgebrochen: {count} Dateien importiert.",
+    "skippedTitle": "Übersprungen",
+    "failedTitle": "Fehlgeschlagen",
+    "reason": {
+      "photos": "Foto-Export: in Immich importieren",
+      "other": "gehört nicht zum Drive-Export"
+    },
+    "open": "Ordner öffnen"
   },
   "migrate": {
     "title": "Auf den Shard umziehen",

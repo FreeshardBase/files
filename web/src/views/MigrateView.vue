@@ -89,6 +89,11 @@ async function start() {
     <p class="trash-note">
       {{ t('migrate.intro') }}
     </p>
+    <p>
+      <RouterLink to="/import">
+        {{ t('archiveImport.link') }}
+      </RouterLink>
+    </p>
     <p
       v-if="alert"
       role="alert"

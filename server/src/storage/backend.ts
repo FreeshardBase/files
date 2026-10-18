@@ -16,6 +16,8 @@ export type WriteOptions = {
   size?: number;
   /** Replace only if the current file has this ETag (needs onCollision `replace`), else PRECONDITION_FAILED. */
   ifMatch?: string;
+  /** The file's modification time (ISO), where the backend can set it (the home); an archive import keeps the entry's (#322). */
+  modified?: string;
 };
 
 export interface StorageBackend {
