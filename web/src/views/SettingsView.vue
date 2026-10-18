@@ -10,6 +10,7 @@ import { useAppPasswordsStore } from '../stores/appPasswords.ts';
 import { useSessionStore } from '../stores/session.ts';
 import { ApiFailure } from '../api/client.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 import AppDialog from '../components/AppDialog.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import PreferencesSection from '../components/PreferencesSection.vue';
@@ -269,7 +270,7 @@ async function revoke() {
         {{ $t('settings.account.heading') }}
       </h2>
       <p class="trash-note">
-        {{ $t('settings.account.signedInAs', { name: session.me.displayName }) }}
+        {{ $t('settings.account.signedInAs', { name: memberName(session.me) }) }}
       </p>
       <button
         type="button"

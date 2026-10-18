@@ -18,6 +18,7 @@ import StateAlert from './components/StateAlert.vue';
 import { useRequestsStore } from './stores/requests.ts';
 import { useDiskStore } from './stores/storage.ts';
 import { usePageTitle } from './pageTitle.ts';
+import { memberName } from './memberName.ts';
 const session = useSessionStore();
 const requests = useRequestsStore();
 const connections = useConnectionsStore();
@@ -51,7 +52,7 @@ watch(() => route.path, () => { if (session.me) void requests.load(); });
 // The source the folder view shows (`home`, `conn:<id>`), so its sidebar entry stays current in every subfolder (#244).
 const inSource = (source: string) => route.params.source === source;
 // The member in the header as an initial (#244); the whole name is beside it on a wide screen and its tooltip.
-const initial = computed(() => Array.from(session.me?.displayName.trim() ?? '')[0]?.toLocaleUpperCase() ?? '');
+const initial = computed(() => Array.from(session.me ? memberName(session.me).trim() : '')[0]?.toLocaleUpperCase() ?? '');
 // "?" opens the keyboard shortcuts, except while typing or while another dialog is open.
 const shortcutsOpen = ref(false);
 function onKey(e: KeyboardEvent) {
@@ -109,11 +110,11 @@ onMounted(async () => {
       <template v-if="session.me">
         <span
           class="app-user"
-          :title="session.me.displayName"
+          :title="memberName(session.me)"
         ><span
           class="fs-avatar app-avatar"
           aria-hidden="true"
-        >{{ initial }}</span><span class="app-user-name">{{ session.me.displayName }}</span></span>
+        >{{ initial }}</span><span class="app-user-name">{{ memberName(session.me) }}</span></span>
         <button
           type="button"
           class="icon-button shortcuts-button"

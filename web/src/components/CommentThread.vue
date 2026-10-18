@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n';
 import { MAX_COMMENT_LENGTH, normalizeCommentText, type Comment } from '@files/shared';
 import { ApiFailure } from '../api/client.ts';
 import { formatDate, intlLocale } from '../format.ts';
+import { memberName } from '../memberName.ts';
 import { useCommentsStore } from '../stores/comments.ts';
 
 const props = defineProps<{ source: string; path: string; name: string; comments: Comment[] }>();
@@ -28,7 +29,7 @@ const inputId = useId();
 const hintId = useId();
 const errorId = useId();
 const when = (iso: string) => formatDate(iso, intlLocale(locale.value));
-const author = (c: Comment) => (c.mine ? t('comments.you') : c.author.displayName);
+const author = (c: Comment) => (c.mine ? t('comments.you') : memberName(c.author));
 
 function fail(e: unknown) {
   if (!(e instanceof ApiFailure)) throw e;
@@ -242,7 +243,7 @@ async function remove(c: Comment) {
             class="button"
             :data-delete="c.id"
             :aria-label="c.mine ? t('comments.deleteMine', { time: when(c.created) })
-              : t('comments.deleteOne', { author: c.author.displayName, time: when(c.created) })"
+              : t('comments.deleteOne', { author: memberName(c.author), time: when(c.created) })"
             @click="askDelete(c)"
           >
             {{ t('comments.delete') }}

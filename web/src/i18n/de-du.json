@@ -165,6 +165,7 @@
     }
   },
   "members": {
+    "unnamed": "Mitglied",
     "title": "Mitglieder",
     "intro": "Alle, die sich schon einmal bei „Dateien“ angemeldet haben. Ein Speicherlimit begrenzt, was ein Mitglied auf dem Shard speichern kann: Dateien, Papierkorb, Versionen und laufende Uploads. Bereits Gespeichertes bleibt erhalten.",
     "columns": {

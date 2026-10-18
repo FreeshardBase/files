@@ -3,19 +3,22 @@ import type { AddressInfo } from 'node:net';
 import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 
-type User = { name: string; email: string; groups: string[] };
-export type FakeIdp = { issuer: string; close(): Promise<void> };
+type User = { name?: string; preferred_username?: string; email?: string; groups: string[] };
+/** `users` is live: a test may add a person or change their claims before the next login (#337). */
+export type FakeIdp = { issuer: string; users: Record<string, User>; close(): Promise<void> };
 
 const DEFAULT_USERS: Record<string, User> = {
   testuser: { name: 'Test User', email: 'testuser@example.com', groups: ['admin'] },
   member: { name: 'Test Member', email: 'member@example.com', groups: [] },
   // A third person, so sharing can tell a grantee from another member and the member picker has something to filter.
   member2: { name: 'Second Member', email: 'member2@example.com', groups: [] },
+  // A member whose login carries no name, username or email claim, only `sub` (#337).
+  nameless: { groups: [] },
 };
 
 export async function startFakeIdp(opts: { port?: number; users?: Record<string, User>;
   clientId?: string; clientSecret?: string } = {}): Promise<FakeIdp> {
-  const users = opts.users ?? DEFAULT_USERS;
+  const users = structuredClone(opts.users ?? DEFAULT_USERS);
   const clientId = opts.clientId ?? 'files';
   const clientSecret = opts.clientSecret ?? 'files-secret';
   const { privateKey, publicKey } = await generateKeyPair('ES256');
@@ -74,7 +77,7 @@ export async function startFakeIdp(opts: { port?: number; users?: Record<string,
             return json(res, 400, { error: 'invalid_grant' });
           }
           const u = users[entry.sub]!;
-          const idToken = await new SignJWT({ nonce: entry.nonce, name: u.name, email: u.email, groups: u.groups })
+          const idToken = await new SignJWT({ nonce: entry.nonce, ...u })
             .setProtectedHeader({ alg: 'ES256', kid: 'k1' }).setIssuer(issuer).setAudience(clientId)
             .setSubject(entry.sub).setIssuedAt().setExpirationTime('5m').sign(privateKey);
           json(res, 200, { access_token: randomBytes(16).toString('hex'), token_type: 'Bearer', expires_in: 300, id_token: idToken });
@@ -90,7 +93,7 @@ export async function startFakeIdp(opts: { port?: number; users?: Record<string,
 
   await new Promise<void>((r) => server.listen(opts.port ?? 0, '127.0.0.1', r));
   issuer = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { issuer, close: () => new Promise((r) => server.close(() => r())) };
+  return { issuer, users, close: () => new Promise((r) => server.close(() => r())) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
