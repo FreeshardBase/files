@@ -1246,3 +1246,16 @@ The owner decided to add the picker beside the mark-and-paste flow, which stays.
 - **Focus.** Chosen from an item menu, Esc gives the focus back to that menu button; from the keyboard, to the row; from the selection bar, to its button.
 
 Why: the smallest picker that reaches every place a member can change, reuses the paste's two paths (direct within a source, transfer job between sources) and never offers a target the server would refuse.
+
+## 2026-10-19: Drag & drop across sources (#338)
+
+The owner decided: between sources a drop copies, Shift moves; desktop only. Questions the issue left open, decided from the spec and YAGNI:
+
+- **Which places are targets.** In the sidebar: Mein Speicher and each cloud connection whose status is `ok` take the items into their root and open after 800 ms. "Für mich freigegeben" is no single place, so it only opens; there each shared folder opens after 800 ms, and one with `edit` access takes the items into its root. A shared folder with `read` access, a shared file, Recent and the trash refuse the drop with the badge "Not possible here". Smart folders, favourites and the other entries are no targets and say nothing. Search results are a dropdown, not a target.
+- **Inside a folder.** A folder row and a crumb open after 800 ms, in the pane the member acts in; a dragged folder never opens and is never a target of itself. The open folder takes items dropped outside a row (as with two panes before), except into the folder they are already in. A folder the member may not change refuses visibly.
+- **A drop onto a place runs there.** The place opens and its folder pane runs the drop (`pendingDrop`), so the collision and name questions and the transfer panel are the paste's.
+- **Keys.** Within a source Ctrl or Alt (Option) copies; between sources Shift moves (the transfer job: copy, verify, delete). The keys held at the drop decide; the badge and `dropEffect` follow them while dragging.
+- **Esc.** The browser ends the drag; nothing opens and nothing is dropped. If the page does see the key (a browser that passes it on), the drag is marked cancelled and every target refuses it.
+- **Still only from the own list.** Rows are dragged only where the member may change things, as before; a drag from a read share (which "Copy to…" allows) is left for later.
+
+Why: one drag reaches any folder the member may change, with the same questions and job as the menu path, which keyboard members keep.

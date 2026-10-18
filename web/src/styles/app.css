@@ -571,6 +571,11 @@ a:where(:hover) { text-decoration: underline; }
 .file-list tbody tr.selected { background: color-mix(in srgb, var(--data) 9%, transparent); }
 .file-list tbody tr.drop-target, .breadcrumbs a.drop-target { outline: 1.5px dashed var(--line); outline-offset: -3px; }
 .breadcrumbs a.drop-target { outline-offset: 2px; border-radius: 4px; }
+/* Drag & drop across sources (#338): the places and shares that take items, and the badge at the pointer. */
+.app-nav a.drop-target, .shared-list tbody tr.drop-target { outline: 1.5px dashed var(--line); outline-offset: -3px; }
+.drag-badge { position: fixed; z-index: 100; pointer-events: none; padding: var(--space-1) var(--space-2); border-radius: 4px;
+  background: var(--surface); border: var(--border-w) solid var(--line); color: var(--ink); font-size: var(--fs-small); white-space: nowrap; }
+.drag-badge[data-refused="true"] { border-color: var(--danger); color: var(--danger); }
 .file-list .select, .file-list .menu-cell { width: 1%; padding-left: var(--space-3); padding-right: var(--space-3); }
 .file-list .select input { vertical-align: middle; }
 

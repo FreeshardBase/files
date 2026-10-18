@@ -548,6 +548,11 @@
     "blocked": "Not here: the items are already here, or this is one of the selected folders.",
     "readOnly": "You can’t change anything in this folder."
   },
+  "dnd": {
+    "copyTo": "Copy to {target}",
+    "moveTo": "Move to {target}",
+    "refused": "Not possible here"
+  },
   "dualPane": {
     "left": "Left pane",
     "right": "Right pane",
