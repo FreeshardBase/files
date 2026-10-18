@@ -1002,6 +1002,14 @@ a:where(:hover) { text-decoration: underline; }
 .settings-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin-bottom: var(--space-4); }
 .settings-form .settings-field { flex: 1 1 16rem; margin-bottom: 0; }
 .settings-alert { color: var(--danger); }
+/* The phone setup page (#321): a value with its Copy button on one line, and each app's numbered steps. */
+.phone-copy { display: flex; gap: var(--space-2); }
+.phone-copy .fs-input { flex: 1 1 auto; min-width: 0; }
+.phone-app { margin-bottom: var(--space-5); }
+.phone-app-name { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+.phone-app .trash-note { margin-top: 0; }
+.phone-steps { margin: 0; padding-left: var(--space-5); overflow-wrap: anywhere; }
+.phone-steps li + li { margin-top: var(--space-1); }
 /* Language and theme (#159): each a radio group under a label, saved on change. */
 .settings-choices { border: 0; margin: 0 0 var(--space-4); padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
 .settings-choices legend { padding: 0; margin-bottom: var(--space-2); float: left; width: 100%; }

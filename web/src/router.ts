@@ -15,6 +15,7 @@ import StorageView from './views/StorageView.vue';
 import DuplicatesView from './views/DuplicatesView.vue';
 import MembersView from './views/MembersView.vue';
 import SettingsView from './views/SettingsView.vue';
+import PhoneSetupView from './views/PhoneSetupView.vue';
 import ShareTargetView from './views/ShareTargetView.vue';
 import SignedOutView from './views/SignedOutView.vue';
 import NotFoundView from './views/NotFoundView.vue';
@@ -50,6 +51,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/members', name: 'members', component: MembersView },
   // Settings (#157): the WebDAV address and the member's app passwords.
   { path: '/settings', name: 'settings', component: SettingsView },
+  // How to reach the home from a phone's WebDAV app (#321).
+  { path: '/settings/phone', name: 'settings-phone', component: PhoneSetupView },
   // A cloud folder or account onto the shard (#153): the wizard, and one migration's progress, summary and cleanup.
   { path: '/migrate', name: 'migrate', component: MigrateView },
   { path: '/migrate/:id([0-9a-f]{32})', name: 'migration', component: MigrationJobView },

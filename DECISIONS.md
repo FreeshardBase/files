@@ -1191,3 +1191,16 @@ Question: #315 offers an i18n plural key ("25 bytes") or the narrow symbol ("25 
 - **The refusal (FORBIDDEN) shows "Only for the shard's admin" with "Go to “My storage”".** Any other error shows the shell's "could not load" banner with "Try again", as DESIGN.md asks for everything that is not "not there".
 
 Why: the long name is the only form that is plural-aware without new strings. The banners follow the existing state rules.
+
+## 2026-10-18: The phone setup page (#321)
+
+Question: the issue wants "user name = the member's login shown on the page", but Files stored no login, and the WebDAV guard does not check the user name. It also leaves open where the page lives and how the app passwords there relate to the settings list.
+
+- **The login is `preferred_username`, else the email**, stored at every login in `users.login` (migration 029) and sent only to the member themselves in `/api/v1/me` as `login`. A member who has not logged in since shows no user name field; the page then says, as the settings page does, that any name works. The guard still ignores the user name: checking it now would lock out every client set up with an arbitrary name since #157.
+- **Its own page, `/settings/phone`**, linked from the WebDAV section of the settings. It shows the full address, and also the server and the path `/dav/` on their own, because FE File Explorer, Solid Explorer and Material Files ask for them separately; each value has "Copy".
+- **The same app passwords.** The page creates one with the existing API and shows it once in the same dialog; it is listed and revoked in the settings like any other. The page lists none itself.
+- **The app names are proper names** in the view, not in the locale files (`{app}` in the steps), so "Material Files" is not a German "Files". The steps name the menus as the apps label them; if an app renames a menu, only the locale strings change.
+- **SMB:** one short section saying it is not offered because it is not safe over the internet. No other protocol is offered.
+- **The server needed nothing else.** The replayed client sequences (OPTIONS, PROPFIND depth 1 `allprop`, Depth: infinity refused with 403 and `propfind-finite-depth`, LOCK/UNLOCK, MOVE with `Overwrite`, a chunked 3 MiB PUT with `Expect: 100-continue`) already pass; `server/test/davClients.test.ts` pins them.
+
+Why: the smallest change that gives the page a real login to show, without exposing it to other members and without breaking existing WebDAV clients.

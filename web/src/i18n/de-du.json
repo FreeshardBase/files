@@ -129,6 +129,65 @@
     "copyManually": "Das Passwort ist markiert: Kopiere es mit Strg + C oder ⌘ + C.",
     "done": "Fertig"
   },
+  "phone": {
+    "title": "Auf dem iPhone und Android nutzen",
+    "back": "Zurück zu den Einstellungen",
+    "intro": "Mit einer App, die WebDAV kann, hast du deinen Speicher auf dem Shard auf dem Telefon. Auf dem iPhone erscheint er dann auch in der App „Dateien“. Du brauchst dafür die Angaben unten und ein App-Passwort.",
+    "copyLabel": "{field} kopieren",
+    "copyManually": "Der Text ist markiert: Kopiere ihn mit „Kopieren“ im Menü oder mit Strg + C.",
+    "access": {
+      "heading": "Was die App wissen will",
+      "address": "WebDAV-Adresse",
+      "server": "Server",
+      "path": "Pfad",
+      "username": "Benutzername",
+      "usernameHint": "Manche Apps wollen die ganze Adresse, andere Server und Pfad. Wähle immer HTTPS (Port 443).",
+      "passwordHint": "Passwort: ein App-Passwort, nicht dein Shard-Passwort. Erstelle hier eines für dieses Telefon; es wird nur einmal angezeigt."
+    },
+    "platform": {
+      "ios": "iPhone und iPad",
+      "android": "Android"
+    },
+    "apps": {
+      "heading": "Schritt für Schritt",
+      "readdle": {
+        "steps": {
+          "1": "Installiere „{app}“ aus dem App Store und öffne die App.",
+          "2": "Tippe auf „+“, dann auf „Verbindung hinzufügen“, und wähle „WebDAV-Server“.",
+          "3": "URL: die WebDAV-Adresse. Login: der Benutzername. Passwort: das App-Passwort. Sichern.",
+          "4": "Öffne die App „Dateien“: Unter „Orte“ führt „Documents“ jetzt zu deinem Shard. Fehlt er, schalte ihn unter „…“ → „Bearbeiten“ ein."
+        }
+      },
+      "fe": {
+        "steps": {
+          "1": "Installiere „{app}“ aus dem App Store und öffne die App.",
+          "2": "Tippe auf „+“ und wähle „WebDAV“.",
+          "3": "Hostname: der Server. Schalte HTTPS ein. Pfad: /dav/. Benutzername und Passwort: der Benutzername und das App-Passwort. Sichern.",
+          "4": "Öffne die App „Dateien“: Unter „Orte“ führt „{app}“ jetzt zu deinem Shard. Fehlt er, schalte ihn unter „…“ → „Bearbeiten“ ein."
+        }
+      },
+      "solid": {
+        "steps": {
+          "1": "Installiere „{app}“ aus Google Play und öffne die App.",
+          "2": "Öffne das Seitenmenü, tippe bei „Speicher“ auf „+“ und wähle „Neue Cloud-Verbindung“, dann „WebDAV“.",
+          "3": "Remote-Hostname: der Server. Pfad: /dav/. Verbindungstyp: HTTPS. Benutzername und Passwort: der Benutzername und das App-Passwort.",
+          "4": "Schließ den Dialog ab: Dein Shard erscheint im Seitenmenü."
+        }
+      },
+      "material": {
+        "steps": {
+          "1": "Installiere „{app}“ aus Google Play oder F-Droid und öffne die App.",
+          "2": "Öffne das Seitenmenü, tippe auf „Speicher hinzufügen“ und wähle „WebDAV-Server“.",
+          "3": "Hostname: der Server. Port: 443. Pfad: /dav/. Protokoll: HTTPS. Authentifizierung: Passwort, mit dem Benutzernamen und dem App-Passwort.",
+          "4": "Tippe auf „Hinzufügen“: Dein Shard erscheint im Seitenmenü."
+        }
+      }
+    },
+    "smb": {
+      "heading": "Warum nicht SMB?",
+      "text": "SMB (Windows-Dateifreigabe) gibt es hier nicht: Über das Internet ist es nicht sicher. WebDAV läuft wie der ganze Shard über HTTPS."
+    }
+  },
   "storage": {
     "title": "Speicherbelegung",
     "shard": "Auf dem Shard",

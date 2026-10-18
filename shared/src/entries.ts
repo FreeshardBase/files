@@ -47,6 +47,8 @@ export type DeleteRequest = z.infer<typeof DeleteRequest>;
 
 export const MeSchema = z.object({
   id: z.string(), displayName: z.string(), email: z.string().optional(),
+  /** The login name from the IdP: the user name the phone setup page shows for WebDAV (#321). */
+  login: z.string().optional(),
   role: z.enum(['admin', 'member']), csrfToken: z.string(),
   /** The member's language and theme (#159): the shell applies them with its first request. */
   settings: SettingsSchema,

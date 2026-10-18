@@ -8,7 +8,7 @@ type User = { name?: string; preferred_username?: string; email?: string; groups
 export type FakeIdp = { issuer: string; users: Record<string, User>; close(): Promise<void> };
 
 const DEFAULT_USERS: Record<string, User> = {
-  testuser: { name: 'Test User', email: 'testuser@example.com', groups: ['admin'] },
+  testuser: { name: 'Test User', preferred_username: 'testuser', email: 'testuser@example.com', groups: ['admin'] },
   member: { name: 'Test Member', email: 'member@example.com', groups: [] },
   // A third person, so sharing can tell a grantee from another member and the member picker has something to filter.
   member2: { name: 'Second Member', email: 'member2@example.com', groups: [] },
