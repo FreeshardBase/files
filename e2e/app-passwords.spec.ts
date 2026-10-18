@@ -3,7 +3,8 @@ import { openPlaces } from './places.ts';
 
 // #157: app passwords for WebDAV in settings. Created and shown once, listed without the password, revoked; a create
 // the server refuses shows its error instead of closing silently (#122). Both projects share one server and `testuser`,
-// so every test removes what it created.
+// so every test removes what it created. The first test asserts the empty list, so it runs as `member2`, whom no other
+// spec gives an app password, and still revokes whatever an earlier failed run of itself left (#332).
 const nav = (page: Page) => page.getByRole('navigation', { name: /Orte|Places/ });
 const settingsLink = (page: Page) => nav(page).getByRole('link', { name: /Einstellungen|Settings/ });
 
@@ -11,29 +12,49 @@ async function headersOf(page: Page) {
   const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
   return { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
 }
-/** PROPFIND on the WebDAV root with the app password; expects `status` and shows the server's answer if it differs. */
-async function propfind(page: Page, password: string, status: number) {
+/** PROPFIND on the WebDAV root as `user` with the app password; expects `status` and shows the server's answer if not. */
+async function propfind(page: Page, user: string, password: string, status: number) {
   const r = await page.request.fetch('/dav/', { method: 'PROPFIND',
-    headers: { depth: '0', authorization: `Basic ${Buffer.from(`testuser:${password}`).toString('base64')}` } });
+    headers: { depth: '0', authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` } });
   expect(r.status(), `PROPFIND /dav/ answered: ${await r.text()}`).toBe(status);
 }
 
+/** Revokes every app password of the signed-in user; fails loudly if the list or a revoke is refused. */
 async function revokeAll(page: Page) {
   const headers = await headersOf(page);
-  const { items } = await (await page.request.get('/api/v1/app-passwords')).json() as { items: { id: string }[] };
-  for (const i of items) await page.request.delete(`/api/v1/app-passwords/${i.id}`, { headers });
+  const list = await page.request.get('/api/v1/app-passwords');
+  expect(list.status(), await list.text()).toBe(200);
+  const { items } = await list.json() as { items: { id: string }[] };
+  for (const i of items) {
+    const r = await page.request.delete(`/api/v1/app-passwords/${i.id}`, { headers });
+    expect(r.status(), await r.text()).toBe(204);
+  }
+}
+
+/**
+ * Signs `page` in as `login` and waits until the redirect back has landed in the home folder. The SPA itself starts the
+ * login after a 401, so a bare `goto('/home')` returns before the session exists (#332).
+ */
+async function signIn(page: Page, login: string) {
+  await page.goto(`/auth/login?login_hint=${login}&returnTo=%2Fhome`);
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(nav(page)).toBeAttached();
 }
 
 test('create an app password in settings, see it once, use it for WebDAV, then revoke it', async ({ page }) => {
   const dialogs: string[] = [];
   page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
-  await page.goto('/home');
+  await signIn(page, 'member2');
   await revokeAll(page);
   await openPlaces(page);
   await settingsLink(page).click();
   await expect(page.getByRole('heading', { name: /^(Einstellungen|Settings)$/ })).toBeVisible();
   // How to connect: the address of the WebDAV tree on this server.
   await expect(page.getByRole('textbox', { name: /Adresse|Address/ })).toHaveValue(new URL('/dav/', page.url()).href);
+  // The list has loaded (no loading line, no error) before its empty state counts.
+  const appPasswords = page.locator('.app-passwords');
+  await expect(appPasswords.getByText(/^(Wird geladen|Loading…)/)).toHaveCount(0);
+  await expect(appPasswords.getByRole('alert')).toHaveCount(0);
   await expect(page.getByText(/Noch keine App-Passwörter|No app passwords yet/)).toBeVisible();
 
   await page.getByRole('textbox', { name: /Gerät oder Programm|Device or program/ }).fill('Test laptop');
@@ -44,7 +65,7 @@ test('create an app password in settings, see it once, use it for WebDAV, then r
   await expect(field).toHaveValue(/^[a-z2-9]{40}$/);
   const password = await field.inputValue();
   await expect(shown).toContainText(/nur jetzt|only now/);
-  await propfind(page, password, 207);
+  await propfind(page, 'member2', password, 207);
 
   await shown.getByRole('button', { name: /^(Fertig|Done)$/ }).click();
   await expect(shown).toHaveCount(0);
@@ -63,18 +84,18 @@ test('create an app password in settings, see it once, use it for WebDAV, then r
   await expect(confirm.getByRole('button', { name: /Abbrechen|Cancel/ })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
-  await propfind(page, password, 207);
+  await propfind(page, 'member2', password, 207);
   await page.getByRole('button', { name: /„Test laptop“ widerrufen|Revoke “Test laptop”/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: /^(Widerrufen|Revoke)$/ }).click();
   await expect(page.locator('tbody tr', { hasText: 'Test laptop' })).toHaveCount(0);
   await expect(page.locator('.app-passwords .status')).toContainText(/„Test laptop“ widerrufen|“Test laptop” revoked/);
   await expect(page.getByText(/Noch keine App-Passwörter|No app passwords yet/)).toBeVisible();
-  await propfind(page, password, 401);
+  await propfind(page, 'member2', password, 401);
   expect(dialogs).toEqual([]);
 });
 
 test('a create the server refuses shows its error and keeps the form (#122)', async ({ page }) => {
-  await page.goto('/home');
+  await signIn(page, 'testuser');
   await revokeAll(page);
   const headers = await headersOf(page);
   // Fill up to the limit through the API, so the next create from the page is refused by the server.
@@ -96,7 +117,7 @@ test('a create the server refuses shows its error and keeps the form (#122)', as
 });
 
 test('an empty label is refused in the form before anything is sent', async ({ page }) => {
-  await page.goto('/home');
+  await signIn(page, 'testuser');
   await openPlaces(page);
   await settingsLink(page).click();
   let posted = false;
