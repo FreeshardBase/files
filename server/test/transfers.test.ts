@@ -152,7 +152,7 @@ describe('transfer jobs between sources', () => {
     expect(upRows[1]!.slice(0, 2)).toEqual(['done', `${dir}/${name}`]);
     expect(upRows[1]![2]!.startsWith('/=HYPERLINK(')).toBe(true);
     for (const row of [...downRows, ...upRows]) {
-      expect(row, JSON.stringify(row)).toHaveLength(7); // every cell is quoted, so none escapes the check below
+      expect(row, JSON.stringify(row)).toHaveLength(8); // every cell is quoted, so none escapes the check below
       for (const cell of row) expect(cell, JSON.stringify(row)).not.toMatch(/^[=+\-@\t\r]/);
     }
   });

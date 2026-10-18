@@ -1,5 +1,6 @@
+import { posix } from 'node:path';
 import type { Readable } from 'node:stream';
-import type { CollisionPolicy, Entry, HashAlgorithm, ProviderQuota, ThumbSize } from '@files/shared';
+import { checkName, type CollisionPolicy, type Entry, type HashAlgorithm, type NameRuleSet, type ProviderQuota, type ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 
 export type ByteRange = { start: number; end: number };
@@ -20,7 +21,22 @@ export type WriteOptions = {
   modified?: string;
 };
 
+/**
+ * Refuses a target path whose name breaks the source's name rules (#342) with NAME_NOT_ALLOWED: the name, the rule set
+ * and the first issue, from which the web words the reason and computes the suggestion.
+ */
+export function assertNameAllowed(set: NameRuleSet, path: string): void {
+  const name = posix.basename(path);
+  const [issue] = checkName(set, name, posix.dirname(path));
+  if (issue) throw new AppError('NAME_NOT_ALLOWED', { name, rules: set, issue: issue.code, ...(issue.char ? { char: issue.char } : {}) });
+}
+
 export interface StorageBackend {
+  /**
+   * The source's own name rules beyond the universal ones (#342, shared/src/nameRules.ts); absent is `universal`. A
+   * backend with rules refuses a name that breaks them (`assertNameAllowed`) before it calls its provider.
+   */
+  readonly nameRules?: NameRuleSet;
   list(path: string, cursor?: string, limit?: number): Promise<{ entries: Entry[]; next?: string }>;
   stat(path: string): Promise<Entry>;
   /**

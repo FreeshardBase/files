@@ -4,9 +4,14 @@
 // `busy` holds the submit button while the request is in flight.
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { suggestName, type NameRuleSet } from '@files/shared';
 import AppDialog from './AppDialog.vue';
+import { nameRefusal } from '../nameRules.ts';
 
-const props = defineProps<{ name: string; isFolder: boolean; error?: string | null; busy?: boolean }>();
+// `rules` and `dir`: the source's name rules (#342) and the folder the name goes into; a name they refuse is refused as
+// it is typed, with the reason and the suggestion to take over.
+const props = withDefaults(defineProps<{ name: string; isFolder: boolean; error?: string | null; busy?: boolean;
+  rules?: NameRuleSet; dir?: string }>(), { error: null, busy: false, rules: 'universal', dir: '/' });
 const emit = defineEmits<{ submit: [string]; cancel: [] }>();
 const { t } = useI18n();
 const value = ref(props.name);
@@ -15,7 +20,13 @@ const input = ref<HTMLInputElement>();
 const formId = useId();
 const errorId = useId();
 const refused = ref<string | null>(null);
-const message = computed(() => invalid.value ? t(`rename.${invalid.value}`) : refused.value);
+const ruleRefusal = computed(() => (value.value.trim() === '' ? null : nameRefusal(t, props.rules, value.value.trim(), props.dir)));
+const suggestion = computed(() => (ruleRefusal.value === null ? null : suggestName(props.rules, value.value.trim(), props.dir).name));
+const message = computed(() => invalid.value ? t(`rename.${invalid.value}`) : ruleRefusal.value ?? refused.value);
+function useSuggestion() {
+  value.value = suggestion.value!;
+  input.value?.focus();
+}
 // The server's limit (resolveInRoot): 255 bytes of UTF-8 per name.
 const MAX_NAME_BYTES = 255;
 
@@ -37,7 +48,7 @@ function submit() {
   // The server checks names too; this only saves a round trip for the obvious cases.
   invalid.value = name === '' || name === '.' || name === '..' || name.includes('/') ? 'invalid'
     : new TextEncoder().encode(name).length > MAX_NAME_BYTES ? 'tooLong' : null;
-  if (invalid.value) { input.value?.focus(); return; }
+  if (invalid.value || ruleRefusal.value !== null) { input.value?.focus(); return; }
   emit('submit', name);
 }
 </script>
@@ -73,6 +84,14 @@ function submit() {
       >
         {{ message }}
       </p>
+      <button
+        v-if="suggestion !== null"
+        type="button"
+        class="button name-rules-use"
+        @click="useSuggestion"
+      >
+        {{ t('nameRules.useSuggestion', { name: suggestion }) }}
+      </button>
     </form>
     <template #actions>
       <button

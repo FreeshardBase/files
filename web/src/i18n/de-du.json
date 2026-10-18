@@ -480,6 +480,32 @@
       "otherFile": "Das ist nicht die Datei „{name}“ ({size}). Wähle dieselbe Datei noch einmal, um fortzufahren."
     }
   },
+  "nameRules": {
+    "title": "Name hier nicht erlaubt",
+    "message": "„{name}“ kann so nicht nach {provider}.",
+    "suggestion": "Vorschlag",
+    "label": "Neuer Name",
+    "apply": "Übernehmen",
+    "applyAll": "Für alle übernehmen ({count})",
+    "skip": "Überspringen",
+    "useSuggestion": "Vorschlag übernehmen: {name}",
+    "provider": {
+      "onedrive": "OneDrive",
+      "sharepoint": "SharePoint",
+      "dropbox": "Dropbox"
+    },
+    "issue": {
+      "char": "„{char}“ ist bei {provider} nicht erlaubt.",
+      "control": "Steuerzeichen sind bei {provider} nicht erlaubt.",
+      "leadingSpace": "Ein Name darf bei {provider} nicht mit einem Leerzeichen beginnen.",
+      "trailingSpace": "Ein Name darf bei {provider} nicht mit einem Leerzeichen enden.",
+      "trailingDot": "Ein Name darf bei {provider} nicht mit einem Punkt enden.",
+      "reserved": "Dieser Name ist bei {provider} reserviert.",
+      "tildeDollar": "Ein Name darf bei {provider} nicht mit „~$“ beginnen.",
+      "vti": "„_vti_“ ist bei {provider} in Namen nicht erlaubt.",
+      "pathLength": "Der ganze Pfad darf bei {provider} höchstens {max} Zeichen lang sein."
+    }
+  },
   "collision": {
     "title": "Name schon vergeben",
     "message": "„{name}“ gibt es hier schon. Was möchtest du tun?",
@@ -870,7 +896,8 @@
     "CONNECT_DENIED": "Du hast den Zugriff nicht erlaubt, darum wurde kein Konto verbunden.",
     "ARCHIVE_INVALID": "Diese Datei ist kein ZIP-Archiv, das Dateien lesen kann.",
     "ARCHIVE_UNSAFE": "Das Archiv enthält Pfade außerhalb seines Ordners, Verknüpfungen oder Geräte, darum wurde nichts daraus importiert.",
-    "ARCHIVE_TOO_LARGE": "Das Archiv enthält zu viele Dateien oder entpackt sich zu weit mehr als seiner Größe, darum wurde nichts daraus importiert."
+    "ARCHIVE_TOO_LARGE": "Das Archiv enthält zu viele Dateien oder entpackt sich zu weit mehr als seiner Größe, darum wurde nichts daraus importiert.",
+    "NAME_NOT_ALLOWED": "Dieser Name ist hier nicht erlaubt."
   },
   "batchRename": {
     "button": "Umbenennen …",

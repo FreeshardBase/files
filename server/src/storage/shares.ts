@@ -90,8 +90,11 @@ export class ShareBackend implements StorageBackend {
   readonly revisions?: StorageBackend['revisions'];
   readonly readRevision?: StorageBackend['readRevision'];
   readonly restoreRevision?: StorageBackend['restoreRevision'];
+  /** The owner's source's rules (#342); it checks the whole path itself. */
+  readonly nameRules?: StorageBackend['nameRules'];
 
   constructor(private inner: StorageBackend, private root: string, private type: 'file' | 'directory') {
+    this.nameRules = inner.nameRules;
     const { revisions, readRevision, restoreRevision } = inner;
     if (revisions) this.revisions = (p) => revisions.call(inner, this.at(p));
     if (readRevision) this.readRevision = async (p, id) => { const r = await readRevision.call(inner, this.at(p), id); return { ...r, entry: this.back(r.entry) }; };

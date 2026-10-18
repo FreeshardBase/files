@@ -2,12 +2,12 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
 import { pipeline, Readable, Transform } from 'node:stream';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
-import { PICKED_NAMES, planRenames, type CleanupPreview, type CollisionPolicy, type CreateImportRequest, type CreateMigrationRequest,
+import { checkName, NameIssue, PICKED_NAMES, planRenames, suggestName, type CleanupPreview, type NameRuleSet, type CollisionPolicy, type CreateImportRequest, type CreateMigrationRequest,
   type CreateTransferRequest, type Entry, type ErrorCode, type MigrationScan, type RenamePlan, type RenameRequest, type TransferJob,
   type TransferStatus } from '@files/shared';
 import { AppError } from '../errors.ts';
 import { getUser, type User } from '../users.ts';
-import type { StorageBackend } from './backend.ts';
+import { assertNameAllowed, type StorageBackend } from './backend.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
 import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
 import { deleteComments, keysOf } from './comments.ts';
@@ -37,8 +37,9 @@ type JobRow = { id: string; user_id: string; kind: Kind; origin: string | null; 
   cleanup_token: string | null; cleanup_expires: string | null };
 type ItemRow = { job_id: string; seq: number; parent: number | null; from_path: string; to_path: string;
   on_collision: CollisionPolicy; type: 'file' | 'directory' | null; placed: string | null; status: string; error: string | null;
-  bytes: number; sha256: string | null; src_modified: string | null; verified: string | null };
-type NewItem = Pick<ItemRow, 'from_path' | 'to_path' | 'on_collision'> & Partial<Pick<ItemRow, 'type' | 'placed' | 'bytes' | 'sha256' | 'src_modified'>>;
+  bytes: number; sha256: string | null; src_modified: string | null; verified: string | null; renamed: string | null };
+type NewItem = Pick<ItemRow, 'from_path' | 'to_path' | 'on_collision'>
+  & Partial<Pick<ItemRow, 'type' | 'placed' | 'bytes' | 'sha256' | 'src_modified' | 'renamed'>>;
 /** Why an item's work was aborted: the member cancelled the job, or the app is shutting down (the item resumes later). */
 type AbortReason = 'cancel' | 'stop';
 
@@ -73,7 +74,17 @@ export async function scanFolder(b: StorageBackend, path: string, limits = { ent
   return { files, folders, bytes, complete: true };
 }
 
-const csvCell = (v: string | number | null) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+/**
+ * Where an item named `name` lands in the target folder `dir` without the member being asked (#342): under its own name,
+ * or, where the target's rules refuse it, under the suggestion, with the reasons kept for the job's list and report.
+ */
+function landing(rules: NameRuleSet, dir: string, name: string): { to_path: string; renamed: string | null } {
+  const issues = checkName(rules, name, dir);
+  if (!issues.length) return { to_path: posix.join(dir, name), renamed: null };
+  return { to_path: posix.join(dir, suggestName(rules, name, dir).name), renamed: JSON.stringify(issues) };
+}
+
+const csvCell =(v: string | number | null) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const csvLine = (cells: (string | number | null)[]) => `${cells.map(csvCell).join(',')}\r\n`;
 
 /**
@@ -131,11 +142,18 @@ export class TransferEngine {
     if (to.access !== 'edit') throw new AppError('FORBIDDEN');
     const dir = normalizeUserPath(req.dir);
     if ((await to.backend.stat(dir)).type !== 'directory') throw new AppError('NOT_A_DIRECTORY');
-    const items = req.items.map((i) => ({ from: normalizeUserPath(i.path), onCollision: i.onCollision }));
+    const rules = to.backend.nameRules ?? 'universal';
+    const items = req.items.map((i) => ({ from: normalizeUserPath(i.path), onCollision: i.onCollision, name: i.name }));
     // The root of a source has no name to land under.
     if (items.some((i) => i.from === '/')) throw new AppError('VALIDATION');
-    return this.insertJob({ user, kind: 'transfer', mode: req.mode, from: req.from, to: req.to, dir },
-      items.map((i) => ({ from_path: i.from, to_path: posix.join(dir, posix.basename(i.from)), on_collision: i.onCollision })));
+    return this.insertJob({ user, kind: 'transfer', mode: req.mode, from: req.from, to: req.to, dir }, items.map((i) => {
+      if (i.name === undefined) return { from_path: i.from, on_collision: i.onCollision, ...landing(rules, dir, posix.basename(i.from)) };
+      // The member's own choice is a name in `dir`, and one the target takes: never renamed again behind their back.
+      const to_path = normalizeUserPath(posix.join(dir, i.name));
+      if (posix.dirname(to_path) !== dir) throw new AppError('PATH_INVALID');
+      assertNameAllowed(rules, to_path);
+      return { from_path: i.from, to_path, on_collision: i.onCollision };
+    }));
   }
 
   /**
@@ -280,13 +298,16 @@ export class TransferEngine {
    */
   report(userId: string, id: string): Readable {
     this.own(userId, id);
-    const page = this.deps.db.prepare(`SELECT seq, status, from_path, placed, type, bytes, verified, error FROM transfer_items
+    const page = this.deps.db.prepare(`SELECT seq, status, from_path, placed, type, bytes, verified, error, renamed FROM transfer_items
       WHERE job_id = ? AND seq > ? ORDER BY seq LIMIT ?`);
+    // A rename the target's rules forced (#342) names its reasons: `char ":"`, `reserved`, … (shared/src/nameRules.ts).
+    const why = (renamed: string | null) => (renamed === null ? null : NameIssue.array().parse(JSON.parse(renamed))
+      .map((i) => (i.char !== undefined ? `${i.code} "${i.char}"` : i.code)).join('; '));
     return Readable.from((function* () {
-      yield csvLine(['status', 'source_path', 'shard_path', 'type', 'bytes', 'verified', 'error']);
+      yield csvLine(['status', 'source_path', 'shard_path', 'type', 'bytes', 'verified', 'error', 'renamed']);
       for (let after = -1; ;) {
         const rows = page.all(id, after, REPORT_PAGE) as ItemRow[];
-        for (const r of rows) yield csvLine([r.status, r.from_path, r.placed, r.type, r.bytes, r.verified, r.error]);
+        for (const r of rows) yield csvLine([r.status, r.from_path, r.placed, r.type, r.bytes, r.verified, r.error, why(r.renamed)]);
         if (rows.length < REPORT_PAGE) return;
         after = rows.at(-1)!.seq;
       }
@@ -354,9 +375,9 @@ export class TransferEngine {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
         .run(id, job.user.id, job.kind, job.origin ?? null, job.mode, job.from, job.to, job.dir, new Date().toISOString());
       const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, from_path, to_path, on_collision, type, placed, bytes,
-        sha256, src_modified, status) VALUES (@job, @seq, @from_path, @to_path, @on_collision, @type, @placed, @bytes, @sha256,
-        @src_modified, 'pending')`);
-      items.forEach((i, seq) => insert.run({ type: null, placed: null, bytes: 0, sha256: null, src_modified: null, ...i, job: id, seq }));
+        sha256, src_modified, renamed, status) VALUES (@job, @seq, @from_path, @to_path, @on_collision, @type, @placed, @bytes, @sha256,
+        @src_modified, @renamed, 'pending')`);
+      items.forEach((i, seq) => insert.run({ type: null, placed: null, bytes: 0, sha256: null, src_modified: null, renamed: null, ...i, job: id, seq }));
     }).immediate();
     this.emit(id);
     this.settle(id); // a job without items (a cleanup with nothing verified) ends at once
@@ -393,8 +414,11 @@ export class TransferEngine {
     // What an import left out (#322) is listed, not counted.
     const skipped = (db.prepare(`SELECT from_path, error FROM transfer_items WHERE job_id = ? AND status = 'skipped' ORDER BY seq`)
       .all(id) as { from_path: string; error: 'photos' | 'other' }[]).map((r) => ({ path: r.from_path, reason: r.error }));
+    const renamed = (db.prepare(`SELECT from_path, coalesce(placed, to_path) AS target, renamed FROM transfer_items
+      WHERE job_id = ? AND renamed IS NOT NULL ORDER BY seq`).all(id) as { from_path: string; target: string; renamed: string }[])
+      .map((r) => ({ path: r.from_path, name: posix.basename(r.target), issues: NameIssue.array().parse(JSON.parse(r.renamed)) }));
     return { id, kind: job.kind, origin: job.origin, mode: job.mode, from: job.from_source, to: job.to_source, dir: job.dir, name,
-      picked, names, skipped,
+      picked, names, skipped, renamed,
       status: job.status, total: Object.values(counts).reduce((a, b) => a + b, 0) - skipped.length, done: counts.done ?? 0, verifiedFiles: done.files,
       files: known.files, listing: job.status === 'running' && known.unlisted > 0, cancelled: counts.cancelled ?? 0, failed, bytes: job.kind === 'cleanup' ? done.bytes : done.bytes + flowing,
       createdAt: job.created_at, finishedAt: job.finished_at };
@@ -661,10 +685,13 @@ export class TransferEngine {
       let seq = db.prepare(`SELECT max(seq) FROM transfer_items WHERE job_id = ?`).pluck().get(item.job_id) as number;
       // The folder is this job's own, so whatever lies in it came from this job (an earlier attempt): replace it. The type
       // from the listing orders the work and counts the files; each item's own stat confirms it when it runs.
-      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, parent, from_path, to_path, on_collision, type, status)
-        VALUES (?, ?, ?, ?, ?, 'replace', ?, 'pending')`);
+      const insert = db.prepare(`INSERT INTO transfer_items (job_id, seq, parent, from_path, to_path, on_collision, type, renamed, status)
+        VALUES (?, ?, ?, ?, ?, 'replace', ?, ?, 'pending')`);
+      // Nobody is asked about the contents: a name the target refuses becomes the suggestion, and the job lists it (#342).
+      const rules = to.nameRules ?? 'universal';
       for (const c of children) {
-        insert.run(item.job_id, ++seq, item.seq, posix.join(item.from_path, c.name), posix.join(placed, c.name), c.type);
+        const { to_path, renamed } = landing(rules, placed, c.name);
+        insert.run(item.job_id, ++seq, item.seq, posix.join(item.from_path, c.name), to_path, c.type, renamed);
       }
       this.setItem(item.job_id, item.seq, { status: 'done', error: null });
     }).immediate();

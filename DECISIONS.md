@@ -1219,3 +1219,15 @@ Questions the issue left open, decided from the spec and YAGNI:
 - **The panel.** An ended import does not leave the transfer panel by itself (like a migration), so its page keeps the report of what was skipped.
 
 Why: an export is the member's only copy of years of files, so the import never replaces anything, refuses doubtful archives whole, and keeps photos out of Files as the owner decided (2026-10-17).
+
+## 2026-10-18: Provider name rules (#342)
+
+The owner decided to ask with a suggestion (forbidden characters → `_`) and to rename automatically in unattended work. Questions the issue left open, decided from the spec and YAGNI:
+
+- **One module, four sets.** `shared/src/nameRules.ts` has `universal`, `onedrive`, `sharepoint` (the same rules, named for the message) and `dropbox`; Google Drive, pCloud and the home are `universal`. Each backend declares `nameRules` and refuses a breaking name in `write`, `mkdir`, `move` and `copy` itself (`assertNameAllowed`), so every way in (routes, WebDAV, shares, jobs) is covered before the provider is called. The listing carries the set (`ListResponse.nameRules`), so the SPA checks with the same code.
+- **Which items count as unattended.** In a transfer job the picked items are asked about in the SPA, which sends the chosen `name`; that name is checked and refused (`NAME_NOT_ALLOWED`), never renamed again. Everything a job finds on its own (a folder's contents) and a picked item sent without a name lands under the suggestion; the job lists it in `renamed` (source path, new name, issues) and the CSV report in the `renamed` column. Migrations write into the home, whose rules are universal, so nothing is renamed there.
+- **Reserved names.** `_` goes after the stem (`CON.txt` → `CON_.txt`), after the whole name for `.lock` and `desktop.ini`; `~$` becomes `_$`, `_vti_` becomes `_vti-`. A too-long path cuts the middle of the stem and marks the cut with `…`. Graph's 400-character limit counts the path inside the drive (inside a share, the backend checks the owner's whole path).
+- **Case.** Every set but `universal` compares names ignoring case for the collision question (`nameTaken`); Graph and Dropbox both do.
+- **A rule we do not know.** Graph's 400 `invalidRequest` whose message names the name becomes `NAME_NOT_ALLOWED` with Graph's message as `reason`.
+- **Rename and new folder** refuse a breaking name as it is typed, with the reason, and offer "Use suggestion".
+- **Left for later.** An upload into a cloud source is refused by the server with `NAME_NOT_ALLOWED` before a byte is sent (shown in the upload panel), but the upload panel does not ask the name question yet; moves and copies within one source, where the names already exist there, also just report the refusal. The transfer panel does not show the `renamed` list; the CSV report does.

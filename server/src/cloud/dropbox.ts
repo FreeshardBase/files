@@ -4,9 +4,9 @@ import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import sharp from 'sharp';
 import { z } from 'zod';
-import type { CollisionPolicy, Entry, ThumbSize } from '@files/shared';
+import type { CollisionPolicy, Entry, NameRuleSet, ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
+import { assertNameAllowed, RangeNotSatisfiable, withHash, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from '../storage/backend.ts';
 import { lookupMime } from '../storage/mime.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import type { OAuthClient, Provider } from './oauth.ts';
@@ -106,6 +106,8 @@ function unwrapCursor(folder: string, cursor: string): string {
 }
 
 export class DropboxBackend implements StorageBackend {
+  readonly nameRules: NameRuleSet = 'dropbox';
+
   constructor(private client: OAuthClient, private ep: DropboxEndpoints, private chunkBytes: number) {}
 
   // --- requests ---------------------------------------------------------------------------------------------------
@@ -223,6 +225,7 @@ export class DropboxBackend implements StorageBackend {
     if (opts.size !== undefined && opts.size > opts.maxBytes) throw new AppError('PAYLOAD_TOO_LARGE');
     const p = normalizeUserPath(path);
     if (p === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, p);
     const dir = posix.dirname(p);
     let target = p;
     const existing = await this.metaOrNone(p);
@@ -285,7 +288,8 @@ export class DropboxBackend implements StorageBackend {
     const p = normalizeUserPath(path);
     const name = posix.basename(p);
     if (p === '/') throw new AppError('FILE_EXISTS', { name: '/' });
-    const r = z.object({ metadata: PlainFolder }).parse(await this.rpc('files/create_folder_v2', { path: p, autorename: false }, name));
+    assertNameAllowed(this.nameRules, p);
+    const r =z.object({ metadata: PlainFolder }).parse(await this.rpc('files/create_folder_v2', { path: p, autorename: false }, name));
     return this.placed(r.metadata, posix.dirname(p));
   }
 
@@ -293,6 +297,7 @@ export class DropboxBackend implements StorageBackend {
     const f = normalizeUserPath(from); let t = normalizeUserPath(to);
     if (f === t) return this.stat(f);
     if (f === '/' || t === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, t);
     if (inside(t, f)) throw new AppError('TARGET_INSIDE_SOURCE');
     const item = await this.meta(f);
     if (lower(f) === lower(t)) return this.renameCase(item, t);
@@ -336,6 +341,7 @@ export class DropboxBackend implements StorageBackend {
   async copy(from: string, to: string, onCollision: CollisionPolicy): Promise<Entry> {
     const f = normalizeUserPath(from); let t = normalizeUserPath(to);
     if (f === '/' || t === '/') throw new AppError('PATH_INVALID');
+    assertNameAllowed(this.nameRules, t);
     if (inside(t, f)) throw new AppError('TARGET_INSIDE_SOURCE');
     const item = await this.meta(f);
     // Onto its own name (in any case): "fail" asks, "replace" leaves it as it is, "keep both" duplicates.

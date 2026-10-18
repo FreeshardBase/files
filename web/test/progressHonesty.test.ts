@@ -21,7 +21,7 @@ beforeEach(() => { setActivePinia(createPinia()); });
 const ID = 'a'.repeat(32);
 const job = (over: Partial<TransferJob>): TransferJob => ({
   id: ID, kind: 'migration', origin: null, mode: 'copy', from: 'conn:x', to: 'home', dir: '/', name: 'Fotos',
-  picked: 1, names: ['Fotos'], status: 'running', total: 1000, done: 996, verifiedFiles: 996, files: 1000, listing: false, cancelled: 0, failed: [], skipped: [],
+  picked: 1, names: ['Fotos'], status: 'running', total: 1000, done: 996, verifiedFiles: 996, files: 1000, listing: false, cancelled: 0, failed: [], skipped: [], renamed: [],
   bytes: 0, createdAt: '2026-10-16T00:00:00.000Z', finishedAt: null, ...over,
 });
 const values = (w: ReturnType<typeof mount>) => w.findAll('[role=progressbar]').map((b) => b.attributes('aria-valuenow'));

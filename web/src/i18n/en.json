@@ -480,8 +480,34 @@
       "otherFile": "That is not the file “{name}” ({size}). Pick the same file again to resume."
     }
   },
+  "nameRules": {
+    "title": "Name not allowed here",
+    "message": "“{name}” cannot go to {provider} as it is.",
+    "suggestion": "Suggestion",
+    "label": "New name",
+    "apply": "Use name",
+    "applyAll": "Use suggestions for all ({count})",
+    "skip": "Skip",
+    "useSuggestion": "Use suggestion: {name}",
+    "provider": {
+      "onedrive": "OneDrive",
+      "sharepoint": "SharePoint",
+      "dropbox": "Dropbox"
+    },
+    "issue": {
+      "char": "“{char}” is not allowed in {provider}.",
+      "control": "Control characters are not allowed in {provider}.",
+      "leadingSpace": "{provider} does not allow a name to start with a space.",
+      "trailingSpace": "{provider} does not allow a name to end with a space.",
+      "trailingDot": "{provider} does not allow a name to end with a period.",
+      "reserved": "This name is reserved in {provider}.",
+      "tildeDollar": "{provider} does not allow a name to start with “~$”.",
+      "vti": "{provider} does not allow “_vti_” in a name.",
+      "pathLength": "{provider} allows at most {max} characters for the whole path."
+    }
+  },
   "collision": {
-    "title": "Name already taken",
+    "title":"Name already taken",
     "message": "“{name}” already exists here. What should happen?",
     "replace": "Replace",
     "keepBoth": "Keep both",
@@ -870,7 +896,8 @@
     "CONNECT_DENIED": "You did not allow access, so no account was connected.",
     "ARCHIVE_INVALID": "This file is not a ZIP archive that Files can read.",
     "ARCHIVE_UNSAFE": "The archive holds paths outside its folder, links or devices, so nothing of it was imported.",
-    "ARCHIVE_TOO_LARGE": "The archive holds too many entries or unpacks to far more than its size, so nothing of it was imported."
+    "ARCHIVE_TOO_LARGE": "The archive holds too many entries or unpacks to far more than its size, so nothing of it was imported.",
+    "NAME_NOT_ALLOWED": "This name is not allowed here."
   },
   "batchRename": {
     "button": "Rename…",

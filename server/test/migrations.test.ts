@@ -122,13 +122,13 @@ describe('migrating a cloud account or folder to the shard', () => {
     for (const rel of expected) expect(Buffer.compare(readFileSync(join(root, rel)), content.get(`/Archive${rel}`)!), rel).toBe(0);
 
     const rows = await report(t, a, job.id);
-    expect(rows[0]).toEqual(['status', 'source_path', 'shard_path', 'type', 'bytes', 'verified', 'error']);
+    expect(rows[0]).toEqual(['status', 'source_path', 'shard_path', 'type', 'bytes', 'verified', 'error', 'renamed']);
     const files = rows.slice(1).filter((r) => r[3] === 'file');
     expect(files).toHaveLength(50);
-    for (const p of broken) expect(files.find((r) => r[1] === p)).toEqual(['failed', p, '', 'file', '0', '', 'SIZE_MISMATCH']);
+    for (const p of broken) expect(files.find((r) => r[1] === p)).toEqual(['failed', p, '', 'file', '0', '', 'SIZE_MISMATCH', '']);
     const ok = files.find((r) => r[1] === '/Archive/2025/file-2.bin')!;
     expect(ok).toEqual(['done', '/Archive/2025/file-2.bin', '/From the cloud/2025/file-2.bin', 'file',
-      String(content.get('/Archive/2025/file-2.bin')!.length), 'size sha256', '']);
+      String(content.get('/Archive/2025/file-2.bin')!.length), 'size sha256', '', '']);
   });
 
   it('migrates a whole account into a new folder and never into one the member already has', async () => {
