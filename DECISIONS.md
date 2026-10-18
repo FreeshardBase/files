@@ -1129,3 +1129,13 @@ The issue names the bounds ("e.g. 6", "e.g. 500"). It leaves open:
 - **After the time limit.** `withinTime` now hands its work an `AbortSignal` that aborts with `SOURCE_TIMEOUT`; `mapLimit` starts no further `stat` once it has, so a page reload does not leave hundreds of requests queued behind an abandoned one. Calls already in flight finish (a backend call has no abort).
 
 Why: the issue's bound with the least new surface: one helper next to `withinTime`, one boolean in the tag view's answer and one note.
+
+## 2026-10-18: Capping the number of comments (#308)
+
+The issue names the caps ("e.g. 500" per item, "e.g. 20 000" per author) and the code. It leaves open:
+- **The numbers.** 500 live comments per item and 20 000 per author, as suggested; constants in `shared/src/comments.ts` (`MAX_COMMENTS_PER_ITEM`, `MAX_COMMENTS_PER_AUTHOR`), no setting. Tests fill the rows directly instead of lowering them.
+- **What counts.** Per item, live comments only: a thread waiting in the trash with an earlier item at that path does not hold back the new one. Per author, every row, trashed ones included (changed after the security review): trashed rows stay in `files.db` for the trash's retention, so counting only live ones let a member reset their count by trashing a file and grow the database without bound. The price is that a member's comments on items the owner has trashed count until the owner restores or purges them or the trash expires, and comments the member can no longer reach (a revoked share, a cloud item changed outside Files) count until the owner deletes them; at 20 000 that is far from everyday use. A new index `comments_author` keeps the author's count cheap.
+- **One message for both.** `COMMENT_LIMIT` (409) with `{ max }`: "The limit of {max} comments has been reached. Older comments must be deleted first." Impersonal, so it fits the member who can delete only their own and the owner who can delete any. The composer shows it as any other API error and keeps the text; edits are not limited (they add no row).
+- **No rate limit.** The caps bound what a member can store; a rate limit would only slow reaching them.
+
+Why: the issue's fix with the least new surface: two counts in the insert's transaction, one error code, one index.

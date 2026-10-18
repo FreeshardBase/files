@@ -1,4 +1,4 @@
-import type { Comment } from '@files/shared';
+import { MAX_COMMENTS_PER_AUTHOR, MAX_COMMENTS_PER_ITEM, type Comment } from '@files/shared';
 import type { Db } from '../db.ts';
 import { AppError } from '../errors.ts';
 import { parseSource } from './resolveSource.ts';
@@ -48,10 +48,21 @@ export function commentOf(db: Db, key: ItemKey, id: number, viewer: string): Com
   return r && toComment(r, key, viewer);
 }
 
+/**
+ * A new comment, unless the item already has MAX_COMMENTS_PER_ITEM live ones or the author has written
+ * MAX_COMMENTS_PER_AUTHOR, live or in the trash: then COMMENT_LIMIT (#308). Counted and inserted under one write lock.
+ */
 export function addComment(db: Db, key: ItemKey, authorId: string, text: string): Comment {
-  const { lastInsertRowid } = db.prepare(`INSERT INTO comments (owner_id, source, path, author_id, text, created_at)
-    VALUES (@owner, @source, @path, @author, @text, @now)`).run({ ...key, author: authorId, text, now: new Date().toISOString() });
-  return commentOf(db, key, Number(lastInsertRowid), authorId)!;
+  return db.transaction(() => {
+    const onItem = db.prepare(`SELECT count(*) FROM comments c WHERE ${ITEM}`).pluck().get(key) as number;
+    if (onItem >= MAX_COMMENTS_PER_ITEM) throw new AppError('COMMENT_LIMIT', { max: MAX_COMMENTS_PER_ITEM });
+    // Trashed rows count too: they stay in the database until the trash is purged (#308).
+    const byAuthor = db.prepare('SELECT count(*) FROM comments WHERE author_id = ?').pluck().get(authorId) as number;
+    if (byAuthor >= MAX_COMMENTS_PER_AUTHOR) throw new AppError('COMMENT_LIMIT', { max: MAX_COMMENTS_PER_AUTHOR });
+    const { lastInsertRowid } = db.prepare(`INSERT INTO comments (owner_id, source, path, author_id, text, created_at)
+      VALUES (@owner, @source, @path, @author, @text, @now)`).run({ ...key, author: authorId, text, now: new Date().toISOString() });
+    return commentOf(db, key, Number(lastInsertRowid), authorId)!;
+  }).immediate();
 }
 
 export function editComment(db: Db, id: number, text: string): void {
