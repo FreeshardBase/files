@@ -1119,3 +1119,13 @@ The issue fixes the reserve, the checked operations, the error and the 90 % warn
 - **The message.** `STORAGE_FULL` is also what a full cloud provider answers. One text serves both: "The storage is full. Empty the trash or delete old versions to make room, or ask your shard's admin for more space." There is no separate code for the shard's disk.
 
 Why: the issue's behaviour with the least new surface: one module beside the quota, the quota's check points, and the existing error code and storage page.
+
+## 2026-10-18: Bounding the tag view and tagged smart folders (#307)
+
+The issue names the bounds ("e.g. 6", "e.g. 500"). It leaves open:
+- **The numbers.** 6 `stat`s in flight per source (`STAT_CONCURRENCY`, as many as a browser opens to one host) and 500 items per request (`MAX_RESOLVED`), both constants in `server/src/storage/askSources.ts`; no setting, nobody has asked to tune them.
+- **What the cap counts.** The tag view takes the first 500 of the tag's rows across all sources in tag order (home rows too, so the order and the cut do not depend on which source is slow); `more: true` says there are others. A smart folder takes the first 500 tagged items of each cloud and reports `more` like a capped search. No paging: the member narrows with a smart folder (tag plus name, type or date) or another tag.
+- **What the tag view shows.** Under the list a muted note, "Only the first {count} items with this tag are shown.", in the style of the search and smart folder notes.
+- **After the time limit.** `withinTime` now hands its work an `AbortSignal` that aborts with `SOURCE_TIMEOUT`; `mapLimit` starts no further `stat` once it has, so a page reload does not leave hundreds of requests queued behind an abandoned one. Calls already in flight finish (a backend call has no abort).
+
+Why: the issue's bound with the least new surface: one helper next to `withinTime`, one boolean in the tag view's answer and one note.

@@ -89,3 +89,41 @@ test.describe('with a cloud connection', () => {
     await expect(page.getByRole('status')).toContainText(/entfernt|removed/);
   });
 });
+
+// #307: the tag view resolves the first 500 items of a tag; with more it lists those and says so.
+test('the tag view of more than 500 items lists the first 500 and says there are more', async ({ page }, info) => {
+  test.slow(); // 502 folders through the API
+  await page.goto('/home');
+  await expect(nav(page)).toBeAttached();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const dir = `/tagged-${tag(info)}`;
+  const folders = Array.from({ length: 501 }, (_, i) => `${dir}/d-${String(i + 1).padStart(3, '0')}`);
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: dir } })).status()).toBe(201);
+  const next = { i: 0 };
+  await Promise.all(Array.from({ length: 16 }, async () => {
+    while (next.i < folders.length) {
+      const r = await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: folders[next.i++] } });
+      expect(r.status(), await r.text()).toBe(201);
+    }
+  }));
+  const name = `many-${tag(info)}`;
+  const add = async (paths: string[]) => {
+    const r = await page.request.post('/api/v1/tags/add', { headers, data: { source: 'home', paths, tag: name } });
+    expect(r.status(), await r.text()).toBe(200);
+  };
+  const note = page.getByText(/^(Nur die ersten 500 Elemente mit diesem Tag werden angezeigt\.|Only the first 500 items with this tag are shown\.)$/);
+
+  await add(folders.slice(0, 500));
+  await page.goto(`/tags/${encodeURIComponent(name)}`);
+  await expect(page.locator('tbody tr')).toHaveCount(500);
+  await expect(page.locator('tbody tr').last().locator('.name')).toHaveText('d-500');
+  await expect(note).toHaveCount(0);
+
+  await add(folders.slice(500));
+  await page.reload();
+  await expect(note).toBeVisible();
+  await expect(page.locator('tbody tr')).toHaveCount(500);
+  await expect(page.locator('tbody tr').last().locator('.name')).toHaveText('d-500');
+  await expect(page.getByText('d-501', { exact: true })).toHaveCount(0);
+});

@@ -5,6 +5,7 @@ import { TAG_COLORS, type TagItemList, type TagList } from '@files/shared';
 import { homeRoot } from '../src/paths.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { startFakeProvider, type FakeProvider } from './support/fakeProvider.ts';
+import { CountingBackend } from './support/countingBackend.ts';
 
 // #212: tags on files and folders across sources. A tag is a row {member, source, path, name}, private to its member.
 // Home rows follow moves (PATH_TABLES), go to the trash with their item and come back with its restore (TRASH_TABLES);
@@ -252,5 +253,67 @@ describe('tags', () => {
     expect((await add(m, `share:${edit.id}`, ['/nothing.txt'], w)).json().code).toBe('NOT_FOUND');
     expect((await add(a, 'home', ['/'], w)).json().code).toBe('PATH_INVALID');
     expect((await add(a, 'conn:0123456789abcdef0123456789abcdef', ['/x'], w)).json().code).toBe('SOURCE_NOT_FOUND');
+  });
+});
+
+// #307: the tag view resolves at most a few items of a source at once, and at most a page of items per request.
+describe('the tag view of many cloud items', () => {
+  const cloud = new CountingBackend();
+  const files = Array.from({ length: 510 }, (_, i) => `/many/f${String(i).padStart(3, '0')}.txt`);
+  for (const f of files) cloud.put(f, 'x');
+  let app: TestApp; let s: S;
+  beforeAll(async () => {
+    app = await startTestApp({ FILES_SOURCE_TIMEOUT_MS: '1000' }, undefined, undefined, { connections: async () => [{ id: 'fake', backend: cloud }] });
+    const l = await login(app, 'testuser');
+    s = { ...l, id: (await app.app.inject({ url: '/api/v1/me', headers: { cookie: l.cookie } })).json().id as string };
+    mkdirSync(homeRoot(app.config.dataDir, s.id), { recursive: true });
+  });
+  afterAll(async () => { await app?.close(); });
+  const req = (method: string, url: string, payload?: unknown) => app.app.inject({
+    method, url, headers: { cookie: s.cookie, ...(method === 'GET' ? {} : { origin: ORIGIN, 'x-csrf-token': s.csrf }) },
+    ...(payload !== undefined ? { payload: payload as object } : {}),
+  });
+  const list = async (name: string): Promise<TagItemList> => {
+    const r = await req('GET', `/api/v1/tags/items?name=${name}`);
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json() as TagItemList;
+  };
+
+  it('stat at most 6 items of a source at once', async () => {
+    await ok(req('POST', '/api/v1/tags/add', { source: 'conn:fake', paths: files.slice(0, 50), tag: 'fifty' }));
+    cloud.reset();
+    const v = await list('fifty');
+    expect(v.items.map((i) => i.state)).toEqual(Array(50).fill('ok'));
+    // Each item carries its own entry, whatever order the answers came in.
+    expect(v.items.every((i) => i.entry?.path === i.path)).toBe(true);
+    expect(cloud.stats).toBe(50);
+    expect(cloud.peak).toBe(6);
+    expect(v.more).toBe(false);
+  });
+
+  it('answer at most 500 items, in tag order, with more: true', async () => {
+    // Tagged last name first, so tag order is not name order.
+    const reversed = [...files].reverse();
+    await ok(req('POST', '/api/v1/tags/add', { source: 'conn:fake', paths: reversed, tag: 'all' }));
+    cloud.reset();
+    const v = await list('all');
+    expect(v.more).toBe(true);
+    expect(v.items.map((i) => i.path)).toEqual(reversed.slice(0, 500));
+    expect(cloud.stats).toBe(500);
+    expect(cloud.peak).toBe(6);
+  });
+
+  it('start no further stat of a source that ran out of time', async () => {
+    await ok(req('POST', '/api/v1/tags/add', { source: 'conn:fake', paths: files.slice(0, 200), tag: 'slow' }));
+    cloud.delayMs = 100;
+    try {
+      cloud.reset();
+      const v = await list('slow');
+      expect(new Set(v.items.map((i) => i.state))).toEqual(new Set(['failed']));
+      expect(v.items[0]!.error?.code).toBe('SOURCE_TIMEOUT');
+      const atAnswer = cloud.stats;
+      await new Promise((r) => setTimeout(r, 600));
+      expect(cloud.stats).toBeLessThanOrEqual(atAnswer + 6);
+    } finally { cloud.delayMs = undefined; }
   });
 });

@@ -37,15 +37,16 @@ export function spellingOf(db: Db, userId: string, fold: string): string | undef
   return db.prepare('SELECT name FROM tags WHERE user_id = ? AND name_fold = ? ORDER BY id LIMIT 1').pluck().get(userId, fold) as string | undefined;
 }
 
-/** Every live item with the tag, in the order they were tagged. */
-export function itemsWithTag(db: Db, userId: string, fold: string): TagRow[] {
-  return db.prepare(`SELECT ${COLUMNS} FROM tags WHERE user_id = ? AND name_fold = ? AND ${LIVE} ORDER BY id`).all(userId, fold) as TagRow[];
+/** The first `limit` live items with the tag (those of a gone source included), in the order they were tagged. */
+export function itemsWithTag(db: Db, userId: string, fold: string, limit: number): TagRow[] {
+  return db.prepare(`SELECT ${COLUMNS} FROM tags WHERE user_id = ? AND name_fold = ? AND ${LIVE} ORDER BY id LIMIT ?`)
+    .all(userId, fold, limit) as TagRow[];
 }
 
-/** The live items of one source with the tag (a smart folder scoped by a tag, #214). */
-export function taggedIn(db: Db, userId: string, source: string, fold: string): { path: string; type: 'file' | 'directory' }[] {
+/** The live items of one source with the tag (a smart folder scoped by a tag, #214), the first `limit` in tag order. */
+export function taggedIn(db: Db, userId: string, source: string, fold: string, limit: number): { path: string; type: 'file' | 'directory' }[] {
   return db.prepare(`SELECT path, type FROM tags WHERE user_id = ? AND source = ? AND name_fold = ? AND ${LIVE} AND gone_at IS NULL
-    ORDER BY id`).all(userId, source, fold) as { path: string; type: 'file' | 'directory' }[];
+    ORDER BY id LIMIT ?`).all(userId, source, fold, limit) as { path: string; type: 'file' | 'directory' }[];
 }
 
 /**
