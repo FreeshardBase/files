@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The storage overview (#156): the member's shard usage against their quota, split into files, trash, versions and
 // uploads in progress; for the admin the shard's disk with its reserve (#320); each cloud connection's provider quota;
-// and the largest folders of the home.
+// and the largest folders of the home. The figures (sizes) are set in the mono face, inside the sentences too (#317);
+// the sentences as plain text stay the usage bars' value text.
 import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ConnectionUsage } from '@files/shared';
@@ -73,9 +74,22 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
         {{ $t('storage.shard') }}
       </h2>
       <div class="storage-source">
-        <p class="storage-figures">
-          {{ shardText }}
-        </p>
+        <i18n-t
+          :keypath="home.quota === null ? 'storage.usedNoQuota' : 'storage.usedOf'"
+          tag="p"
+          class="storage-figures"
+          scope="global"
+        >
+          <template #used>
+            <span class="value-mono">{{ size(home.usage.total) }}</span>
+          </template>
+          <template #total>
+            <span
+              v-if="home.quota !== null"
+              class="value-mono"
+            >{{ size(home.quota) }}</span>
+          </template>
+        </i18n-t>
         <UsageBar
           v-if="home.quota !== null"
           :used="home.usage.total"
@@ -92,7 +106,9 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
             :key="p"
           >
             <dt>{{ $t(`storage.${p}`) }}</dt>
-            <dd>{{ size(home.usage[p]) }}</dd>
+            <dd class="value-mono">
+              {{ size(home.usage[p]) }}
+            </dd>
           </div>
         </dl>
       </div>
@@ -111,9 +127,22 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
           v-else-if="disk.status"
           class="storage-source storage-disk"
         >
-          <p class="storage-figures">
-            {{ diskText }}
-          </p>
+          <i18n-t
+            keypath="storage.disk.usedOf"
+            tag="p"
+            class="storage-figures"
+            scope="global"
+          >
+            <template #used>
+              <span class="value-mono">{{ size(disk.status.total - disk.status.free) }}</span>
+            </template>
+            <template #total>
+              <span class="value-mono">{{ size(disk.status.total) }}</span>
+            </template>
+            <template #free>
+              <span class="value-mono">{{ size(disk.status.free) }}</span>
+            </template>
+          </i18n-t>
           <UsageBar
             :used="disk.status.total - disk.status.free"
             :total="disk.status.total"
@@ -157,9 +186,22 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
         >
           <span class="storage-name">{{ nameOf(c) }}</span>
           <template v-if="c.quota">
-            <p class="storage-figures">
-              {{ cloudText(c.quota) }}
-            </p>
+            <i18n-t
+              :keypath="c.quota.total === undefined ? 'storage.cloudUsedNoLimit' : 'storage.usedOf'"
+              tag="p"
+              class="storage-figures"
+              scope="global"
+            >
+              <template #used>
+                <span class="value-mono">{{ size(c.quota.used) }}</span>
+              </template>
+              <template #total>
+                <span
+                  v-if="c.quota.total !== undefined"
+                  class="value-mono"
+                >{{ size(c.quota.total) }}</span>
+              </template>
+            </i18n-t>
             <UsageBar
               v-if="c.quota.total !== undefined"
               :used="c.quota.used"

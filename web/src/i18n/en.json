@@ -168,6 +168,8 @@
     "unnamed": "Member",
     "title": "Members",
     "intro": "Everyone who has signed in to “Files” at least once. A storage limit caps what a member can store on the shard: files, trash, versions and uploads in progress. Nothing already stored is removed.",
+    "forbiddenTitle": "Only for the shard’s admin",
+    "forbiddenText": "The members and their storage limits are managed by the admin of your shard. Your own usage is under “Storage usage”.",
     "columns": {
       "member": "Member",
       "used": "Used",

@@ -1,8 +1,10 @@
 const UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const;
+// Below a kilobyte the unit is the long word, plural-aware ("1 byte", "25 bytes", "25 Byte"): CLDR's short English
+// form is "byte" for every count (#315). From a kilobyte on it is the symbol ("2.5 kB").
 export function formatSize(bytes: number, locale: string): string {
   let i = 0; let v = bytes;
   while (v >= 1000 && i < UNITS.length - 1) { v /= 1000; i++; }
-  return new Intl.NumberFormat(locale, { style: 'unit', unit: UNITS[i], unitDisplay: 'short', maximumFractionDigits: i === 0 ? 0 : 1 }).format(v);
+  return new Intl.NumberFormat(locale, { style: 'unit', unit: UNITS[i], unitDisplay: i === 0 ? 'long' : 'short', maximumFractionDigits: i === 0 ? 0 : 1 }).format(v);
 }
 /** An entry's size, or "–" where the source cannot tell it before the download (a Google-native document, #236 P4). */
 export function formatEntrySize(e: { size: number; sizeUnknown?: true }, locale: string): string {
