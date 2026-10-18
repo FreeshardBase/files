@@ -34,8 +34,8 @@ async function until<T>(get: () => Promise<T>, ok: (v: T) => boolean, what: stri
     await new Promise((r) => setTimeout(r, 20));
   }
 }
-const settled = (t: TestApp, s: S, id: string) =>
-  until(async () => (await as(t, s, 'GET', `/api/v1/transfers/${id}`)).json() as Job, (j) => j.status !== 'running', `job ${id}`);
+const settled = (t: TestApp, s: S, id: string, ms?: number) =>
+  until(async () => (await as(t, s, 'GET', `/api/v1/transfers/${id}`)).json() as Job, (j) => j.status !== 'running', `job ${id}`, ms);
 let n = 0;
 
 describe('batch rename', () => {
@@ -58,10 +58,10 @@ describe('batch rename', () => {
     expect(r.statusCode, r.body).toBe(200);
     return r.json() as Plan;
   };
-  const run = async (body: object) => {
+  const run = async (body: object, ms?: number) => {
     const r = await as(t, a, 'POST', '/api/v1/renames', body);
     expect(r.statusCode, r.body).toBe(201);
-    return settled(t, a, (r.json() as Job).id);
+    return settled(t, a, (r.json() as Job).id, ms);
   };
 
   beforeAll(async () => {
@@ -189,7 +189,9 @@ describe('batch rename', () => {
     const body = req(dir, files, { find: 'scan', replace: 'page' });
     const plan = await preview(body);
     expect(plan.rows).toHaveLength(500);
-    const job = await run(body);
+    // Beside the 2 GB upload test a busy host needs more than 30 s for 500 renames (#318): wait for the job's state
+    // within the test's own budget.
+    const job = await run(body, 100_000);
     expect(job).toMatchObject({ status: 'completed', total: 500, done: 500, failed: [] });
     expect(names(dir)).toEqual(files.map((f) => f.replace('scan', 'page')).sort());
   }, 120_000);

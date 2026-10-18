@@ -58,6 +58,11 @@ const probeStyle = (page: Page, tagName: string, cls: string, prop: string) => p
   return out;
 }, [tagName, cls, prop]);
 const box = async (l: Locator) => (await l.boundingBox())!;
+/** The top and bottom edges of two elements read from one layout, so no reflow or scroll lands between the readings. */
+async function edges(a: Locator, b: Locator): Promise<{ top: number; bottom: number }[]> {
+  return a.evaluate((x, y) => [x, y].map((el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }),
+    await b.elementHandle());
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/home');
@@ -187,7 +192,9 @@ test('every field has an uppercase label above it; a hint sits under the field, 
       const label = page.locator(`label[for="${await field.getAttribute('id')}"]`);
       expect(await style(label, 'text-transform')).toBe('uppercase');
       expect(await style(label, 'font-size')).toBe('10px');
-      expect((await box(label)).y + (await box(label)).height).toBeLessThanOrEqual((await box(field)).y + 0.5);
+      // The sections above fill in as their data arrives and may move the form between two separate readings.
+      const [l, f] = await edges(label, field);
+      expect(l.bottom).toBeLessThanOrEqual(f.top + 0.5);
     }
     // The password shown once: its label is the same uppercase label.
     await page.getByLabel(/^(Gerät oder Programm|Device or program)$/).fill(`label-${scheme}-${tag(info)}`);
@@ -213,9 +220,10 @@ test('every field has an uppercase label above it; a hint sits under the field, 
     const hint = form.getByText(/^(Nur für dich sichtbar|Nur für Sie sichtbar|Only you see it)/);
     await expect(hint).toBeVisible();
     await expect(labelField).toHaveAccessibleDescription(/(Nur für dich sichtbar|Nur für Sie sichtbar|Only you see it)/);
-    expect((await box(hint)).y).toBeGreaterThanOrEqual((await box(labelField)).y + (await box(labelField)).height - 0.5);
+    const [h, lf] = await edges(hint, labelField);
+    expect(h.top).toBeGreaterThanOrEqual(lf.bottom - 0.5);
     expect(await style(hint, 'font-size')).toBe('13px');
-    expect(await style(hint, 'color')).toBe(await resolved(page, 'var(--ink-muted)'));
+    await expect.poll(() => style(hint, 'color')).toBe(await resolved(page, 'var(--ink-muted)'));
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
   }
@@ -237,7 +245,8 @@ test('a field error is small text right under its field (#239 H5)', async ({ pag
     expect(await style(error, 'font-size')).toBe('13px');
     expect(await style(error, 'margin-top')).toBe('4px');
     expect(await style(error, 'margin-bottom')).toBe('16px');
-    const gap = (await box(error)).y - ((await box(input)).y + (await box(input)).height);
+    const [e, i] = await edges(error, input);
+    const gap = e.top - i.bottom;
     expect(gap).toBeGreaterThanOrEqual(2);
     expect(gap).toBeLessThanOrEqual(6);
     await page.keyboard.press('Escape');

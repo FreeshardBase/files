@@ -17,6 +17,9 @@ body {
   background: var(--bg); color: var(--ink);
   font: 400 var(--fs-body)/1.5 var(--font-ui);
 }
+/* The browser draws controls in its own system font (Arial on Linux), which is a different font on every machine: even a
+   control's hidden text (the file inputs' "Choose files") must come from the bundled fonts (#318). Classes still win. */
+button, input, select, textarea, ::file-selector-button { font-family: inherit; }
 /* Contrast (#160, DESIGN.md "Deviations"): in the light theme the guide's muted ink (#6b7d82) and amber (#c8761f) stay
    under 4.5:1 for small text on the paper and surface tones (3.9 and 3.2). Both are darkened along their own hue until
    they reach it; the dark theme's values already pass and stay. */

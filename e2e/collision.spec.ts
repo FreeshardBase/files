@@ -4,6 +4,15 @@ import { readFileSync } from 'node:fs';
 const file = (name: string, text: string) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
 const upload = (page: Page, ...files: ReturnType<typeof file>[]) => page.getByTestId('upload-input').setInputFiles(files);
 const status = (page: Page) => page.getByRole('status');
+/**
+ * Waits for a batch's toast and closes it. A success toast stays 5 s, so without this the next batch's assertion could
+ * read the previous batch's "1 of 1" and go on before the next batch is done.
+ */
+async function finished(page: Page, text: RegExp) {
+  await expect(status(page)).toContainText(text);
+  await page.getByRole('button', { name: /^(Meldung schließen|Dismiss message)$/ }).click();
+  await expect(status(page)).toHaveText('');
+}
 // Both projects share one server and data dir; a fresh tag per test run keeps every first upload collision-free.
 const tag = (info: TestInfo) => `${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
 /** Opens the home folder and waits until login and the redirect to /home are done. */
@@ -27,7 +36,7 @@ async function download(page: Page, name: string): Promise<string> {
 /** Uploads `name` with `old`, then again with `next`, and returns once the collision dialog is open. */
 async function collide(page: Page, name: string, old = 'old', next = 'new') {
   await upload(page, file(name, old));
-  await expect(status(page)).toContainText(/1 von 1|1 of 1/);
+  await finished(page, /1 von 1|1 of 1/);
   await upload(page, file(name, next));
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page)).toContainText(name);
@@ -100,7 +109,7 @@ test('three conflicting files with "apply to all" ask once', async ({ page }, in
   const names = [1, 2, 3].map((i) => `all-${i}-${tag(info)}.txt`);
   await home(page);
   await upload(page, ...names.map((n) => file(n, 'old')));
-  await expect(status(page)).toContainText(/3 von 3|3 of 3/);
+  await finished(page, /3 von 3|3 of 3/);
   await page.evaluate(() => {
     const w = window as unknown as { dialogsOpened: number };
     w.dialogsOpened = 0;

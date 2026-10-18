@@ -11,8 +11,12 @@ async function headersOf(page: Page) {
   const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
   return { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
 }
-const propfind = (page: Page, password: string) => page.request.fetch('/dav/', { method: 'PROPFIND',
-  headers: { depth: '0', authorization: `Basic ${Buffer.from(`testuser:${password}`).toString('base64')}` } });
+/** PROPFIND on the WebDAV root with the app password; expects `status` and shows the server's answer if it differs. */
+async function propfind(page: Page, password: string, status: number) {
+  const r = await page.request.fetch('/dav/', { method: 'PROPFIND',
+    headers: { depth: '0', authorization: `Basic ${Buffer.from(`testuser:${password}`).toString('base64')}` } });
+  expect(r.status(), `PROPFIND /dav/ answered: ${await r.text()}`).toBe(status);
+}
 
 async function revokeAll(page: Page) {
   const headers = await headersOf(page);
@@ -40,7 +44,7 @@ test('create an app password in settings, see it once, use it for WebDAV, then r
   await expect(field).toHaveValue(/^[a-z2-9]{40}$/);
   const password = await field.inputValue();
   await expect(shown).toContainText(/nur jetzt|only now/);
-  expect((await propfind(page, password)).status()).toBe(207);
+  await propfind(page, password, 207);
 
   await shown.getByRole('button', { name: /^(Fertig|Done)$/ }).click();
   await expect(shown).toHaveCount(0);
@@ -59,13 +63,13 @@ test('create an app password in settings, see it once, use it for WebDAV, then r
   await expect(confirm.getByRole('button', { name: /Abbrechen|Cancel/ })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
-  expect((await propfind(page, password)).status()).toBe(207);
+  await propfind(page, password, 207);
   await page.getByRole('button', { name: /„Test laptop“ widerrufen|Revoke “Test laptop”/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: /^(Widerrufen|Revoke)$/ }).click();
   await expect(page.locator('tbody tr', { hasText: 'Test laptop' })).toHaveCount(0);
   await expect(page.locator('.app-passwords .status')).toContainText(/„Test laptop“ widerrufen|“Test laptop” revoked/);
   await expect(page.getByText(/Noch keine App-Passwörter|No app passwords yet/)).toBeVisible();
-  expect((await propfind(page, password)).status()).toBe(401);
+  await propfind(page, password, 401);
   expect(dialogs).toEqual([]);
 });
 
@@ -76,7 +80,7 @@ test('a create the server refuses shows its error and keeps the form (#122)', as
   // Fill up to the limit through the API, so the next create from the page is refused by the server.
   for (let i = 0; i < 20; i++) {
     const r = await page.request.post('/api/v1/app-passwords', { headers, data: { label: `Test device ${i}` } });
-    expect(r.status()).toBe(201);
+    expect(r.status(), await r.text()).toBe(201);
   }
   await openPlaces(page);
   await settingsLink(page).click();
