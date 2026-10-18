@@ -53,9 +53,9 @@ export async function registerSmartFolderRoutes(app: FastifyInstance): Promise<v
       try {
         const found = searchable.find((s) => s.source === source);
         if (!found) throw new AppError('SOURCE_NOT_FOUND');
-        const answer = await withinTime(config.sourceTimeoutMs, source === 'home'
-          ? Promise.resolve().then(() => evaluateHome(db, user.id, query, SEARCH_LIMIT))
-          : evaluateCloud(db, user.id, source, found.backend, query, SEARCH_LIMIT));
+        const answer = await withinTime(config.sourceTimeoutMs, async (signal) => source === 'home'
+          ? evaluateHome(db, user.id, query, SEARCH_LIMIT)
+          : evaluateCloud(db, user.id, source, found.backend, query, SEARCH_LIMIT, signal));
         return { source, ...answer };
       } catch (e) { // handled: reported as this source's error code next to the other sources' results; logged if unexpected
         return { source, items: [], more: false, error: { code: sourceFailure(e, req.log, source) } };

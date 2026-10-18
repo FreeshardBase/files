@@ -7,6 +7,7 @@ import { lookupMime } from './mime.ts';
 import { foldName } from './nameIndex.ts';
 import { taggedIn } from './tags.ts';
 import type { StorageBackend } from './backend.ts';
+import { mapLimit, MAX_RESOLVED, STAT_CONCURRENCY } from './askSources.ts';
 
 // Smart folders (#214): the member's saved queries, and their evaluation against one source at a time.
 
@@ -122,18 +123,21 @@ const ASK_CLOUD = 200;
  * provider's search for the name, post-filtered on what it returns. Without a name or a tag a cloud cannot be asked.
  */
 export async function evaluateCloud(db: Db, userId: string, source: string, backend: StorageBackend, q: ParsedSmartQuery,
-  limit: number, now = Date.now()): Promise<SourceAnswer> {
+  limit: number, signal?: AbortSignal, now = Date.now()): Promise<SourceAnswer> {
   const cutoff = cutoffOf(q, now);
   let candidates: Entry[];
-  let capped = false;
+  let capped: boolean;
   if (q.tag !== undefined) {
-    const stated = await Promise.all(taggedIn(db, userId, source, foldTag(q.tag)).map(async (r) => {
+    // The first page of the tagged items, a few `stat`s at a time (#307).
+    const tagged = taggedIn(db, userId, source, foldTag(q.tag), MAX_RESOLVED + 1);
+    capped = tagged.length > MAX_RESOLVED;
+    const stated = await mapLimit(tagged.slice(0, MAX_RESOLVED), STAT_CONCURRENCY, async (r) => {
       try { return await backend.stat(r.path); }
       catch (e) { // handled: a tagged path that is gone (moved outside Files) is simply no result; anything else fails the source
         if (e instanceof AppError && e.code === 'NOT_FOUND') return null;
         throw e;
       }
-    }));
+    }, signal);
     candidates = stated.filter((e): e is Entry => e !== null);
   } else {
     if (!backend.search) throw new AppError('NOT_SUPPORTED');

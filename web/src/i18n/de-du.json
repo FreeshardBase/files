@@ -293,6 +293,7 @@
     "viewTitle": "Tag: {tag}",
     "empty": "Kein Element hat diesen Tag.",
     "missing": "Nicht mehr da",
+    "truncated": "Nur die ersten {count} Elemente mit diesem Tag werden angezeigt.",
     "failed": "Ließ sich nicht prüfen: {reason}",
     "removed": "Tag „{tag}“ von „{name}“ entfernt",
     "removeFrom": "Tag „{tag}“ von {name} entfernen",

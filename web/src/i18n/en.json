@@ -293,6 +293,7 @@
     "viewTitle": "Tag: {tag}",
     "empty": "No item has this tag.",
     "missing": "Missing",
+    "truncated": "Only the first {count} items with this tag are shown.",
     "failed": "Could not be checked: {reason}",
     "removed": "Tag “{tag}” removed from “{name}”",
     "removeFrom": "Remove tag “{tag}” from {name}",

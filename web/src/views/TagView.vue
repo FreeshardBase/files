@@ -2,7 +2,8 @@
 // The tag view (#212): every item of the member that carries one tag, across their sources, in the order they were
 // tagged. Each item is looked up in its own source on open: one that is there opens (a folder itself, a file its folder
 // with the file selected); one moved or deleted outside Files shows as missing, one whose source is gone as unavailable,
-// one whose source failed with the reason. Any of them can lose the tag.
+// one whose source failed with the reason. Any of them can lose the tag. Only the first page of items is resolved; a
+// note says so when the tag has more (#307).
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -21,6 +22,8 @@ const { folderLabel } = useLocations();
 const name = computed(() => String(route.params.name));
 const list = ref<TagItemList | null>(null);
 const error = ref<ApiFailure | null>(null);
+// How many items the server answered (its page); removing a tag here does not change what "the first n" were.
+const shownCount = ref(0);
 const status = ref('');
 const failure = ref('');
 const title = ref<HTMLElement>();
@@ -32,7 +35,7 @@ async function load() {
   error.value = null;
   try {
     const r = await api.get<TagItemList>('/api/v1/tags/items', { name: name.value });
-    if (id === seq) list.value = r;
+    if (id === seq) { list.value = r; shownCount.value = r.items.length; }
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
     if (id === seq) { error.value = e; list.value = null; }
@@ -182,5 +185,11 @@ async function untag(i: TagItem) {
         </tr>
       </tbody>
     </table>
+    <p
+      v-if="!error && list?.more"
+      class="search-note"
+    >
+      {{ $t('tags.truncated', { count: shownCount }) }}
+    </p>
   </section>
 </template>

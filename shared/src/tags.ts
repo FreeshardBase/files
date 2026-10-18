@@ -72,6 +72,9 @@ export const TagItemSchema = z.object({
 });
 export type TagItem = z.infer<typeof TagItemSchema>;
 
-/** `GET /api/v1/tags/items?name=`: every item with the tag, across the member's sources. */
-export const TagItemListSchema = z.object({ name: z.string(), color: z.enum(TAG_COLORS), items: z.array(TagItemSchema) });
+/**
+ * `GET /api/v1/tags/items?name=`: the items with the tag, across the member's sources, the first 500 in tag order;
+ * `more` when there are others (#307).
+ */
+export const TagItemListSchema = z.object({ name: z.string(), color: z.enum(TAG_COLORS), items: z.array(TagItemSchema), more: z.boolean() });
 export type TagItemList = z.infer<typeof TagItemListSchema>;

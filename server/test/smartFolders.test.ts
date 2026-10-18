@@ -6,6 +6,7 @@ import { AppError } from '../src/errors.ts';
 import type { ConnectedBackend, StorageBackend } from '../src/storage/backend.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 import { MemBackend } from './support/memBackend.ts';
+import { CountingBackend } from './support/countingBackend.ts';
 
 // #214: smart folders, saved structured queries evaluated on open across the home (name index, tags) and the member's
 // connections (the provider's search plus a post-filter, or the tagged items). A failing or slow source is a failed group
@@ -33,12 +34,17 @@ const stub = (search?: StorageBackend['search']): StorageBackend => ({
   list: nope, stat: nope, read: nope, write: nope, mkdir: nope, move: nope, copy: nope, delete: nope,
   ...(search ? { search } : {}),
 });
+// A cloud whose `stat` counts the calls in flight (#307), with many files to tag.
+const counting = new CountingBackend();
+const many = Array.from({ length: 510 }, (_, i) => `/many/f${String(i).padStart(3, '0')}.txt`);
+for (const f of many) counting.put(f, 'x');
 const connections = async (user: { id: string }): Promise<ConnectedBackend[]> => user.id !== a?.id ? [] : [
   { id: 'works', backend: searching },
   { id: 'broken', backend: stub(async () => { throw new Error('provider exploded'); }) },
   { id: 'throttled', backend: stub(async () => { throw new AppError('PROVIDER_UNAVAILABLE'); }) },
   { id: 'slow', backend: stub(() => new Promise<never>(() => {})) },
   { id: 'nosearch', backend: stub() },
+  { id: 'counting', backend: counting },
 ];
 
 beforeAll(async () => {
@@ -78,6 +84,7 @@ const group = async (s: S, id: string, source = 'home') => (await results(s, id)
 const paths = async (s: S, id: string, source = 'home') => (await group(s, id, source)).items.map((e) => e.path).sort();
 let n = 0;
 const fresh = async (s: S, stem: string) => { const d = `/${stem}-${++n}`; await mkdir(s, d); return d; };
+const word = (stem: string) => `${stem}${++n}`;
 
 describe('smart folders', () => {
   it('need a session and CSRF', async () => {
@@ -172,7 +179,8 @@ describe('smart folders', () => {
     const r = await results(a, f.id);
     expect(Date.now() - started).toBeLessThan(5000);
     const by = new Map(r.groups.map((g) => [g.source, g]));
-    expect([...by.keys()]).toEqual(['home', 'conn:works', 'conn:broken', 'conn:throttled', 'conn:slow', 'conn:nosearch']);
+    expect([...by.keys()]).toEqual(['home', 'conn:works', 'conn:broken', 'conn:throttled', 'conn:slow', 'conn:nosearch',
+      'conn:counting']);
     expect(by.get('home')!.items.map((e) => e.path)).toContain(`${d}/report-home.pdf`);
     expect(by.get('conn:works')!.items.map((e) => e.path).sort())
       .toEqual(['/Reports/report-big.pdf', '/Reports/report-photo.png', '/Reports/report-small.pdf']);
@@ -187,5 +195,45 @@ describe('smart folders', () => {
     const r = await results(a, f.id);
     expect(r.groups.map((g) => [g.source, g.error?.code])).toEqual([
       ['home', undefined], ['conn:works', 'SEARCH_NEEDS_NAME'], ['conn:unlinked', 'SOURCE_NOT_FOUND']]);
+  });
+
+  // #307: a tag scoping a cloud stats its tagged items at most 6 at once, and no more than 500 of them.
+  it('stat at most 6 tagged items of a cloud at once, and at most 500', async () => {
+    const tag = word('many');
+    await ok(as(a, 'POST', '/api/v1/tags/add', { source: 'conn:counting', paths: many.slice(0, 50), tag }));
+    const f = await create(a, 'Fifty', { tag, sources: ['conn:counting'] });
+    counting.reset();
+    const g = await group(a, f.id, 'conn:counting');
+    expect(g.error).toBeUndefined();
+    expect(g.items).toHaveLength(50);
+    expect(counting.stats).toBe(50);
+    expect(counting.peak).toBe(6);
+
+    const all = word('all');
+    await ok(as(a, 'POST', '/api/v1/tags/add', { source: 'conn:counting', paths: many, tag: all }));
+    const h = await create(a, 'All', { tag: all, sources: ['conn:counting'] });
+    counting.reset();
+    const r = await group(a, h.id, 'conn:counting');
+    expect(r.error).toBeUndefined();
+    expect(r.more).toBe(true);
+    expect(counting.stats).toBe(500);
+    expect(counting.peak).toBe(6);
+
+    // Fewer matches than a page still say `more` when tagged items were left out.
+    const few = await create(a, 'Few', { tag: all, name: 'f00', sources: ['conn:counting'] });
+    const fr = await group(a, few.id, 'conn:counting');
+    expect(fr.items.map((e) => e.path).sort()).toEqual(many.slice(0, 10));
+    expect(fr.more).toBe(true);
+
+    // A cloud that runs out of time starts no further `stat` once nobody waits for it.
+    counting.delayMs = 50;
+    try {
+      counting.reset();
+      const slow = await group(a, h.id, 'conn:counting');
+      expect(slow.error?.code).toBe('SOURCE_TIMEOUT');
+      const atAnswer = counting.stats;
+      await new Promise((r) => setTimeout(r, 400));
+      expect(counting.stats).toBeLessThanOrEqual(atAnswer + 6);
+    } finally { counting.delayMs = undefined; }
   });
 });
