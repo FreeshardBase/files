@@ -103,13 +103,18 @@ test('buttons and list rows answer hover and press; the change is a short transi
 
     // The phone has no upload labels in the toolbar (#245): its neutral button is the selection bar's "Rename", its
     // forward action the "Upload" menu button.
-    if (mobile(info)) await row(page, 'ledger.csv').getByRole('checkbox').check();
+    if (mobile(info)) {
+      await row(page, 'ledger.csv').getByRole('checkbox').check();
+      await page.mouse.move(0, 0); // the selection bar may open under the pointer the check left behind
+    }
     const neutral = mobile(info) ? page.locator('.selection-bar .button', { hasText: /^\s*(Umbenennen|Rename)\s*$/ })
       : page.locator('label.button.upload:not(.primary)');
     const primary = page.locator(mobile(info) ? '.add-menu .button.primary' : 'label.button.primary.upload');
+    await expect(neutral).toBeVisible();
     expect(await style(neutral, 'transition-property')).toMatch(/border-color.*background-color|background-color.*border-color/);
     expect(await style(neutral, 'transition-duration')).toMatch(/^0\.15s/);
-    expect(await style(neutral, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+    // Settled: a hover that just ended is still fading out for 0.15 s.
+    await settled(neutral, 'background-color').toBe('rgba(0, 0, 0, 0)');
 
     await neutral.hover();
     await expect.poll(() => style(neutral, 'background-color')).toBe(await resolved(page, 'var(--bg)'));
@@ -120,9 +125,8 @@ test('buttons and list rows answer hover and press; the change is a short transi
       .toBe(await resolved(page, 'color-mix(in srgb, var(--accent) 8%, transparent)'));
     await expect.poll(() => style(primary, 'border-top-color')).toBe(await resolved(page, 'var(--accent)'));
 
-    // Pressed: a faint ink tint while the button is held.
-    const b = await box(neutral);
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    // Pressed: a faint ink tint while the button is held. `hover` waits until the button stands still, then points at it.
+    await neutral.hover();
     await page.mouse.down();
     await expect.poll(() => style(neutral, 'background-color'))
       .toBe(await resolved(page, 'color-mix(in srgb, var(--ink) 6%, transparent)'));
@@ -135,7 +139,7 @@ test('buttons and list rows answer hover and press; the change is a short transi
       await r.getByRole('checkbox').uncheck();
       await page.mouse.move(0, 0); // off the row the uncheck left the pointer on
     }
-    expect(await style(r, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+    await settled(r, 'background-color').toBe('rgba(0, 0, 0, 0)');
     await r.locator('.num').first().hover();
     await expect.poll(() => style(r, 'background-color'))
       .toBe(await resolved(page, 'color-mix(in srgb, var(--ink) 3%, transparent)'));
@@ -215,7 +219,7 @@ test('the collision dialog reads Skip | Replace | Keep both, the forward action 
 
 test('a confirm dialog puts Cancel left with the focus and the danger action right; revoking is a danger button (#238 B5, B8)', async ({ page }, info) => {
   const label = `Test confirm ${tag(info)}`;
-  await page.request.post('/api/v1/app-passwords', { headers: await headers(page), data: { label } });
+  expect((await page.request.post('/api/v1/app-passwords', { headers: await headers(page), data: { label } })).status()).toBe(201);
   await openPlaces(page);
   await page.getByRole('navigation', { name: /Orte|Places/ }).getByRole('link', { name: /Einstellungen|Settings/ }).click();
   for (const scheme of SCHEMES) {
@@ -231,14 +235,12 @@ test('a confirm dialog puts Cancel left with the focus and the danger action rig
     const dialog = page.getByRole('dialog', { name: new RegExp(label) });
     await expect(dialog).toBeVisible();
     const buttons = dialog.locator('.app-dialog-actions button');
-    const labels = await texts(buttons);
-    expect(labels).toHaveLength(2);
-    expect(labels[0]).toMatch(/^(Abbrechen|Cancel)$/);
-    expect(labels[1]).toMatch(/^(Widerrufen|Revoke)$/);
+    await expect(buttons).toHaveText([/^(Abbrechen|Cancel)$/, /^(Widerrufen|Revoke)$/]);
     await expect(buttons.nth(0)).toBeFocused();
-    expect(await style(buttons.nth(1), 'color')).toBe(await resolved(page, 'var(--danger)'));
-    const [cancel, danger] = [await box(buttons.nth(0)), await box(buttons.nth(1))];
-    expect(cancel.x).toBeLessThan(danger.x);
+    await settled(buttons.nth(1), 'color').toBe(await resolved(page, 'var(--danger)'));
+    // Both boxes from one layout, so nothing can move between the two readings.
+    const [cancel, danger] = await buttons.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().x));
+    expect(cancel).toBeLessThan(danger!);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
   }

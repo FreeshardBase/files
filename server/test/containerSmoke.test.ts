@@ -29,10 +29,14 @@ const calls = (dir: string) => readFileSync(join(dir, 'podman.calls'), 'utf8').t
 const run = (cmd: string, args: string[], path: string) =>
   spawnSync(cmd, args, { cwd: repo, encoding: 'utf8', env: { PATH: path, HOME: process.env.HOME! }, timeout: 60_000 });
 const SCRIPT_TOOLS = ['dirname', 'mktemp', 'rm', 'tail', 'grep', 'cat'];
+// What a `pnpm` that is a shell shim needs before it reaches node: npm's and setup-pnpm's shims (the CI runner's) call
+// `dirname`, `sed` and `uname` to find their own directory (#318).
+const SHIM_TOOLS = ['dirname', 'sed', 'uname', 'basename', 'readlink', 'cat'];
 
 describe('pnpm smoke:container', () => {
   it('is skipped with a clear message and exit 0 when podman is missing', () => {
-    const bin = binDir(['node', 'pnpm', 'sh', 'bash']);
+    const bin = binDir(['node', 'pnpm', 'sh', 'bash', ...SHIM_TOOLS]);
+    expect(spawnSync('/bin/sh', ['-c', 'command -v podman'], { env: { PATH: bin } }).status).not.toBe(0);
     const r = run(join(bin, 'pnpm'), ['--silent', 'smoke:container'], bin);
     expect(r.stderr).toBe('');
     expect(r.status).toBe(0);

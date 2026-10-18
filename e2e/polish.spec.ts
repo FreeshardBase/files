@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { expectBundledFontsOnly } from './fonts.ts';
 
 // #160: the polish pass. Accessibility (axe, names, focus), mobile (no horizontal scroll, 44 px targets, the item menu,
 // the collapsible sidebar), menus that only offer valid actions, empty states per view, no dead controls, keyboard help,
@@ -342,10 +343,13 @@ test('no dead controls: every button on the main screens does something visible 
       let downloaded = false;
       page.once('download', () => { downloaded = true; });
       await b.click();
+      // A full page load (sign-out's `location.replace`) can destroy the page while the check runs in it; expect.poll
+      // does not retry a check that throws, so that one error counts as what it means: the page went somewhere else.
       await expect.poll(async () => downloaded || await page.evaluate(() => {
         const w = window as unknown as { changes?: number; before?: string };
         return w.changes === undefined || (w.changes ?? 0) > 0 || w.before !== location.href;
-      }), { message: `${label} has no visible effect`, timeout: 3000 }).toBe(true);
+      }).catch((e: Error) => { if (/Execution context was destroyed/.test(e.message)) return true; throw e; }),
+      { message: `${label} has no visible effect`, timeout: 3000 }).toBe(true);
       // Sign-out (#222) lands on its page only after the server call and clearing the browser's storage; the next
       // screen must not load before that, or the late `location.replace` signs out the page the loop is checking.
       if (label.endsWith(': Sign out')) await page.waitForURL('**/signed-out');
@@ -464,6 +468,7 @@ for (const theme of ['light', 'dark'] as const) {
         const section = page.locator('main section').first();
         await expect(section.locator('tbody tr').first()).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
+        await expectBundledFontsOnly(page, section);
         await expect(section).toHaveScreenshot(`${view}-${theme}-${locale}.png`, { mask: [section.locator('td.date')], animations: 'disabled', caret: 'hide' });
       }
     });

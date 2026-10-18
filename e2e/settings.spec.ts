@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { expectBundledFontsOnly } from './fonts.ts';
 import { openPlaces } from './places.ts';
 
 // #159: language (Deutsch Du / Deutsch Sie / English) and theme (light / dark / system) on the settings page. The choice
@@ -167,6 +168,7 @@ for (const theme of ['light', 'dark'] as const) {
       const view = page.locator('section.folder');
       await expect(view.locator('tr', { hasText: 'Report.txt' })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
+      await expectBundledFontsOnly(page, view);
       await expect(view).toHaveScreenshot(`folder-${theme}-${locale}.png`, { mask: [view.locator('td.date')], animations: 'disabled', caret: 'hide' });
     });
   }
