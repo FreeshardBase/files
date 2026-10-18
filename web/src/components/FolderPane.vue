@@ -40,7 +40,7 @@ import { useTagsStore } from '../stores/tags.ts';
 import { useCommentsStore } from '../stores/comments.ts';
 import { useWorkspaceStore, type OtherPane, type View } from '../stores/workspace.ts';
 import AddTagDialog from './AddTagDialog.vue';
-import { acceptDrag, acceptFileDrag, droppedFiles, droppedPaths } from '../dnd.ts';
+import { acceptDrag, acceptFileDrag, drag, droppedFiles, droppedPaths, pendingDrop, refuseDrag, type DropMode } from '../dnd.ts';
 import { sortEntries } from '../sort.ts';
 import { intlLocale } from '../format.ts';
 import { previewKind } from '../preview.ts';
@@ -302,13 +302,19 @@ function upload(files: PickedFile[], into?: { source: string; dir: string }) {
   } });
 }
 
-// Files and folders dragged in from the desktop upload into the open folder. With two panes (#218), items dragged over
-// from the other pane drop into the open folder too, wherever they land outside a folder row or crumb.
+// Files and folders dragged in from the desktop upload into the open folder. Our own items dragged here from another
+// folder (the other pane, #218, or one that a spring-loaded target opened on the way, #338) drop into the open folder
+// too, wherever they land outside a folder row or crumb. A folder the member may not change refuses them visibly.
 const dropActive = ref(false);
 const itemsOver = ref(false);
+watch(() => drag.items, (i) => { if (!i) itemsOver.value = false; }); // ended or cancelled without a leave
+const alreadyHere = (items: { source: string; paths: string[] }) =>
+  items.source === folder.source && items.paths.every((p) => parentOf(p) === folder.path);
 function onFileDragOver(e: DragEvent) {
-  if (canUpload.value && acceptFileDrag(e)) dropActive.value = true;
-  else if (props.other && editable.value && !e.defaultPrevented && acceptDrag(e)) itemsOver.value = true;
+  if (canUpload.value && acceptFileDrag(e)) { dropActive.value = true; return; }
+  if (e.defaultPrevented || !drag.items || folder.error) return;
+  if (!editable.value) refuseDrag(e);
+  else if (!alreadyHere(drag.items) && acceptDrag(e, folder.source, folderName.value)) itemsOver.value = true;
 }
 function onFileDragLeave(e: DragEvent) {
   if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) { dropActive.value = false; itemsOver.value = false; }
@@ -316,8 +322,11 @@ function onFileDragLeave(e: DragEvent) {
 async function onFileDrop(e: DragEvent) {
   dropActive.value = false; itemsOver.value = false;
   if (e.defaultPrevented) return; // a folder row or crumb took the items
-  const items = props.other && editable.value ? droppedPaths(e) : null;
-  if (items) { void onDrop(items.paths, folder.path, items.source); return; }
+  const items = editable.value ? droppedPaths(e, folder.source) : null;
+  if (items) {
+    if (!alreadyHere(items)) void onDrop(items.paths, folder.path, items.source, items.mode);
+    return;
+  }
   if (!canUpload.value) return;
   const files = droppedFiles(e);
   if (!files) return;
@@ -597,16 +606,17 @@ watch(() => transfers.lastSettled, (j) => {
   const here = (j.to === folder.source && j.dir === folder.path) || (j.mode === 'move' && j.from === folder.source);
   if (here && folder.source === source.value) void folder.open(folder.path, { refresh: true });
 });
-// Items dropped on a folder of this source move there. Items dragged over from the other pane's source (#218) are copied,
-// as between two drives of a desktop file manager, with the collision question asked against the target folder.
-async function onDrop(paths: string[], dir: string, from: string) {
+// Items dropped on a folder of this source move there (Ctrl/Alt copies). Items from another source (the other pane, #218,
+// or a spring-loaded drag, #338) are copied, as between two drives of a desktop file manager (Shift moves: the transfer
+// job's copy, verify, delete), with the collision question asked against the target folder.
+async function onDrop(paths: string[], dir: string, from: string, mode: DropMode) {
   if (!editable.value || acting.value) return;
   const items = paths.map((p) => ({ path: p, name: baseName(p) }));
-  if (from === folder.source) { void transfer('move', items.map((x) => ({ from: x.path, name: x.name })), dir); return; }
+  if (from === folder.source) { void transfer(mode, items.map((x) => ({ from: x.path, name: x.name })), dir); return; }
   acting.value = true;
   try {
     const taken = dir === folder.path ? folder.entries.map((e) => e.name) : (await listAll(folder.source, dir)).map((e) => e.name);
-    await startJob('copy', from, items, folder.source, dir, taken, folder.nameRules);
+    await startJob(mode, from, items, folder.source, dir, taken, folder.nameRules);
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
     failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] }; // handled: the target could not be listed
@@ -614,6 +624,17 @@ async function onDrop(paths: string[], dir: string, from: string) {
     acting.value = false;
   }
 }
+// Spring-loaded targets (#338): a folder row or crumb held under dragged items opens, in the pane the member acts in.
+function springRow(e: Entry) { if (props.focused) open(e); }
+function springCrumb(p: string) { if (props.focused) void router.push(folderRoute(source.value, p)); }
+// A drop onto a sidebar source or a share went to that place's root; once its listing is in, it runs here.
+watch([() => pendingDrop.value, () => folder.loading, () => folder.path, () => folder.source], () => {
+  const p = pendingDrop.value;
+  if (!p || !props.focused || folder.loading || folder.source !== p.to || source.value !== p.to || folder.path !== p.dir) return;
+  pendingDrop.value = null;
+  if (folder.error) return; // the alert says why the place cannot be opened
+  if (!alreadyHere(p)) void onDrop(p.paths, p.dir, p.source, p.mode);
+}, { immediate: true });
 
 // "Copy/Move to other pane" (#218): the menu, the selection bar, F5 and F6. Within one source it is a direct move or copy
 // with the collision question per item; between sources a transfer job, as for a paste.
@@ -672,6 +693,7 @@ defineExpose({
     class="page folder"
     :class="{ 'drop-active': dropActive, 'items-over': itemsOver }"
     :style="{ '--selection-bar-height': `${selectionBarHeight}px` }"
+    @dragenter="onFileDragOver"
     @dragover="onFileDragOver"
     @dragleave="onFileDragLeave"
     @drop="onFileDrop"
@@ -693,6 +715,7 @@ defineExpose({
         :root-note="rootNote"
         :editable="editable"
         @drop="onDrop"
+        @spring="springCrumb"
       />
       <div class="toolbar-actions">
         <select
@@ -1098,6 +1121,7 @@ defineExpose({
           @action="onAction"
           @paste="paste"
           @drop="onDrop"
+          @spring="springRow"
           @sort="sortBy"
           @open-tab="openTab"
         />

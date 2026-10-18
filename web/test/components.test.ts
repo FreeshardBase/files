@@ -183,7 +183,9 @@ describe('FileList actions', () => {
     await w.findAll('tbody tr')[1]!.trigger('dragstart', { dataTransfer });
     await w.findAll('tbody tr')[1]!.trigger('drop', { dataTransfer });
     await w.findAll('tbody tr')[0]!.trigger('drop', { dataTransfer });
-    expect(w.emitted('drop')).toEqual([[['/a b.txt'], '/Fotos', 'home']]); // with the source the items came from (#218)
+    await w.findAll('tbody tr')[0]!.trigger('drop', { dataTransfer, ctrlKey: true });
+    // with the source the items came from (#218) and the mode: within one source a move, Ctrl copies (#338)
+    expect(w.emitted('drop')).toEqual([[['/a b.txt'], '/Fotos', 'home', 'move'], [['/a b.txt'], '/Fotos', 'home', 'copy']]);
   });
 });
 

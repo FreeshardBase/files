@@ -20,6 +20,9 @@ import { useRequestsStore } from './stores/requests.ts';
 import { useDiskStore } from './stores/storage.ts';
 import { usePageTitle } from './pageTitle.ts';
 import { memberName } from './memberName.ts';
+import { useI18n } from 'vue-i18n';
+import DragBadge from './components/DragBadge.vue';
+import { acceptDrag, drag, droppedPaths, pendingDrop, refuseDrag, springLeave, springOver } from './dnd.ts';
 const session = useSessionStore();
 const requests = useRequestsStore();
 const connections = useConnectionsStore();
@@ -29,6 +32,7 @@ const transfers = useTransfersStore();
 const disk = useDiskStore();
 const router = useRouter();
 const route = useRoute();
+const { t } = useI18n();
 const showLoginFailed = loginFailed();
 usePageTitle();
 // A failed login is said on its own, outside the shell; every other state keeps the shell (#240).
@@ -52,6 +56,35 @@ watch(() => route.fullPath, () => { placesOpen.value = false; });
 watch(() => route.path, () => { if (session.me) void requests.load(); });
 // The source the folder view shows (`home`, `conn:<id>`), so its sidebar entry stays current in every subfolder (#244).
 const inSource = (source: string) => route.params.source === source;
+// Places as drop targets (#338): the home and each usable cloud connection take dragged items into their root and, held
+// under them for a moment, open; "Shared with me" opens too (its shares are the targets there); Recent and the trash
+// refuse a drop. A drop runs in the folder pane of the place once it has opened (`pendingDrop`).
+type Place = { key: string; to?: { source: string; label: string }; open?: string };
+const dropOver = ref<string | null>(null);
+watch(() => drag.items, (i) => { if (!i) dropOver.value = null; }); // ended or cancelled without a leave
+const usable = (c: { status: string }) => c.status === 'ok';
+function placeOver(e: DragEvent, p: Place) {
+  if (p.open) { const open = p.open; springOver(e, `place:${p.key}`, () => { void router.push(open); }); }
+  if (p.to ? acceptDrag(e, p.to.source, p.to.label) : refuseDrag(e)) dropOver.value = p.to ? p.key : null;
+}
+function placeLeave(e: DragEvent, p: Place) {
+  springLeave(e, `place:${p.key}`);
+  if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) return;
+  if (dropOver.value === p.key) dropOver.value = null;
+}
+function placeDrop(e: DragEvent, p: Place) {
+  dropOver.value = null;
+  if (!p.to) return;
+  const items = droppedPaths(e, p.to.source);
+  if (!items) return;
+  pendingDrop.value = { source: items.source, paths: items.paths, mode: items.mode, to: p.to.source, dir: '/' };
+  void router.push(folderRoute(p.to.source, '/'));
+}
+const homePlace = computed<Place>(() => ({ key: 'home', to: { source: 'home', label: t('nav.home') }, open: '/home' }));
+const connectionPlace = (c: { source: string; providerName: string; status: string }): Place => (usable(c)
+  ? { key: c.source, to: { source: c.source, label: c.providerName }, open: folderRoute(c.source, '/') } : { key: c.source });
+const sharedPlace: Place = { key: 'shared', open: '/shared' };
+const readOnlyPlace: Place = { key: 'read-only' };
 // The member in the header as an initial (#244); the whole name is beside it on a wide screen and its tooltip.
 const initial = computed(() => Array.from(session.me ? memberName(session.me).trim() : '')[0]?.toLocaleUpperCase() ?? '');
 // "?" opens the keyboard shortcuts, except while typing or while another dialog is open.
@@ -239,7 +272,11 @@ onMounted(async () => {
               <RouterLink
                 to="/home"
                 active-class="active"
-                :class="{ active: inSource('home') }"
+                :class="{ active: inSource('home'), 'drop-target': dropOver === 'home' }"
+                @dragenter="placeOver($event, homePlace)"
+                @dragover="placeOver($event, homePlace)"
+                @dragleave="placeLeave($event, homePlace)"
+                @drop="placeDrop($event, homePlace)"
               >
                 <span
                   class="icon icon-home"
@@ -253,8 +290,12 @@ onMounted(async () => {
                 :to="c.status === 'library' ? '/connections' : folderRoute(c.source, '/')"
                 active-class="active"
                 class="nav-connection"
-                :class="{ active: inSource(c.source) }"
+                :class="{ active: inSource(c.source), 'drop-target': dropOver === c.source }"
                 :data-status="c.status"
+                @dragenter="placeOver($event, connectionPlace(c))"
+                @dragover="placeOver($event, connectionPlace(c))"
+                @dragleave="placeLeave($event, connectionPlace(c))"
+                @drop="placeDrop($event, connectionPlace(c))"
               >
                 <span
                   class="icon icon-cloud"
@@ -326,6 +367,8 @@ onMounted(async () => {
               <RouterLink
                 to="/recent"
                 active-class="active"
+                @dragenter="placeOver($event, readOnlyPlace)"
+                @dragover="placeOver($event, readOnlyPlace)"
               >
                 <span
                   class="icon icon-recent"
@@ -336,6 +379,9 @@ onMounted(async () => {
               <RouterLink
                 to="/shared"
                 active-class="active"
+                @dragenter="placeOver($event, sharedPlace)"
+                @dragover="placeOver($event, sharedPlace)"
+                @dragleave="placeLeave($event, sharedPlace)"
               >
                 <span
                   class="icon icon-shared"
@@ -374,6 +420,8 @@ onMounted(async () => {
               <RouterLink
                 to="/trash"
                 active-class="active"
+                @dragenter="placeOver($event, readOnlyPlace)"
+                @dragover="placeOver($event, readOnlyPlace)"
               >
                 <span
                   class="icon icon-trash"
@@ -456,6 +504,7 @@ onMounted(async () => {
           />
           <TransferPanel />
           <RouterView />
+          <DragBadge />
         </template>
         <!-- Without /me (offline, a server error) the shell stays and says why in the page column (#240). -->
         <section

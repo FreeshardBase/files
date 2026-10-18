@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { DEFAULT_SORT, SORT_KEYS, type Entry, type Sort, type SortKey } from '@files/shared';
 import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
 import { downloadHref } from '../api/paths.ts';
-import { acceptDrag, droppedPaths, startDrag } from '../dnd.ts';
+import { acceptDrag, drag, droppedPaths, springLeave, springOver, startDrag, type DropMode } from '../dnd.ts';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
@@ -28,8 +28,8 @@ const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; s
 { source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }),
   tags: () => ({}), comments: () => ({}), toOther: false });
 const emit = defineEmits<{
-  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[], HTMLElement?]; paste: []; drop: [string[], string, string];
-  sort: [SortKey]; openTab: [Entry];
+  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[], HTMLElement?]; paste: []; drop: [string[], string, string, DropMode];
+  sort: [SortKey]; openTab: [Entry]; spring: [Entry];
 }>();
 const { locale } = useI18n();
 const active = ref(0);
@@ -119,14 +119,25 @@ function onContextMenu(e: MouseEvent, i: number) {
 }
 // Long-press (#160): a touch held still opens the row's menu, as the context menu does with a mouse.
 const press = useLongPress((i) => { active.value = i; void menus.get(i)?.show(); });
+// A folder row takes dragged items (#338) and, held under them, asks to be opened; never a folder that is itself dragged.
+watch(() => drag.items, (i) => { if (!i) dropTarget.value = null; }); // ended or cancelled without a leave
+const dragged = (entry: Entry) => drag.items?.source === props.source && drag.items.paths.includes(entry.path);
 function onDragOver(e: DragEvent, entry: Entry) {
-  if (props.editable && entry.type === 'directory' && acceptDrag(e)) dropTarget.value = entry.path;
+  if (entry.type !== 'directory' || dragged(entry)) return;
+  springOver(e, `row:${props.source}:${entry.path}`, () => emit('spring', entry));
+  if (props.editable && acceptDrag(e, props.source, entry.name)) dropTarget.value = entry.path;
+}
+function onDragLeave(e: DragEvent, entry: Entry) {
+  springLeave(e, `row:${props.source}:${entry.path}`);
+  dropTarget.value = dropTarget.value === entry.path ? null : dropTarget.value;
 }
 function onDrop(e: DragEvent, entry: Entry) {
   dropTarget.value = null;
   if (!props.editable || entry.type !== 'directory') return;
-  const items = droppedPaths(e);
-  if (items) emit('drop', items.paths.filter((p) => items.source !== props.source || p !== entry.path), entry.path, items.source);
+  const items = droppedPaths(e, props.source);
+  if (items) {
+    emit('drop', items.paths.filter((p) => items.source !== props.source || p !== entry.path), entry.path, items.source, items.mode);
+  }
 }
 // A middle click on a folder (#219) asks for it in a new tab; the folder view decides whether there are tabs.
 function onAuxClick(e: MouseEvent, entry: Entry) {
@@ -228,8 +239,9 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
             @contextmenu="onContextMenu($event, i)"
             @dragstart="startDrag($event, source, targets(i).map((x) => x.path))"
             @auxclick="onAuxClick($event, e)"
+            @dragenter="onDragOver($event, e)"
             @dragover="onDragOver($event, e)"
-            @dragleave="dropTarget = dropTarget === e.path ? null : dropTarget"
+            @dragleave="onDragLeave($event, e)"
             @drop="onDrop($event, e)"
           >
             <td

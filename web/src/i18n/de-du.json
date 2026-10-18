@@ -548,6 +548,11 @@
     "blocked": "Hierher geht es nicht: Hier liegen die Elemente schon, oder es ist einer der ausgewählten Ordner.",
     "readOnly": "In diesem Ordner darfst du nichts ändern."
   },
+  "dnd": {
+    "copyTo": "Kopieren nach {target}",
+    "moveTo": "Verschieben nach {target}",
+    "refused": "Hier nicht möglich"
+  },
   "dualPane": {
     "left": "Linker Bereich",
     "right": "Rechter Bereich",
