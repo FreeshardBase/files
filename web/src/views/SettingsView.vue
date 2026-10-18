@@ -125,6 +125,11 @@ async function revoke() {
       <p class="trash-note">
         {{ $t('settings.webdav.username') }}
       </p>
+      <p>
+        <RouterLink :to="{ name: 'settings-phone' }">
+          {{ $t('phone.title') }}
+        </RouterLink>
+      </p>
     </section>
 
     <section
