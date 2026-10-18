@@ -9,6 +9,7 @@ import { useSharedStore } from '../stores/shared.ts';
 import { api, ApiFailure } from '../api/client.ts';
 import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
 import PreviewDialog from '../components/PreviewDialog.vue';
+import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 import { formatDate, intlLocale } from '../format.ts';
 
@@ -105,10 +106,7 @@ async function remove(item: IncomingShare) {
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              <span
-                class="name-text"
-                :title="item.name"
-              >{{ item.name }}</span>
+              <NameText :name="item.name" />
             </div>
           </td>
           <td class="origin">

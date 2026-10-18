@@ -10,6 +10,7 @@ import { folderRoute } from '../api/paths.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
 import CollisionDialog, { type CollisionChoice } from '../components/CollisionDialog.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 import { parentOf, useLocations } from '../location.ts';
 
@@ -192,10 +193,7 @@ async function confirmed() {
                 :class="item.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              <span
-                class="name-text"
-                :title="item.name"
-              >{{ item.name }}</span>
+              <NameText :name="item.name" />
             </div>
           </td>
           <td class="origin">

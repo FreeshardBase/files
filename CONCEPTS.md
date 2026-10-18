@@ -304,6 +304,7 @@ SPA URLs are `/<source>/<folder path…>`; `/home/…` and `/share:<id>/…` are
 | `markdown.ts` | markdown-it tokens to Vue nodes: allowlisted elements, raw HTML as text, http(s)/mailto links only (new tab, no referrer), images as their alt text. |
 | `preview.ts` | `previewKind` (MIME to viewer), `contentHref`, `hasThumbnail`/`thumbnailHref`, `pageThumb` (a PDF's thumbnail gets a frame, #236), and `fetchText` (Range-capped text fetch). |
 | `fileKind.ts` | `fileKind` (#242): an entry's MIME type as a word for the details drawer ("PDF document", "Image (PNG)", "File (.ext)"). |
+| `components/NameText.vue` | A list row's name (#237, #336): two lines at most; a longer name is cut in the middle (`nameParts`, like a gallery tile), so its end and extension stay visible. It is measured again when its cell changes width. The full name is the title and the accessible name. |
 | `components/ItemMenu.vue` | A row's action menu (menu button pattern); the touch path to every action. Opens upward when there is no room below (#224), and to the right of its button when there is no room to the left (#229). |
 | `components/RenameDialog.vue` | New name for one item, stem preselected. |
 | `components/BatchRenameDialog.vue` | Batch rename (#215) in a wide `<AppDialog>`: find/replace, prefix, suffix, capitals, numbering (pattern, start), the extension switch, and the preview table from `/api/v1/renames/preview` (asked 200 ms after the last change) with a policy menu per flagged row; "Rename n items" only while the preview is current and nothing is flagged. |
