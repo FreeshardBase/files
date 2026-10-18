@@ -1182,3 +1182,12 @@ Question: the issue offers two ways to give the dialog a target (a stored path p
 - **A file the owner has since moved or renamed** opens the folder with nothing selected. The request does not track files after they arrive.
 
 Why: this is the smallest change that gets the owner from the badge to the file. It reuses the folder view's `?select=`.
+
+## 2026-10-18: Sizes below a kilobyte, and the members page for a member (#315, #316)
+
+Question: #315 offers an i18n plural key ("25 bytes") or the narrow symbol ("25 B") for the byte step. #316 leaves open what the members page shows for an error other than the refusal.
+
+- **The byte step uses CLDR's long unit name, the other steps keep the symbol.** The result is "25 bytes" and "1 byte" in English and "25 Byte" in German, with CLDR's plural rules. `formatSize` takes a locale and needs no i18n instance, so no new locale keys are needed. "25 B" would be shorter, but "B" next to "kB" is easy to misread in a list.
+- **The refusal (FORBIDDEN) shows "Only for the shard's admin" with "Go to “My storage”".** Any other error shows the shell's "could not load" banner with "Try again", as DESIGN.md asks for everything that is not "not there".
+
+Why: the long name is the only form that is plural-aware without new strings. The banners follow the existing state rules.

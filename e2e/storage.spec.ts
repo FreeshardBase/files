@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { openPlaces } from './places.ts';
 
 // #156: the storage overview and the admin's quotas. `testuser` is the admin (role from the IdP's claim), `member` is
@@ -60,9 +60,9 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await expect(shardBar(member)).toBeVisible();
   await expect(shardBar(member)).toHaveAttribute('aria-valuemax', '50000000');
   await expect(member.locator('.storage-figures').first()).toContainText(/(von|of) 50 MB/);
-  // The members page is the admin's: the server refuses it to the member.
+  // The members page is the admin's: the server refuses it to the member (the page itself is #316's test).
   await member.goto('/members');
-  await expect(member.getByRole('alert')).toContainText(/keine Berechtigung|don’t have permission/);
+  await expect(member.locator('.alert-banner')).toContainText(/Nur für den Admin des Shards|Only for the shard’s admin/);
 
   // Removed again: no quota, no bar.
   await row.getByRole('button', { name: /Speicherlimit für Test Member entfernen|Remove the storage limit for Test Member/ }).click();
@@ -72,6 +72,58 @@ test('the admin sets a quota for member on the members page; member sees it as a
   await expect(shardBar(member)).toHaveCount(0);
   expect(dialogs).toEqual([]);
   await member.context().close();
+});
+
+/** Every size in `scope` sits in an element set in IBM Plex Mono, and the sentence around it is in the UI face (#317). */
+async function expectMonoFigures(scope: Locator, sizes: RegExp[]) {
+  expect(await scope.evaluate((el) => getComputedStyle(el).fontFamily)).not.toContain('IBM Plex Mono');
+  const figures = scope.locator('.value-mono');
+  await expect(figures).toHaveText(sizes);
+  for (const f of await figures.all()) {
+    expect(await f.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('IBM Plex Mono');
+  }
+}
+
+test('a member who opens the members page sees one banner with the way to “My storage”, not the admin’s intro (#316)', async ({ browser, baseURL }, info) => {
+  const member = await signedIn(browser, info, baseURL!, 'member');
+  try {
+    await member.goto('/members');
+    const banner = member.locator('.alert-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner.getByRole('heading', { name: /Nur für den Admin des Shards|Only for the shard’s admin/ })).toBeVisible();
+    await expect(banner).toContainText(/Speicherbelegung|Storage usage/);
+    await expect(member.getByText(/Alle, die sich schon einmal|Everyone who has signed in/)).toHaveCount(0);
+    await expect(member.locator('.members-list')).toHaveCount(0);
+    await banner.getByRole('link', { name: /Zu „Mein Speicher“|Go to “My storage”/ }).click();
+    await expect(member).toHaveURL(/\/home$/);
+  } finally {
+    await member.context().close();
+  }
+});
+
+test('the members page shows the row skeleton while it loads, and the intro only with the table (#316)', async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route('**/api/v1/admin/members', async (route) => { await held; await route.continue(); });
+  await page.goto('/members');
+  await expect(page.locator('.row-skeleton')).toBeVisible();
+  await expect(page.getByText(/Alle, die sich schon einmal|Everyone who has signed in/)).toHaveCount(0);
+  release();
+  await expect(page.locator('.members-list')).toBeVisible();
+  await expect(page.locator('.row-skeleton')).toHaveCount(0);
+  await expect(page.getByText(/Alle, die sich schon einmal|Everyone who has signed in/)).toBeVisible();
+});
+
+test('the storage breakdown sets its sizes in the mono face (#317)', async ({ page }) => {
+  await page.goto('/storage');
+  const values = page.locator('.storage-breakdown dd');
+  await expect(values).toHaveCount(4);
+  for (const v of await values.all()) {
+    expect(await v.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('IBM Plex Mono');
+  }
+  await expect(page.locator('.storage-breakdown dt').first()).toBeVisible();
+  expect(await page.locator('.storage-breakdown dt').first().evaluate((el) => getComputedStyle(el).fontFamily)).not.toContain('IBM Plex Mono');
+  await expectMonoFigures(page.locator('.storage-figures').first(), [/^[0-9.,]+\s(bytes?|Byte|kB|MB|GB)$/]);
 });
 
 test.describe('with a cloud account', () => {
@@ -103,6 +155,9 @@ test.describe('with a cloud account', () => {
       await expect(cloud).toBeVisible();
       await expect(cloud).toHaveAttribute('aria-valuetext', /2[.,]5 MB (von|of) 15 GB/);
       await expect(page.locator('.storage-clouds')).toContainText(/2[.,]5 MB (von|of) 15 GB/);
+      // #317: the figures are in the mono face like every other size, the words around them in the UI face.
+      await expectMonoFigures(page.locator('.storage-clouds .storage-figures'), [/^2[.,]5\sMB$/, /^15\sGB$/]);
+      await expectMonoFigures(page.locator('.storage-figures').first(), [/^[0-9.,]+\sMB$/, /^1\sGB$/]);
       const largest = page.getByRole('table', { name: /Größte Ordner|Largest folders/ });
       // A folder is written like everywhere else, from the root's name and never with a leading slash (#244).
       const folder = largest.getByRole('link', { name: new RegExp(`(Mein Speicher|My storage) › ${dir}`) });
