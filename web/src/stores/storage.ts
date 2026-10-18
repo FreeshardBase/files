@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { MemberUsage, MemberUsageList, StorageOverview } from '@files/shared';
+import type { DiskStatus, MemberUsage, MemberUsageList, StorageOverview } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 
 /** The caller's storage overview (#156): shard usage and quota, provider quotas, largest folders. */
@@ -24,6 +24,32 @@ export const useStorageStore = defineStore('storage', {
         this.error = e; this.overview = null;
       } finally {
         if (id === this.seq) this.loaded = true;
+      }
+    },
+  },
+});
+
+/**
+ * The shard's disk and its reserve (#320), for the admin only: the storage page shows it, the shell's banner warns from
+ * 90 % used. Loaded once at sign-in and again by the storage page.
+ */
+export const useDiskStore = defineStore('disk', {
+  state: () => ({
+    status: null as DiskStatus | null,
+    error: null as ApiFailure | null,
+    seq: 0,
+  }),
+  actions: {
+    async load() {
+      const id = ++this.seq;
+      try {
+        const r = await api.get<DiskStatus>('/api/v1/admin/disk');
+        if (id !== this.seq) return;
+        this.status = r; this.error = null;
+      } catch (e) {
+        if (id !== this.seq) return;
+        if (!(e instanceof ApiFailure)) throw e;
+        this.error = e; this.status = null;
       }
     },
   },

@@ -1,5 +1,6 @@
 import { hkdfSync } from 'node:crypto';
 import { z } from 'zod';
+import { parseReserve } from './storage/diskReserve.ts';
 
 // The shard's app template only provides `{{ secret('…') }}` (32 alphanumeric characters), so the
 // AES-256 key is derived from the secret. Salt and info are fixed: changing them orphans encrypted data.
@@ -38,6 +39,15 @@ const Schema = z.object({
   FILES_OIDC_ROLE_CLAIM: z.string().min(1).optional(),
   FILES_OIDC_ADMIN_VALUE: z.string().min(1).optional(),
   FILES_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 ** 3),
+  // What Files keeps free on its data volume (#320): bytes with a unit (`10GiB`, `700MB`) or a share of the volume
+  // (`8%`). Unset: the larger of 5 GiB and 5 %.
+  FILES_DISK_RESERVE: z.string().optional().transform((s, ctx) => {
+    if (s === undefined) return null;
+    const r = parseReserve(s);
+    if (r) return r;
+    ctx.addIssue({ code: 'custom', message: 'must be a size with a unit (B, KiB, MiB, GiB, TiB, KB, MB, GB, TB) above 0, or a percentage between 0 and 100, e.g. 10GiB or 8%' });
+    return z.NEVER;
+  }),
   // Days an item stays in the trash before the expiry job deletes it permanently.
   FILES_TRASH_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   // The thumbnail cache's size cap (the least recently used thumbnails go first) and each generator's time limit.
@@ -109,6 +119,7 @@ export function loadConfig(env: Record<string, string | undefined>) {
         : undefined,
     },
     maxUploadBytes: e.FILES_MAX_UPLOAD_BYTES,
+    diskReserve: e.FILES_DISK_RESERVE,
     trashRetentionDays: e.FILES_TRASH_RETENTION_DAYS,
     thumbCacheBytes: e.FILES_THUMB_CACHE_BYTES,
     thumbTimeoutMs: e.FILES_THUMB_TIMEOUT_MS,

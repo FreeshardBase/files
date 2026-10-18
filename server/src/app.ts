@@ -53,6 +53,7 @@ import { registerRenameRoutes } from './routes/renames.ts';
 import { registerDuplicateRoutes } from './routes/duplicates.ts';
 import { DuplicateFinder } from './storage/duplicates.ts';
 import { registerClientErrorRoutes } from './routes/clientErrors.ts';
+import { DiskReserve, statfsSpace, type DiskSpaceProvider } from './storage/diskReserve.ts';
 
 declare module 'fastify' {
   /**
@@ -61,7 +62,7 @@ declare module 'fastify' {
    */
   interface FastifyContextConfig { public?: boolean; appPassword?: boolean }
   interface FastifyInstance { deps: { config: Config; db: Db; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-    thumbs: ThumbnailCache; connections: Connections; cloud: CloudConnections; transfers: TransferEngine; duplicates: DuplicateFinder } }
+    thumbs: ThumbnailCache; disk: DiskReserve; connections: Connections; cloud: CloudConnections; transfers: TransferEngine; duplicates: DuplicateFinder } }
 }
 
 /** A member's own cloud connections as backends: `conn:<id>` resolves only among these, as do search and shares. */
@@ -85,6 +86,8 @@ export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) 
   pathTables?: readonly PathTable[];
   /** Tables whose rows hang off a trash row and are purged with it; `TRASH_TABLES` unless a test brings its own. */
   trashTables?: readonly TrashTable[];
+  /** The data volume's size and free bytes (#320); `statfs` unless a test brings a fake volume. */
+  diskSpace?: DiskSpaceProvider;
   /** The member's cloud connections as backends; the `connections` rows unless a test brings its own backends. */
   connections?: Connections;
   logStream?: NodeJS.WritableStream;
@@ -92,7 +95,7 @@ export type AppDeps = { config: Config; db: Db; extend?: (app: FastifyInstance) 
   onRoute?: (route: RouteOptions) => void };
 
 export async function buildApp({ config, db, extend, logStream, onRoute, pathTables = PATH_TABLES, trashTables = TRASH_TABLES,
-  connections, providers = configuredProviders(config), clock = systemClock }: AppDeps): Promise<FastifyInstance> {
+  connections, providers = configuredProviders(config), clock = systemClock, diskSpace = statfsSpace }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -117,10 +120,11 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
     },
     crossOriginEmbedderPolicy: false,
   });
-  const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs });
+  const disk = new DiskReserve({ dir: config.dataDir, db, setting: config.diskReserve, space: diskSpace });
+  const thumbs = new ThumbnailCache({ db, dir: thumbsDir(config.dataDir), capBytes: config.thumbCacheBytes, timeoutMs: config.thumbTimeoutMs, disk });
   const cloud = new CloudConnections({ db, key: config.encryptionKey, providers, clock, pathTables,
     redirectUri: new URL(CONNECT_CALLBACK_PATH, config.publicUrl).href });
-  const deps: FastifyInstance['deps'] = { config, db, pathTables, trashTables, thumbs, cloud,
+  const deps: FastifyInstance['deps'] = { config, db, pathTables, trashTables, thumbs, disk, cloud,
     connections: connections ?? (async (user) => cloud.backends(user.id)), transfers: undefined as unknown as TransferEngine,
     duplicates: undefined as unknown as DuplicateFinder };
   deps.transfers = new TransferEngine(deps, app.log);

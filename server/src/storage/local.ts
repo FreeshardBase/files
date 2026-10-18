@@ -15,6 +15,7 @@ import { deletePathRefs, deleteTrashRefs, movePathRefs, restoreTrashRefs, type P
 import { recordRecent } from './recent.ts';
 import { indexedItem, indexItems, largestFolders, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
 import type { ThumbnailCache } from './thumbnails.ts';
+import type { DiskHold, DiskReserve } from './diskReserve.ts';
 
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
@@ -68,6 +69,8 @@ function underUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 type Reservation = { bytes: number; staging: string };
 const inFlight = new Map<string, Set<Reservation>>();
 const inFlightOf = (userId: string) => inFlight.get(userId) ?? new Set<Reservation>();
+/** A write of unknown length asks the disk reserve again after this many bytes (#320): others may be writing too. */
+const DISK_RECHECK_BYTES = 16 * 1024 ** 2;
 
 // Bytes of the regular files in a tree (0 for anything that is gone or in `skip`); symlinks are neither followed nor counted.
 export async function treeSize(abs: string, skip?: ReadonlySet<string>): Promise<number> {
@@ -135,9 +138,11 @@ async function syncDir(dir: string): Promise<void> {
  * The database side of a home: path-dependent rows and trash rows change in the same transaction as the files.
  * `thumbs` is the app's thumbnail cache; a backend without it (the expiry jobs, unit tests) has no `thumbnail`.
  * `versions`: how many versions of one file are kept, and how many bytes they may hold together (#154).
+ * `disk` is the shard's disk reserve (#320); every home the app serves has it, only the expiry jobs, the reindex
+ * command and unit tests (which add no bytes) go without.
  */
 export type HomeIndex = { db: Db; userId: string; pathTables: readonly PathTable[]; trashTables: readonly TrashTable[];
-  thumbs?: ThumbnailCache; versions: { maxCount: number; maxBytes: number }; etagKey: Buffer };
+  thumbs?: ThumbnailCache; disk?: DiskReserve; versions: { maxCount: number; maxBytes: number }; etagKey: Buffer };
 
 // Renames done inside a database transaction; undone in reverse order when anything after them fails.
 class FsSteps {
@@ -488,12 +493,14 @@ export class LocalBackend implements StorageBackend {
     // Built in the internal area first, so a half-done copy is never visible; the startup sweep clears what a crash leaves.
     const stage = join(await this.internalDir('tmp'), randomBytes(16).toString('hex'));
     // The copy adds the source's bytes (#156), reserved until they are placed (#197); "replace" sends the item in the
-    // way to the trash, which still counts.
-    const { granted, release } = await this.reserve(await treeSize(e.src), stage);
+    // way to the trash, which still counts. The disk reserve holds them likewise (#320).
+    const { granted, diskAllowed, release } = await this.reserve(await treeSize(e.src), stage);
     try {
       await copyTree(e.src, stage);
       // The source may have grown while it was copied.
-      if (await treeSize(stage) > granted) throw new AppError('QUOTA_EXCEEDED');
+      const copied = await treeSize(stage);
+      if (copied > granted) throw new AppError('QUOTA_EXCEEDED');
+      if (copied > diskAllowed) throw new AppError('STORAGE_FULL');
       const beneath = e.type === 'directory' ? await walkTree(stage, false) : [];
       const replacedSize = policy === 'replace' ? await treeSize(e.dst) : 0;
       const placed = this.atomically((fs) => {
@@ -575,6 +582,8 @@ export class LocalBackend implements StorageBackend {
     if (!row) throw new AppError('NOT_FOUND');
     // Trashed bytes count already, but the trash empties itself; a restore keeps them for good, so it needs room (#156).
     if (row.size > await this.remainingQuota()) throw new AppError('QUOTA_EXCEEDED');
+    // Likewise the disk reserve (#320): the trash would free these bytes, the restored file never does.
+    if (this.index.disk && row.size > await this.index.disk.left()) throw new AppError('STORAGE_FULL');
     const src = await this.trashBytes(id);
     const trash = await this.internalDir('trash');
     const nt = normalizeUserPath(row.original_path);
@@ -660,9 +669,22 @@ export class LocalBackend implements StorageBackend {
   /**
    * Takes `bytes` of the member's free space for a write or copy staged at `staging` (#197), or, without a declared
    * size, all that is left. Checked and taken under the member's lock, so writes running together never share the same
-   * free bytes. Returns the bytes granted and a release to call once the bytes are placed or dropped.
+   * free bytes. Then the same bytes are held against the shard's disk reserve (#320), STORAGE_FULL if they do not fit.
+   * Returns the bytes granted by the quota and by the disk, the disk hold (to count what has been written; none without
+   * a reserve) and a release to call once the bytes are placed or dropped.
    */
-  private reserve(bytes: number | undefined, staging: string): Promise<{ granted: number; release: () => Promise<void> }> {
+  private async reserve(bytes: number | undefined, staging: string): Promise<{ granted: number; diskAllowed: number;
+    diskHold?: DiskHold; release: () => Promise<void> }> {
+    const quota = await this.reserveQuota(bytes, staging);
+    if (!this.index.disk) return { ...quota, diskAllowed: Infinity };
+    let disk: Awaited<ReturnType<DiskReserve['hold']>>;
+    try { disk = await this.index.disk.hold(bytes); }
+    catch (e) { await quota.release(); throw e; }
+    return { granted: quota.granted, diskAllowed: disk.allowed, diskHold: disk.hold,
+      release: async () => { disk.release(); await quota.release(); } };
+  }
+
+  private reserveQuota(bytes: number | undefined, staging: string): Promise<{ granted: number; release: () => Promise<void> }> {
     const userId = this.index.userId;
     return underUserLock(userId, async () => {
       const free = await this.freeBeforeReservations();
@@ -762,13 +784,18 @@ export class LocalBackend implements StorageBackend {
     const expiresAt = new Date(now.getTime() + UPLOAD_TTL_MS).toISOString();
     // Walk, reservation check and insert under the member's lock (shared with direct writes and copies, #197) and one
     // write lock, so two uploads or writes started at once cannot both take the last bytes.
+    // The disk reserve (#320) is checked under its own lock too: every member's open uploads count against the one disk.
     await underUserLock(userId, async () => {
       const free = await this.freeBeforeReservations();
-      db.transaction(() => {
+      const insert = (diskLeft: number) => db.transaction(() => {
         if (free !== Infinity && u.length > free - this.reserved()) throw new AppError('QUOTA_EXCEEDED');
+        if (u.length > diskLeft) throw new AppError('STORAGE_FULL');
         db.prepare(`INSERT INTO uploads (id, user_id, source, path, length, received, on_collision, created_at, expires_at)
           VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, userId, u.source, nt, u.length, u.onCollision, now.toISOString(), expiresAt);
       }).immediate();
+      const disk = this.index.disk;
+      if (disk) await disk.serialized(async () => insert(await disk.left()));
+      else insert(Infinity);
     });
     try {
       const fh = await open(await this.uploadBytes(id), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW);
@@ -817,6 +844,8 @@ export class LocalBackend implements StorageBackend {
     const rest = row.length - row.received;
     if (declared !== undefined && declared > rest) { await this.dropUpload(id); throw new AppError('SIZE_MISMATCH'); }
     if (rest > 0 && rest > await this.remainingQuota(id)) throw new AppError('QUOTA_EXCEEDED');
+    // The rest was promised at creation, but the disk may have filled up since (#320).
+    if (rest > 0 && this.index.disk && rest > await this.index.disk.left(id)) throw new AppError('STORAGE_FULL');
     const file = await this.uploadBytes(id);
     const before = await lstat(file).then((s) => s, (e) => {
       if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND', undefined, { cause: e });
@@ -1024,21 +1053,32 @@ export class LocalBackend implements StorageBackend {
     checkIfMatch(st);
     const tmp = join(dir, `.${randomBytes(8).toString('hex')}.upload`);
     // The declared size is reserved before a byte is read (#197); without one the write may fill what is left.
-    const { granted: quotaLeft, release } = await this.reserve(opts.size, tmp);
-    try { return await this.writeReserved(p, body, opts, { target, dir, tmp, quotaLeft, current, checkIfMatch }); }
+    const { granted: quotaLeft, diskAllowed, diskHold, release } = await this.reserve(opts.size, tmp);
+    try { return await this.writeReserved(p, body, opts, { target, dir, tmp, quotaLeft, diskAllowed, diskHold, current, checkIfMatch }); }
     finally { await release(); }
   }
 
   private async writeReserved(p: string, body: Readable, opts: WriteOptions, w: { target: string; dir: string; tmp: string;
-    quotaLeft: number; current: () => Promise<Stats | undefined>; checkIfMatch: (s: Stats | undefined) => void }): Promise<Entry> {
-    const { target, dir, tmp, quotaLeft, current, checkIfMatch } = w;
+    quotaLeft: number; diskAllowed: number; diskHold?: DiskHold; current: () => Promise<Stats | undefined>;
+    checkIfMatch: (s: Stats | undefined) => void }): Promise<Entry> {
+    const { target, dir, tmp, quotaLeft, diskAllowed, diskHold, current, checkIfMatch } = w;
+    const disk = this.index.disk;
     let written = 0;
+    let checkedAt = 0;
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         written += chunk.length;
+        if (diskHold) diskHold.written = written;
         if (written > opts.maxBytes) return cb(new AppError('PAYLOAD_TOO_LARGE'));
         if (written > quotaLeft) return cb(new AppError('QUOTA_EXCEEDED'));
-        cb(opts.size !== undefined && written > opts.size ? new AppError('SIZE_MISMATCH') : null, chunk);
+        if (written > diskAllowed) return cb(new AppError('STORAGE_FULL'));
+        if (opts.size !== undefined && written > opts.size) return cb(new AppError('SIZE_MISMATCH'));
+        // Without a declared size nothing was held, so other writes may take the same free bytes meanwhile (#320).
+        if (opts.size === undefined && disk && written - checkedAt >= DISK_RECHECK_BYTES) {
+          checkedAt = written;
+          return void disk.left().then((left) => cb(left < 0 ? new AppError('STORAGE_FULL') : null, chunk), cb);
+        }
+        cb(null, chunk);
       },
     });
     try {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { errorStatus, MemberId, SetQuotaRequest, type ConnectionUsage, type MemberUsage, type MemberUsageList,
+import { errorStatus, MemberId, SetQuotaRequest, type ConnectionUsage, type DiskStatus, type MemberUsage, type MemberUsageList,
   type StorageOverview } from '@files/shared';
 import { requireAdmin, requireUser } from '../auth/guard.ts';
 import { AppError } from '../errors.ts';
@@ -48,6 +48,12 @@ export async function registerStorageRoutes(app: FastifyInstance): Promise<void>
     requireAdmin(req);
     const rows = db.prepare(`${MEMBERS} ORDER BY display_name COLLATE NOCASE, id`).all() as MemberRow[];
     return { items: await Promise.all(rows.map(view)) };
+  });
+
+  // The data volume and the disk reserve (#320), the whole shard's figures: only the admin sees them.
+  app.get('/api/v1/admin/disk', async (req): Promise<DiskStatus> => {
+    requireAdmin(req);
+    return app.deps.disk.status();
   });
 
   // A new quota applies to the next upload, copy, restore or transfer item; nothing already stored is removed.

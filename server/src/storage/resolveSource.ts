@@ -35,8 +35,8 @@ async function resolveConnection(deps: FastifyInstance['deps'], user: User, id: 
  * file access; the admin's member list builds other homes only to measure their usage (#156).
  */
 export function homeOf(deps: FastifyInstance['deps'], userId: string): LocalBackend {
-  const { config, db, pathTables, trashTables, thumbs } = deps;
-  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, versions: config.versions,
+  const { config, db, pathTables, trashTables, thumbs, disk } = deps;
+  return new LocalBackend(homeRoot(config.dataDir, userId), { db, userId, pathTables, trashTables, thumbs, disk, versions: config.versions,
     etagKey: config.etagKey });
 }
 

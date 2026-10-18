@@ -8,6 +8,8 @@
     "offline": "Du bist offline. Dateien und Ordner werden wieder geladen, sobald die Verbindung wieder da ist.",
     "actionLost": "Deine Sitzung war abgelaufen, du bist wieder angemeldet. Deine letzte Aktion wurde nicht ausgeführt; bitte wiederhole sie.",
     "dismiss": "Schließen",
+    "diskWarning": "Die Festplatte des Shards ist fast voll.",
+    "diskWarningLink": "Zur Speicherbelegung",
     "loadFailed": "„Dateien“ lässt sich nicht laden",
     "pageTitle": "{page} – {app}"
   },
@@ -151,7 +153,16 @@
       "folder": "Ordner",
       "size": "Größe"
     },
-    "openLabel": "{path} öffnen"
+    "openLabel": "{path} öffnen",
+    "disk": {
+      "title": "Die Festplatte des Shards",
+      "usedOf": "{used} von {total} belegt · {free} frei",
+      "bar": "Belegter Platz auf der Festplatte des Shards",
+      "reserveDefault": "Für den Shard freigehalten: {reserve} (die Voreinstellung, 5 GiB oder 5 % der Festplatte, je nachdem, was mehr ist). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "reserveSet": "Für den Shard freigehalten: {reserve} (festgelegt mit FILES_DISK_RESERVE={setting}). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "warningTitle": "Die Festplatte des Shards ist fast voll",
+      "warningText": "Sobald nur noch die Reserve frei ist, kann niemand mehr Dateien speichern. Leere den Papierkorb, lösche alte Versionen oder bitte die Mitglieder, Platz zu schaffen."
+    }
   },
   "members": {
     "title": "Mitglieder",
@@ -739,7 +750,7 @@
     "PAYLOAD_TOO_LARGE": "Die Datei ist zu groß.",
     "UNSUPPORTED_MEDIA_TYPE": "Dieser Dateityp wird hier nicht angenommen.",
     "RANGE_NOT_SATISFIABLE": "Die Datei konnte nicht geladen werden. Versuch es noch einmal.",
-    "STORAGE_FULL": "Der Speicher ist voll.",
+    "STORAGE_FULL": "Der Speicher ist voll. Leere den Papierkorb oder lösche alte Versionen, um Platz zu schaffen, oder bitte den Admin deines Shards um mehr Platz.",
     "SOURCE_NOT_FOUND": "Diesen Ort gibt es nicht, oder du hast keinen Zugriff darauf.",
     "PRECONDITION_FAILED": "Die Datei wurde inzwischen geändert. Lade die Seite neu und versuch es noch einmal.",
     "SIZE_MISMATCH": "Der Upload war unvollständig. Versuch es noch einmal.",
