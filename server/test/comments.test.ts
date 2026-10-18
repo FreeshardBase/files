@@ -300,3 +300,75 @@ describe('comments', () => {
     expect(rows('/top.txt')).toBe(0);
   });
 });
+
+// #308: comments sit outside every quota, so their number is capped: 500 live comments per item, 20 000 per author
+// (also those waiting in the trash). The caps are checked with the insert in one transaction; a refused comment adds no row.
+describe('comment limits', () => {
+  const fill = (owner: string, path: string, author: string, count: number, trash: string | null = null) => {
+    const ins = t.db.prepare(`INSERT INTO comments (owner_id, source, path, author_id, text, created_at, trash_id)
+      VALUES (?, 'home', ?, ?, 'filler', '2026-10-18T00:00:00.000Z', ?)`);
+    t.db.transaction(() => { for (let i = 0; i < count; i++) ins.run(owner, path, author, trash); })();
+  };
+  const limited = (r: { statusCode: number; body: string; json: () => unknown }, max: number) => {
+    expect(r.statusCode, r.body).toBe(409);
+    expect(r.json()).toMatchObject({ code: 'COMMENT_LIMIT', params: { max } });
+  };
+
+  it('refuse the 501st live comment on an item, also from a read-only grantee, until the owner deletes one', async () => {
+    const d = await fresh(a, 'item-limit');
+    const path = `${d}/plan.txt`;
+    await put(a, path);
+    const src = `share:${await share(a, 'home', d, m, 'read')}`;
+    // Trashed rows at the same path are not the live thread and do not count.
+    fill(a.id, path, a.id, 30, 'trash-308');
+    fill(a.id, path, a.id, 499);
+    const last = await say(m, src, '/plan.txt', 'the 500th');
+    const before = rows(path);
+    limited(await post(m, src, '/plan.txt', 'one too many'), 500);
+    limited(await post(a, 'home', path, 'one too many'), 500);
+    expect(rows(path)).toBe(before);
+    // The owner deletes any comment on their item, which makes room for one more.
+    expect((await remove(a, last.id, 'home', path)).statusCode).toBe(204);
+    await say(m, src, '/plan.txt', 'fits again');
+    limited(await post(m, src, '/plan.txt', 'full again'), 500);
+    expect(rows(path)).toBe(before);
+  });
+
+  it('refuse a member\'s 20 001st comment wherever it goes, trashed ones included, and hold nobody else to it', async () => {
+    const d = await fresh(a, 'author-limit');
+    const path = `${d}/plan.txt`;
+    await put(a, path);
+    const src = `share:${await share(a, 'home', d, m, 'read')}`;
+    const bulk = `/bulk-308-${n}`;
+    const own = `/own-308-${n}.txt`;
+    // Top the member up to 19 998 comments (they wrote some in earlier tests), spread over many items of their own.
+    const had = t.db.prepare('SELECT count(*) FROM comments WHERE author_id = ?').pluck().get(m.id) as number;
+    for (let left = 19_998 - had, i = 0; left > 0; left -= 400, i++) fill(m.id, `${bulk}/${i}.txt`, m.id, Math.min(400, left));
+    try {
+      // The 19 999th goes on a file of their own, which they then delete: the comment waits in the trash with it and
+      // still counts, so trashing an item does not reset the member's count while its rows stay in the database.
+      await put(m, own);
+      await say(m, 'home', own, 'the 19 999th');
+      await del(m, [own]);
+      expect(t.db.prepare('SELECT count(*) FROM comments WHERE path = ? AND trash_id IS NOT NULL').pluck().get(own)).toBe(1);
+      await say(m, src, '/plan.txt', 'the 20 000th');
+      limited(await post(m, src, '/plan.txt', 'one too many'), 20000);
+      expect(rows(path)).toBe(1);
+      await say(a, 'home', path, 'the owner still comments');
+      expect(rows(path)).toBe(2);
+      // Deleting the item from the trash for good deletes its comment, which makes room for one more.
+      const trash = (await as(m, 'GET', '/api/v1/trash')).json().items as { id: string; originalPath: string }[];
+      await ok(as(m, 'POST', '/api/v1/trash/delete', { ids: [trash.find((x) => x.originalPath === own)!.id] }));
+      await say(m, src, '/plan.txt', 'fits again');
+      limited(await post(m, src, '/plan.txt', 'full again'), 20000);
+    } finally {
+      t.db.prepare('DELETE FROM comments WHERE author_id = ? AND (substr(path, 1, length(?)) = ? OR path IN (?, ?))').run(m.id, bulk, bulk, own, path);
+    }
+  });
+
+  it('count all of an author\'s comments through an index, not a scan of every comment', () => {
+    const plan = t.db.prepare('EXPLAIN QUERY PLAN SELECT count(*) FROM comments WHERE author_id = ?')
+      .all('someone') as { detail: string }[];
+    expect(plan.map((p) => p.detail).join('\n')).toMatch(/USING (COVERING )?INDEX comments_author/);
+  });
+});

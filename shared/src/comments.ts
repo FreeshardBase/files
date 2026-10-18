@@ -7,6 +7,11 @@ import { MemberSchema } from './entries.ts';
 /** A comment is at most this many characters (code points) once trimmed. */
 export const MAX_COMMENT_LENGTH = 4000;
 
+// Comments are rows in Files' database, outside every quota (#308): an item holds at most this many live comments, and a
+// member has at most this many in all, those waiting in the trash included. More are refused with `COMMENT_LIMIT`.
+export const MAX_COMMENTS_PER_ITEM = 500;
+export const MAX_COMMENTS_PER_AUTHOR = 20_000;
+
 // Control characters other than line feed and tab, and the bidi controls that would reorder what follows them.
 const FORBIDDEN = /[\p{Bidi_Control}]|(?![\n\t])\p{Cc}/u;
 

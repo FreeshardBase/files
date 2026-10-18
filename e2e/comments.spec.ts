@@ -129,3 +129,38 @@ test('the owner and a grantee have a conversation on a shared file', async ({ pa
   await expect(last.thread).not.toContainText('Looks good to me');
   await member.context().close();
 });
+
+// #308: an item holds at most 500 live comments. The composer says so, keeps the text and adds no row.
+test('the composer refuses a comment beyond the item\'s limit', async ({ page }, info) => {
+  // 500 comments to post and to render.
+  test.slow();
+  const dir = `/zz-comment-limit-${tag(info)}`;
+  await page.goto('/');
+  await expect(nav(page)).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: dir } })).status()).toBe(201);
+  const path = `${dir}/full.txt`;
+  expect((await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(path)}&onCollision=fail`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: 'full' })).status()).toBe(201);
+  for (let i = 0; i < 500; i += 25) {
+    const batch = Array.from({ length: 25 }, (_, j) =>
+      page.request.post('/api/v1/comments', { headers, data: { source: 'home', path, text: `note ${i + j + 1}` } }));
+    for (const r of await Promise.all(batch)) expect(r.status()).toBe(201);
+  }
+
+  await page.goto(`/home${dir}`);
+  await expect(row(page, 'full.txt')).toBeVisible();
+  const { drawer, composer, thread } = await openComments(page, 'full.txt');
+  await expect(thread.getByRole('listitem')).toHaveCount(500);
+  await composer.click();
+  await page.keyboard.type('one too many');
+  await page.keyboard.press('Enter');
+  await expect(drawer.getByRole('alert')).toHaveText(/(Die Grenze von 500 Kommentaren ist erreicht|The limit of 500 comments has been reached)/);
+  await expect(composer).toHaveValue('one too many');
+  await expect(composer).toHaveAttribute('aria-invalid', 'true');
+  await expect(thread.getByRole('listitem')).toHaveCount(500);
+  await expect(thread).not.toContainText('one too many');
+  const stored = (await (await page.request.get(`/api/v1/comments?source=home&path=${encodeURIComponent(path)}`)).json()).comments as unknown[];
+  expect(stored).toHaveLength(500);
+});
