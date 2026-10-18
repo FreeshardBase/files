@@ -170,6 +170,23 @@ test('Markdown with <script> and an <img onerror> renders inert: no element, no 
   await close(page, d);
 });
 
+test('a short Markdown note fills the 72ch column with left-aligned text instead of shrinking to its content (#310)', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const dir = `preview-md-column-${tag(info)}`;
+  await setup(page, dir, { 'Kurz.md': '# Kurz\n\n- eins\n- zwei\n' });
+  const d = await openPreview(page, 'Kurz.md');
+  const md = d.locator('.markdown');
+  await expect(md.locator('h1')).toHaveText('Kurz');
+  const box = (await md.boundingBox())!;
+  const h1 = (await md.locator('h1').boundingBox())!;
+  const body = (await d.locator('.preview-body').boundingBox())!;
+  expect(box.width).toBeGreaterThan(400);
+  expect(Math.abs(h1.x - box.x)).toBeLessThan(1);
+  // The column itself stays centred in the preview body.
+  expect(Math.abs((box.x - body.x) - (body.x + body.width - box.x - box.width))).toBeLessThan(2);
+  await close(page, d);
+});
+
 test('arrow keys switch files, the buttons too; Esc closes and focus returns to the row of the file shown last', async ({ page }, info) => {
   const dir = `preview-nav-${tag(info)}`;
   await setup(page, dir, { 'one.txt': '1', 'two.txt': '2', 'three.txt': '3' });
