@@ -67,7 +67,10 @@ export type ReceivedFile = z.infer<typeof ReceivedFileSchema>;
 export const ReceivedFileListSchema = z.object({ items: z.array(ReceivedFileSchema) });
 export type ReceivedFileList = z.infer<typeof ReceivedFileListSchema>;
 
-/** One upload of the visitor's own session: `offset` of `size` bytes are in; `done` once it is saved. */
+/**
+ * One upload of the visitor's own session: `offset` of `size` bytes are in; `done` once it is saved. `name` is the name sent,
+ * never the saved keep-both name (#305).
+ */
 export const VisitorUploadSchema = z.object({
   id: z.string(), name: z.string(), size: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), done: z.boolean(),
 });

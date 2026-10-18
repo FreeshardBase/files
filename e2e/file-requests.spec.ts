@@ -109,6 +109,24 @@ test('an anonymous visitor uploads two files; the owner sees the badge, the file
   await v.context().close();
 });
 
+// #305: the saved name `secret-contract (1).pdf` would tell the visitor that the folder holds `secret-contract.pdf`.
+test('the visitor sees the name they sent, not the keep-both name of a taken one', async ({ page, browser, baseURL }, info) => {
+  const dir = `request-probe-${tag(info)}`;
+  await setup(page, dir, { 'secret-contract.pdf': 'owner only' });
+  const address = await createRequest(page, dir, `Contracts ${tag(info)}`);
+
+  const v = await visitor(browser, info, baseURL!);
+  await v.goto(address);
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'secret-contract.pdf', mimeType: 'application/pdf', buffer: Buffer.from('visitor') }]);
+  const yours = v.getByRole('list', { name: 'Your files' });
+  await expect(yours.getByRole('listitem').filter({ hasText: 'secret-contract.pdf' })).toContainText('Sent');
+  await v.reload();
+  await expect(yours.getByRole('listitem')).toHaveCount(1);
+  await expect(yours.getByRole('listitem').filter({ hasText: 'secret-contract.pdf' })).toContainText('Sent');
+  await expect(v.locator('body')).not.toContainText('secret-contract (1).pdf');
+  await v.context().close();
+});
+
 test('a request with a file limit refuses the next file; a revoked request says it is closed', async ({ page, browser, baseURL }, info) => {
   const dir = `request-limit-${tag(info)}`;
   await setup(page, dir);
