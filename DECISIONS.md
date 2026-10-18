@@ -1149,3 +1149,15 @@ Question: the issue offers two fixes: stack the `.trash-list` rows on the page c
 - **In every language.** The layout does not depend on the locale. English trash rows get the same two-line cell, so switching the language never changes the table's form.
 
 Why: this is the smallest change that keeps the trash inside the column, and the other lists keep their measured layout (#237).
+
+## 2026-10-18: Long names in a phone's list rows (#336)
+
+Question: the issue asks for a middle cut "beyond two lines" but leaves open how, and which lists it covers.
+
+- **A name that fits two lines is shown whole.** Only a name the two-line clamp would cut gets the middle cut. `NameText.vue` measures this after rendering and again when its cell changes width. The cell's width does not depend on whether the name is cut, so the cut cannot oscillate.
+- **The cut keeps the gallery's tail** (`nameParts`, #237): the head ends its second line with the ellipsis, and the extension plus the four characters before it stand beside it. One rule for tiles and rows.
+- **Every list with a row name uses it:** the folder list (and so the smart folder), Trash, Recent, Favourites, a tag, Shared with me. This applies at every width, because the desktop clamp used to cut the extension too. The search results and "My shares" have no clamp; they already break a long name anywhere, and the test pins that.
+- **The folder list's phone row is a grid** (checkbox | name block | star | menu, size and date under the name). The stacked rows of the other lists stay flex. Their names now use `overflow-wrap: anywhere`, which still breaks between words first but no longer widens the row to the longest word.
+- **On the phone the tag chips wrap under a name that needs the line.** A chip wider than the name block cuts its text. On wider screens the name keeps at least 8rem beside its chips.
+
+Why: this is the smallest change that keeps the star and the menu in place. It reuses the gallery's cut, and nothing is hidden that the title and the accessible name do not still give in full.

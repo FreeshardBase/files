@@ -13,6 +13,7 @@ import { folderRoute } from '../api/paths.ts';
 import { parentOf, useLocations } from '../location.ts';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useTagsStore } from '../stores/tags.ts';
+import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t } = useI18n();
@@ -148,10 +149,7 @@ async function untag(i: TagItem) {
                 :class="i.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              <span
-                class="name-text"
-                :title="i.name"
-              >{{ i.name }}</span>
+              <NameText :name="i.name" />
             </div>
           </td>
           <td class="origin">

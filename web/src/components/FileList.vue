@@ -9,6 +9,7 @@ import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
 import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
+import NameText from './NameText.vue';
 import TagChips from './TagChips.vue';
 
 // `editable`: the caller may change the source (their home, an edit share); otherwise only download and details are
@@ -142,7 +143,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
 
 <template>
   <table
-    class="file-list"
+    class="file-list folder-list"
     role="table"
     :aria-label="$t('a11y.fileList', { folder: folderName })"
     :aria-rowcount="entries.length + 1"
@@ -276,10 +277,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   tabindex="-1"
                   draggable="false"
                   @click="onFileClick($event, e)"
-                ><span
-                  class="name-text"
-                  :title="e.name"
-                >{{ e.name }}</span></a>
+                ><NameText :name="e.name" /></a>
                 <button
                   v-else
                   type="button"
@@ -287,10 +285,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   tabindex="-1"
                   @click="emit('open', e)"
                 >
-                  <span
-                    class="name-text"
-                    :title="e.name"
-                  >{{ e.name }}</span>
+                  <NameText :name="e.name" />
                 </button>
                 <TagChips
                   :tags="tags[e.path] ?? []"

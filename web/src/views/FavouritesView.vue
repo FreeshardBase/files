@@ -10,6 +10,7 @@ import { ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import { parentOf, useLocations } from '../location.ts';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
+import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { t } = useI18n();
@@ -119,10 +120,7 @@ async function remove(f: Favourite) {
                 :class="f.type === 'directory' ? 'icon-folder' : 'icon-file'"
                 aria-hidden="true"
               />
-              <span
-                class="name-text"
-                :title="f.name"
-              >{{ f.name }}</span>
+              <NameText :name="f.name" />
             </div>
           </td>
           <td class="origin">

@@ -9,6 +9,7 @@ import { folderRoute } from '../api/paths.ts';
 import { formatDate, intlLocale } from '../format.ts';
 import { parentOf, useLocations } from '../location.ts';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
+import NameText from '../components/NameText.vue';
 import RowSkeleton from '../components/RowSkeleton.vue';
 
 const { locale } = useI18n();
@@ -90,10 +91,7 @@ const target = (item: RecentItem) => item.type === 'directory' ? folderRoute(ite
                 aria-hidden="true"
               />
               <RouterLink :to="target(item)">
-                <span
-                  class="name-text"
-                  :title="item.name"
-                >{{ item.name }}</span>
+                <NameText :name="item.name" />
               </RouterLink>
             </div>
           </td>
