@@ -8,6 +8,8 @@
     "offline": "You’re offline. Files and folders load again once the connection is back.",
     "actionLost": "Your session had expired and you’re signed in again. Your last action was not carried out; do it again.",
     "dismiss": "Dismiss",
+    "diskWarning": "The shard’s disk is almost full.",
+    "diskWarningLink": "See storage usage",
     "loadFailed": "“Files” could not be loaded",
     "pageTitle": "{page} – {app}"
   },
@@ -151,7 +153,16 @@
       "folder": "Folder",
       "size": "Size"
     },
-    "openLabel": "Open {path}"
+    "openLabel": "Open {path}",
+    "disk": {
+      "title": "The shard’s disk",
+      "usedOf": "{used} of {total} used · {free} free",
+      "bar": "Space used on the shard’s disk",
+      "reserveDefault": "Kept free for the shard: {reserve} (the default, 5 GiB or 5 % of the disk, whichever is more). Uploads and copies that would use it are refused.",
+      "reserveSet": "Kept free for the shard: {reserve} (set with FILES_DISK_RESERVE={setting}). Uploads and copies that would use it are refused.",
+      "warningTitle": "The shard’s disk is almost full",
+      "warningText": "Once only the reserve is left, nobody can store files any more. Empty the trash, delete old versions or ask members to make room."
+    }
   },
   "members": {
     "title": "Members",
@@ -739,7 +750,7 @@
     "PAYLOAD_TOO_LARGE": "The file is too large.",
     "UNSUPPORTED_MEDIA_TYPE": "This file type is not accepted here.",
     "RANGE_NOT_SATISFIABLE": "The file could not be loaded. Try again.",
-    "STORAGE_FULL": "Storage is full.",
+    "STORAGE_FULL": "The storage is full. Empty the trash or delete old versions to make room, or ask your shard’s admin for more space.",
     "SOURCE_NOT_FOUND": "This place doesn’t exist or isn’t available to you.",
     "PRECONDITION_FAILED": "The file was changed in the meantime. Reload the page and try again.",
     "SIZE_MISMATCH": "The upload was incomplete. Try again.",

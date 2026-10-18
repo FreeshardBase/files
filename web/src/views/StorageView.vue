@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // The storage overview (#156): the member's shard usage against their quota, split into files, trash, versions and
-// uploads in progress; each cloud connection's provider quota; and the largest folders of the home.
+// uploads in progress; for the admin the shard's disk with its reserve (#320); each cloud connection's provider quota;
+// and the largest folders of the home.
 import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ConnectionUsage } from '@files/shared';
-import { useStorageStore } from '../stores/storage.ts';
+import { useDiskStore, useStorageStore } from '../stores/storage.ts';
+import { useSessionStore } from '../stores/session.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatSize, intlLocale } from '../format.ts';
@@ -15,9 +17,22 @@ const { t, locale } = useI18n();
 const storage = useStorageStore();
 const { folderLabel } = useLocations();
 const connections = useConnectionsStore();
-onMounted(() => { void storage.load(); });
+const session = useSessionStore();
+// The shard's disk and its reserve (#320) are the admin's: the server refuses them to everyone else.
+const disk = useDiskStore();
+const isAdmin = computed(() => session.me?.role === 'admin');
+onMounted(() => { void storage.load(); if (isAdmin.value) void disk.load(); });
 
 const size = (n: number) => formatSize(n, intlLocale(locale.value));
+const diskText = computed(() => {
+  const d = disk.status!;
+  return t('storage.disk.usedOf', { used: size(d.total - d.free), total: size(d.total), free: size(d.free) });
+});
+const reserveText = computed(() => {
+  const d = disk.status!;
+  return d.setting === null ? t('storage.disk.reserveDefault', { reserve: size(d.reserve) })
+    : t('storage.disk.reserveSet', { reserve: size(d.reserve), setting: d.setting });
+});
 const home = computed(() => storage.overview?.home);
 const shardText = computed(() => {
   const h = home.value!;
@@ -81,6 +96,46 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
           </div>
         </dl>
       </div>
+
+      <template v-if="isAdmin && (disk.status || disk.error)">
+        <h2 class="storage-heading">
+          {{ $t('storage.disk.title') }}
+        </h2>
+        <p
+          v-if="disk.error"
+          class="storage-error"
+        >
+          {{ $t(`errors.${disk.error.code}`) }}
+        </p>
+        <div
+          v-else-if="disk.status"
+          class="storage-source storage-disk"
+        >
+          <p class="storage-figures">
+            {{ diskText }}
+          </p>
+          <UsageBar
+            :used="disk.status.total - disk.status.free"
+            :total="disk.status.total"
+            :label="$t('storage.disk.bar')"
+            :text="diskText"
+          />
+          <p class="storage-reserve">
+            {{ reserveText }}
+          </p>
+          <div
+            v-if="disk.status.warning"
+            class="alert-banner"
+          >
+            <p class="alert-title">
+              {{ $t('storage.disk.warningTitle') }}
+            </p>
+            <p class="alert-text">
+              {{ $t('storage.disk.warningText') }}
+            </p>
+          </div>
+        </div>
+      </template>
 
       <h2 class="storage-heading">
         {{ $t('storage.clouds') }}

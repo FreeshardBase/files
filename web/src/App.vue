@@ -16,6 +16,7 @@ import { useSmartFoldersStore } from './stores/smartFolders.ts';
 import ShortcutsDialog from './components/ShortcutsDialog.vue';
 import StateAlert from './components/StateAlert.vue';
 import { useRequestsStore } from './stores/requests.ts';
+import { useDiskStore } from './stores/storage.ts';
 import { usePageTitle } from './pageTitle.ts';
 const session = useSessionStore();
 const requests = useRequestsStore();
@@ -23,6 +24,7 @@ const connections = useConnectionsStore();
 const favourites = useFavouritesStore();
 const smartFolders = useSmartFoldersStore();
 const transfers = useTransfersStore();
+const disk = useDiskStore();
 const router = useRouter();
 const route = useRoute();
 const showLoginFailed = loginFailed();
@@ -80,6 +82,7 @@ onMounted(async () => {
     void smartFolders.load(); // the member's smart folders in the sidebar (#214)
     void requests.load(); // the badge of new files from file requests (#217)
     transfers.connect(); // the member's transfer jobs, live (#152)
+    if (session.me.role === 'admin') void disk.load(); // the banner when the shard's disk is almost full (#320)
     actionLost.value = takeInterruptedAction();
   }
   if (!showLoginFailed) return;
@@ -158,6 +161,15 @@ onMounted(async () => {
         {{ $t('app.dismiss') }}
       </button>
     </div>
+    <p
+      v-if="session.me?.role === 'admin' && disk.status?.warning"
+      class="offline-banner disk-warning"
+    >
+      <span>{{ $t('app.diskWarning') }}</span>
+      <RouterLink to="/storage">
+        {{ $t('app.diskWarningLink') }}
+      </RouterLink>
+    </p>
     <ShortcutsDialog
       v-if="shortcutsOpen"
       @close="shortcutsOpen = false"

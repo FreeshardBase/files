@@ -8,6 +8,8 @@
     "offline": "Sie sind offline. Dateien und Ordner werden wieder geladen, sobald die Verbindung wieder da ist.",
     "actionLost": "Ihre Sitzung war abgelaufen, Sie sind wieder angemeldet. Ihre letzte Aktion wurde nicht ausgeführt; bitte wiederholen Sie sie.",
     "dismiss": "Schließen",
+    "diskWarning": "Die Festplatte des Shards ist fast voll.",
+    "diskWarningLink": "Zur Speicherbelegung",
     "loadFailed": "„Dateien“ lässt sich nicht laden",
     "pageTitle": "{page} – {app}"
   },
@@ -151,7 +153,16 @@
       "folder": "Ordner",
       "size": "Größe"
     },
-    "openLabel": "{path} öffnen"
+    "openLabel": "{path} öffnen",
+    "disk": {
+      "title": "Die Festplatte des Shards",
+      "usedOf": "{used} von {total} belegt · {free} frei",
+      "bar": "Belegter Platz auf der Festplatte des Shards",
+      "reserveDefault": "Für den Shard freigehalten: {reserve} (die Voreinstellung, 5 GiB oder 5 % der Festplatte, je nachdem, was mehr ist). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "reserveSet": "Für den Shard freigehalten: {reserve} (festgelegt mit FILES_DISK_RESERVE={setting}). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "warningTitle": "Die Festplatte des Shards ist fast voll",
+      "warningText": "Sobald nur noch die Reserve frei ist, kann niemand mehr Dateien speichern. Leeren Sie den Papierkorb, löschen Sie alte Versionen oder bitten Sie die Mitglieder, Platz zu schaffen."
+    }
   },
   "members": {
     "title": "Mitglieder",
@@ -739,7 +750,7 @@
     "PAYLOAD_TOO_LARGE": "Die Datei ist zu groß.",
     "UNSUPPORTED_MEDIA_TYPE": "Dieser Dateityp wird hier nicht angenommen.",
     "RANGE_NOT_SATISFIABLE": "Die Datei konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
-    "STORAGE_FULL": "Der Speicher ist voll.",
+    "STORAGE_FULL": "Der Speicher ist voll. Leeren Sie den Papierkorb oder löschen Sie alte Versionen, um Platz zu schaffen, oder bitten Sie den Admin Ihres Shards um mehr Platz.",
     "SOURCE_NOT_FOUND": "Diesen Ort gibt es nicht, oder Sie haben keinen Zugriff darauf.",
     "PRECONDITION_FAILED": "Die Datei wurde inzwischen geändert. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
     "SIZE_MISMATCH": "Der Upload war unvollständig. Bitte versuchen Sie es erneut.",

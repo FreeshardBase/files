@@ -9,6 +9,7 @@ import { cookieNames } from '../../src/auth/cookies.ts';
 import { dbPath } from '../../src/paths.ts';
 import type { PathTable, TrashTable } from '../../src/storage/pathRefs.ts';
 import type { Clock, Provider } from '../../src/cloud/oauth.ts';
+import type { DiskSpaceProvider } from '../../src/storage/diskReserve.ts';
 import { startFakeIdp, type FakeIdp } from './fakeIdp.ts';
 
 /** `routes` holds the live route options of every registered route (read `config.public` after `ready`). */
@@ -25,8 +26,9 @@ export async function startTestApp(
   /** `connections`: the members' cloud connections as fake backends (search merge tests). */
   /** `providers`: cloud providers to connect, e.g. `fakeProvider.provider()` (support/fakeProvider.ts); `clock`: a fake clock. */
   /** `dataDir`: start on an existing data dir (a restart); `close` then leaves it for the test to remove. */
+  /** `diskSpace`: a fake free-space provider for the data volume (#320), e.g. `async () => ({ total, free })`. */
   dbOpts?: { pathTables?: readonly PathTable[]; trashTables?: readonly TrashTable[]; prepare?: (db: Db) => void;
-    connections?: Connections; providers?: readonly Provider[]; clock?: Clock; dataDir?: string },
+    connections?: Connections; providers?: readonly Provider[]; clock?: Clock; dataDir?: string; diskSpace?: DiskSpaceProvider },
 ): Promise<TestApp> {
   const dataDir = dbOpts?.dataDir ?? mkdtempSync(join(tmpdir(), 'files-app-'));
   // Hermetic: never depend on whether web/ was built, unless the test points FILES_WEB_DIST somewhere itself.
@@ -55,7 +57,8 @@ export async function startTestApp(
     ...(dbOpts?.trashTables ? { trashTables: dbOpts.trashTables } : {}),
     ...(dbOpts?.connections ? { connections: dbOpts.connections } : {}),
     ...(dbOpts?.providers ? { providers: dbOpts.providers } : {}),
-    ...(dbOpts?.clock ? { clock: dbOpts.clock } : {}) });
+    ...(dbOpts?.clock ? { clock: dbOpts.clock } : {}),
+    ...(dbOpts?.diskSpace ? { diskSpace: dbOpts.diskSpace } : {}) });
   await app.ready();
   return {
     app, config, db, dataDir, idp, routes,

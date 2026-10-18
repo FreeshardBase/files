@@ -9,9 +9,12 @@ import sharp, { type Sharp } from 'sharp';
 import type { ThumbSize } from '@files/shared';
 import { AppError } from '../errors.ts';
 import type { Db } from '../db.ts';
+import type { DiskReserve } from './diskReserve.ts';
 
 /** Generators running at once, across all members: thumbnails must not starve requests on small hardware. */
 export const THUMB_CONCURRENCY = 2;
+/** What a new thumbnail needs left above the disk reserve (#320); the largest WebP is far smaller. */
+const THUMB_ROOM = 1024 ** 2;
 
 const IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
 // The ffmpeg demuxer is fixed by the type, so the file's content can never select a playlist or concat demuxer that
@@ -120,7 +123,7 @@ export class ThumbnailCache {
   private inflight = new Map<string, Promise<string>>();
   private clock: number;
 
-  constructor(private opts: { db: Db; dir: string; capBytes: number; timeoutMs: number }) {
+  constructor(private opts: { db: Db; dir: string; capBytes: number; timeoutMs: number; disk: DiskReserve }) {
     this.clock = (opts.db.prepare('SELECT COALESCE(MAX(used_at), 0) FROM thumbnails').pluck().get() as number);
   }
 
@@ -142,6 +145,8 @@ export class ThumbnailCache {
     const key = JSON.stringify([src.userId, src.path, size, src.etag]);
     let pending = this.inflight.get(key);
     if (!pending) {
+      // Below the disk reserve (#320) no new thumbnail is made: the file shows its icon, the request never fails for it.
+      if (await this.opts.disk.left() < THUMB_ROOM) return null;
       pending = this.gate.run(() => this.generate(kind, src, size)).finally(() => this.inflight.delete(key));
       this.inflight.set(key, pending);
     }

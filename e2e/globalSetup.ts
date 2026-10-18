@@ -43,12 +43,15 @@ async function startServer(args: string[], env: NodeJS.ProcessEnv, origin: strin
 export default async function globalSetup() {
   const port = process.env.E2E_PORT;
   const cloudPort = process.env.E2E_CLOUD_PORT;
-  if (!port || !cloudPort) throw new Error('E2E_PORT or E2E_CLOUD_PORT not set (playwright.config.ts sets them)');
+  const fullPort = process.env.E2E_FULL_PORT;
+  if (!port || !cloudPort || !fullPort) throw new Error('E2E_PORT, E2E_CLOUD_PORT or E2E_FULL_PORT not set (playwright.config.ts sets them)');
   const origin = `http://localhost:${port}`;
   // 127.0.0.1, not localhost: cookies are not port-scoped, so the two servers must not share a host name.
   const cloudOrigin = `http://127.0.0.1:${cloudPort}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'files-e2e-'));
   const cloudDataDir = mkdtempSync(join(tmpdir(), 'files-e2e-cloud-'));
+  const fullOrigin = `http://localhost:${fullPort}`;
+  const fullDataDir = mkdtempSync(join(tmpdir(), 'files-e2e-full-'));
   const serverLog = process.env.E2E_SERVER_LOG;
   if (!serverLog) throw new Error('E2E_SERVER_LOG not set (playwright.config.ts sets it)');
   let idp: FakeIdp | undefined;
@@ -58,6 +61,7 @@ export default async function globalSetup() {
     await idp?.close();
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(cloudDataDir, { recursive: true, force: true });
+    rmSync(fullDataDir, { recursive: true, force: true });
     rmSync(serverLog, { force: true });
   };
   try {
@@ -78,6 +82,12 @@ export default async function globalSetup() {
     await startServer(['--import', 'tsx', join(process.cwd(), 'e2e', 'cloudServer.ts')],
       { ...env, FILES_PORT: cloudPort, FILES_PUBLIC_URL: cloudOrigin, FILES_DATA_DIR: cloudDataDir, FILES_OIDC_ISSUER: idp.issuer },
       cloudOrigin, (c) => servers.push(c), join(process.cwd(), 'server'));
+    // The same build with a reserve no disk has free (#320): every upload is STORAGE_FULL and the admin is warned. Its
+    // tests use only this server in their browser context, so sharing the host name with the main server is harmless.
+    await startServer(['server/dist/main.js'],
+      { ...env, FILES_PORT: fullPort, FILES_PUBLIC_URL: fullOrigin, FILES_DATA_DIR: fullDataDir, FILES_OIDC_ISSUER: idp.issuer,
+        FILES_DISK_RESERVE: '1000TiB' },
+      fullOrigin, (c) => servers.push(c));
   } catch (e) {
     await cleanup();
     throw e;
