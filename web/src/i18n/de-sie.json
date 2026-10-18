@@ -680,6 +680,7 @@
     "noFiles": "Noch nichts erhalten.",
     "from": "von {name}",
     "isNew": "Neu",
+    "openFolder": "Ordner öffnen",
     "close": "Schließen"
   },
   "request": {
