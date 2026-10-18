@@ -867,7 +867,10 @@
     "SCAN_RUNNING": "A search for duplicates is already running.",
     "DUPLICATE_CHANGED": "Changed since the search, so it was kept.",
     "DUPLICATE_LAST_COPY": "At least one copy has to stay.",
-    "CONNECT_DENIED": "You did not allow access, so no account was connected."
+    "CONNECT_DENIED": "You did not allow access, so no account was connected.",
+    "ARCHIVE_INVALID": "This file is not a ZIP archive that Files can read.",
+    "ARCHIVE_UNSAFE": "The archive holds paths outside its folder, links or devices, so nothing of it was imported.",
+    "ARCHIVE_TOO_LARGE": "The archive holds too many entries or unpacks to far more than its size, so nothing of it was imported."
   },
   "batchRename": {
     "button": "Rename…",
@@ -1007,7 +1010,8 @@
       "move": "Move “{name}” to {target}",
       "migration": "Move “{name}” to {target}",
       "cleanup": "Delete the originals of “{name}”",
-      "rename": "Rename items in {target}"
+      "rename": "Rename items in {target}",
+      "import": "Import “{name}” to {target}"
     },
     "state": {
       "running": "{done} of {total} · {size}",
@@ -1040,6 +1044,28 @@
     "foldedFailed": "one with errors | {count} with errors",
     "show": "Show",
     "hide": "Hide"
+  },
+  "archiveImport": {
+    "link": "Import an export archive",
+    "title": "Import an export archive",
+    "intro": "Bring the files of an iCloud Drive export (privacy.apple.com) or a Google Takeout of Drive onto the shard, or any other ZIP. The parts of a split export land in one tree.",
+    "photos": "Photos are not imported here: the photo parts of an export (iCloud Photos, Google Photos) are skipped. Import them in Immich.",
+    "target": "Folder on the shard",
+    "upload": "Upload ZIP archives into this folder",
+    "archives": "ZIP archives in this folder",
+    "none": "No ZIP archive in this folder yet.",
+    "start": "Start import",
+    "running": "Importing: {done} of {total}",
+    "completed": "Import finished: {count} files imported.",
+    "completed_with_errors": "Import finished with errors: {count} files imported.",
+    "cancelled": "Import cancelled: {count} files imported.",
+    "skippedTitle": "Skipped",
+    "failedTitle": "Failed",
+    "reason": {
+      "photos": "photo export: import it in Immich",
+      "other": "not part of the Drive export"
+    },
+    "open": "Open the folder"
   },
   "migrate": {
     "title": "Move to the shard",

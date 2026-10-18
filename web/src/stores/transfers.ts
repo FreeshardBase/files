@@ -8,9 +8,11 @@ export const SETTLED_MS = 5000;
 const seenTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /**
  * An ended job that leaves the panel by itself once seen: it completed or was cancelled. A failed one stays (folded) until
- * dismissed, and so does a migration, whose page offers the cleanup of its originals.
+ * dismissed, and so does a migration, whose page offers the cleanup of its originals, and an import, whose page shows what
+ * it skipped (#322).
  */
-export const clearsItself = (j: TransferJob) => (j.status === 'completed' || j.status === 'cancelled') && j.kind !== 'migration';
+export const clearsItself = (j: TransferJob) => (j.status === 'completed' || j.status === 'cancelled')
+  && j.kind !== 'migration' && j.kind !== 'import';
 
 /**
  * The member's transfer jobs between sources (#152): live from the server's event stream, which starts with the

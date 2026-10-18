@@ -39,6 +39,7 @@ import { CONNECT_CALLBACK_PATH, registerConnectionRoutes } from './routes/connec
 import { TransferEngine } from './storage/transfers.ts';
 import { registerTransferRoutes } from './routes/transfers.ts';
 import { registerMigrationRoutes } from './routes/migrations.ts';
+import { registerImportRoutes } from './routes/imports.ts';
 import { registerVersionRoutes } from './routes/versions.ts';
 import { registerFavouriteRoutes } from './routes/favourites.ts';
 import { registerTagRoutes } from './routes/tags.ts';
@@ -163,6 +164,7 @@ export async function buildApp({ config, db, extend, logStream, onRoute, pathTab
   await registerRenameRoutes(app);
   await registerDuplicateRoutes(app);
   await registerMigrationRoutes(app);
+  await registerImportRoutes(app);
   await registerVersionRoutes(app);
   await registerFavouriteRoutes(app);
   await registerTagRoutes(app);
