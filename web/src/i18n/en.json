@@ -533,7 +533,20 @@
     "trash": "Move to trash",
     "favourite": "Favourite",
     "copyToOther": "Copy to other pane",
-    "moveToOther": "Move to other pane"
+    "moveToOther": "Move to other pane",
+    "moveTo": "Move to…",
+    "copyTo": "Copy to…"
+  },
+  "moveTo": {
+    "path": "Target folder",
+    "places": "All places",
+    "choosePlace": "Choose a place, then the folder.",
+    "lastUsed": "Last used",
+    "more": "Load more folders",
+    "moveHere": "Move here",
+    "copyHere": "Copy here",
+    "blocked": "Not here: the items are already here, or this is one of the selected folders.",
+    "readOnly": "You can’t change anything in this folder."
   },
   "dualPane": {
     "left": "Left pane",
@@ -1169,6 +1182,8 @@
       "copy": "Ctrl + C",
       "paste": "Ctrl + V",
       "newFolder": "Shift + N",
+      "moveTo": "Shift + M",
+      "copyTo": "Shift + C",
       "menu": "Shift + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
@@ -1193,6 +1208,8 @@
       "copy": "Mark for copying",
       "paste": "Move or copy the marked items here",
       "newFolder": "New folder",
+      "moveTo": "Move the selection into a folder you pick",
+      "copyTo": "Copy the selection into a folder you pick",
       "menu": "Open the item menu",
       "close": "Close the dialog or menu",
       "history": "Back or forward in the folder history, also with the mouse’s side buttons",

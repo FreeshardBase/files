@@ -1231,3 +1231,18 @@ The owner decided to ask with a suggestion (forbidden characters → `_`) and to
 - **A rule we do not know.** Graph's 400 `invalidRequest` whose message names the name becomes `NAME_NOT_ALLOWED` with Graph's message as `reason`.
 - **Rename and new folder** refuse a breaking name as it is typed, with the reason, and offer "Use suggestion".
 - **Left for later.** An upload into a cloud source is refused by the server with `NAME_NOT_ALLOWED` before a byte is sent (shown in the upload panel), but the upload panel does not ask the name question yet; moves and copies within one source, where the names already exist there, also just report the refusal. The transfer panel does not show the `renamed` list; the CSV report does.
+
+## 2026-10-18: "Move to…" / "Copy to…" with a folder picker (#339)
+
+The owner decided to add the picker beside the mark-and-paste flow, which stays. Questions the issue left open, decided from the spec and YAGNI:
+
+- **Which places.** Mein Speicher, each cloud connection whose status is `ok` (one that needs a new sign-in cannot take items), and every share that is a folder, has `edit` access and is not orphaned. A folder whose listing says `read` can be browsed but not chosen.
+- **What is no target.** The folder the items are in, and every selected folder with everything below it, for a copy as well as a move (copying a folder into itself never ends). A selected folder is listed but disabled, so nothing below it can be reached; the current folder can be opened, to reach its other subfolders.
+- **"Copy to…" needs no edit access where the items are** (it only reads them), like "Copy to other pane"; "Move to…" does. So a read share offers "Copy to…".
+- **Keys.** Shift+M and Shift+C on a row or tile (Ctrl+Shift+C is the browser's inspector). They are in the shortcuts dialog.
+- **Paging.** One `list` page at a time and "Load more folders" while the listing has a `next` cursor; the server's order. Before a job starts, the pane lists the target fully once, as a paste does, to ask the collision and name questions.
+- **"New folder" in the picker** is an inline field, not a second dialog; the new folder opens at once, ready to be chosen. A pane that shows its parent relists.
+- **The last target** is stored in `localStorage` under the member's id (`files:moveTarget:<id>`), never on the server. It is offered as the first row of the top level while its place is still listed; choosing it opens the folder, the member still confirms. A target that is gone shows the listing's error.
+- **Focus.** Chosen from an item menu, Esc gives the focus back to that menu button; from the keyboard, to the row; from the selection bar, to its button.
+
+Why: the smallest picker that reaches every place a member can change, reuses the paste's two paths (direct within a source, transfer job between sources) and never offers a target the server would refuse.

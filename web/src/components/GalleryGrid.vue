@@ -20,7 +20,7 @@ import TagChips from './TagChips.vue';
 const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; source: string; selected?: string[];
   editable?: boolean; shareable?: boolean; starred?: string[]; tags?: Record<string, string[]>; toOther?: boolean }>(),
 { selected: () => [], editable: true, shareable: false, starred: () => [], tags: () => ({}), toOther: false });
-const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; openTab: [Entry] }>();
+const emit = defineEmits<{ open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[], HTMLElement?]; paste: []; openTab: [Entry] }>();
 function onAuxClick(e: MouseEvent, entry: Entry) {
   if (e.button !== 1 || entry.type !== 'directory') return;
   e.preventDefault();
@@ -31,9 +31,9 @@ const grid = ref<HTMLElement>();
 const menus = new Map<number, InstanceType<typeof ItemMenu>>();
 onBeforeUpdate(() => menus.clear());
 const { chosen, toggle, itemsFor, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
-  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (a, es) => emit('action', a, es),
+  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (...args) => emit('action', ...args),
   paste: () => emit('paste'),
-}, { showMenu: (i) => { void menus.get(i)?.show(); } });
+}, { showMenu: (i) => { void menus.get(i)?.show(); }, menuButton: (i) => menus.get(i)?.trigger });
 // A long-press selects (the menu button is always there on a touch screen); the browser's own long-press context menu
 // is dropped, so the press does not also open the item menu.
 const press = useLongPress((i) => { active.value = i; toggle(i); });

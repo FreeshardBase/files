@@ -28,7 +28,7 @@ const props = withDefaults(defineProps<{ entries: Entry[]; folderName: string; s
 { source: 'home', selected: () => [], editable: true, shareable: false, starred: () => [], sort: () => ({ ...DEFAULT_SORT }),
   tags: () => ({}), comments: () => ({}), toOther: false });
 const emit = defineEmits<{
-  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[]]; paste: []; drop: [string[], string, string];
+  open: [Entry]; 'update:selected': [string[]]; action: [ItemAction, Entry[], HTMLElement?]; paste: []; drop: [string[], string, string];
   sort: [SortKey]; openTab: [Entry];
 }>();
 const { locale } = useI18n();
@@ -80,9 +80,9 @@ const rowEl = (i: number) => body.value?.querySelector<HTMLElement>(`tr[aria-row
 
 // Selection, the item menu and the action keys are the gallery's too (#229).
 const { chosen, toggle, targets, itemsFor, isFavourite, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
-  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (a, es) => emit('action', a, es),
+  open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (...args) => emit('action', ...args),
   paste: () => emit('paste'),
-}, { showMenu: (i) => { void menus.get(i)?.show(); } });
+}, { showMenu: (i) => { void menus.get(i)?.show(); }, menuButton: (i) => menus.get(i)?.trigger });
 
 // The row becomes the tab stop, which is always rendered; focusing it scrolls it into view.
 async function focusRow(i: number) {

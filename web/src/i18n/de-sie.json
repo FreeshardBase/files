@@ -533,7 +533,20 @@
     "trash": "In den Papierkorb",
     "favourite": "Favorit",
     "copyToOther": "In den anderen Bereich kopieren",
-    "moveToOther": "In den anderen Bereich verschieben"
+    "moveToOther": "In den anderen Bereich verschieben",
+    "moveTo": "Verschieben nach …",
+    "copyTo": "Kopieren nach …"
+  },
+  "moveTo": {
+    "path": "Zielordner",
+    "places": "Alle Orte",
+    "choosePlace": "Wählen Sie einen Ort und dann den Ordner.",
+    "lastUsed": "Zuletzt verwendet",
+    "more": "Weitere Ordner laden",
+    "moveHere": "Hierher verschieben",
+    "copyHere": "Hierher kopieren",
+    "blocked": "Hierher geht es nicht: Hier liegen die Elemente schon, oder es ist einer der ausgewählten Ordner.",
+    "readOnly": "In diesem Ordner dürfen Sie nichts ändern."
   },
   "dualPane": {
     "left": "Linker Bereich",
@@ -1169,6 +1182,8 @@
       "copy": "Strg + C",
       "paste": "Strg + V",
       "newFolder": "Umschalt + N",
+      "moveTo": "Umschalt + M",
+      "copyTo": "Umschalt + C",
       "menu": "Umschalt + F10",
       "close": "Esc",
       "history": "Alt + ← / →",
@@ -1193,6 +1208,8 @@
       "copy": "Zum Kopieren vormerken",
       "paste": "Vorgemerkte Einträge hierher verschieben oder kopieren",
       "newFolder": "Neuer Ordner",
+      "moveTo": "Auswahl in einen gewählten Ordner verschieben",
+      "copyTo": "Auswahl in einen gewählten Ordner kopieren",
       "menu": "Aktionsmenü des Eintrags öffnen",
       "close": "Dialog oder Menü schließen",
       "history": "Im Ordnerverlauf zurück oder vor, auch mit den Seitentasten der Maus",

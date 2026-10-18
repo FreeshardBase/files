@@ -97,17 +97,28 @@ describe('FileList actions', () => {
     expect(w.emitted('paste')).toBeUndefined();
     expect(w.findAll('tbody tr').map((r) => r.attributes('draggable'))).toEqual(['false', 'false']);
     await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
-    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details', 'Add to favourites']);
+    // Copying out of it only reads the items (#339).
+    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details', 'Copy to…', 'Add to favourites']);
+    w.unmount();
+  });
+  it('Shift+M and Shift+C ask where to move or copy the selection (#339); Shift+M only where the items may change', async () => {
+    const w = mount(FileList, { props: { ...both }, attachTo: document.body, global: { plugins: [i18n] } });
+    await key(w, 1, 'M', { shiftKey: true }); await key(w, 0, 'C', { shiftKey: true });
+    expect(w.emitted('action')).toEqual([['moveTo', entries], ['copyTo', entries]]);
+    await w.setProps({ editable: false });
+    await key(w, 1, 'M', { shiftKey: true }); await key(w, 1, 'C', { shiftKey: true });
+    expect(w.emitted('action')).toEqual([['moveTo', entries], ['copyTo', entries], ['copyTo', entries]]);
     w.unmount();
   });
   it('the member\'s own items offer "Share", which acts on the row alone', async () => {
     const w = mount(FileList, { props: { ...both, shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
     await w.findAll('.item-menu .icon-button')[0]!.trigger('click');
     const items = w.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Add to favourites',
-      'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Move to…', 'Copy to…',
+      'Add to favourites', 'Move to trash']);
     await items[1]!.trigger('click');
-    expect(w.emitted('action')).toEqual([['share', [entries[0]]]]);
+    // With the menu button the action came from, for a dialog to give the focus back to (#339).
+    expect(w.emitted('action')).toEqual([['share', [entries[0]], w.findAll('.item-menu .icon-button')[0]!.element]]);
     w.unmount();
   });
   it('Ctrl+V pastes and Ctrl+A selects everything', async () => {
@@ -129,14 +140,15 @@ describe('FileList actions', () => {
     const menu = w.find('[role=menu]');
     expect(menu.attributes('aria-label')).toBe('Actions for a b.txt');
     const items = menu.findAll('[role=menuitem]');
-    expect(items.map((i) => i.text())).toEqual(['Download', 'Details', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Move to trash']);
+    expect(items.map((i) => i.text())).toEqual(['Download', 'Details', 'Rename', 'Move', 'Copy', 'Move to…', 'Copy to…',
+      'Add to favourites', 'Move to trash']);
     expect(document.activeElement).toBe(items[0]!.element);
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]!.element);
-    await items[6]!.trigger('click');
+    await items[8]!.trigger('click');
     expect(w.find('[role=menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(w.findAll('tbody tr')[1]!.element);
-    expect(w.emitted('action')).toEqual([['trash', [entries[1]]]]);
+    expect(w.emitted('action')).toEqual([['trash', [entries[1]], w.findAll('.item-menu .icon-button')[1]!.element]]);
     w.unmount();
   });
   it('keys inside the open menu do not reach the row', async () => {
@@ -159,7 +171,8 @@ describe('FileList actions', () => {
     await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
     const fav = w.findAll('[role=menuitem]').find((i) => i.text() === 'Remove from favourites')!;
     await fav.trigger('click');
-    expect(w.emitted('action')![1]).toEqual(['favourite', [entries[1]]]); // the row, though the selection holds both
+    // the row, though the selection holds both
+    expect(w.emitted('action')![1]).toEqual(['favourite', [entries[1]], w.findAll('.item-menu .icon-button')[1]!.element]);
     w.unmount();
   });
   it('dropping list items on a folder row moves them there; a file row is no target', async () => {

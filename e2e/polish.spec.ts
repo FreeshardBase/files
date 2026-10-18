@@ -197,7 +197,7 @@ test('phone: no horizontal scroll, touch targets of at least 44 px, every action
   await open(page, screens(dir)[0]!);
   await menuButton(page, 'notes.txt').click();
   await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['Download', 'Share', 'Details', 'Rename',
-    'Move', 'Copy', 'Add to favourites', 'Move to trash']);
+    'Move', 'Copy', 'Move to…', 'Copy to…', 'Add to favourites', 'Move to trash']);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
 
@@ -257,14 +257,15 @@ test('in the trash and in a read-only share, no menu offers rename, move or uplo
   await member.goto(`/${source}`);
   await expect(row(member, 'notes.txt')).toBeVisible();
   // The member has no language of their own: English, like the project's browser.
+  // "Copy to…" (#339) only reads the items.
   for (const name of ['notes.txt', 'Inner']) {
     const items = member.getByRole('menu').getByRole('menuitem');
     await row(member, name).locator('td.name').click({ button: 'right' });
-    await expect(items).toHaveText(['Download', 'Details', 'Add to favourites']);
+    await expect(items).toHaveText(['Download', 'Details', 'Copy to…', 'Add to favourites']);
     await member.keyboard.press('Escape');
     await expect(items).toHaveCount(0);
     await menuButton(member, name).click();
-    await expect(items).toHaveText(['Download', 'Details', 'Add to favourites']);
+    await expect(items).toHaveText(['Download', 'Details', 'Copy to…', 'Add to favourites']);
     await member.keyboard.press('Escape');
   }
   // F2 and Delete do nothing there, and there is no upload anywhere.
@@ -278,7 +279,7 @@ test('in the trash and in a read-only share, no menu offers rename, move or uplo
   await row(member, 'notes.txt').locator('input[type=checkbox]').check();
   const bar = member.getByRole('group', { name: 'Actions for the selection' });
   await expect(bar.getByRole('link', { name: 'Download' })).toBeVisible();
-  await expect(bar.getByRole('button')).toHaveCount(0);
+  await expect(bar.getByRole('button')).toHaveText(['Copy to…']); // copying out only reads (#339)
   await member.context().close();
 });
 

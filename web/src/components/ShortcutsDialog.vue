@@ -12,7 +12,7 @@ const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 const layout = useLayoutStore();
 const SHORTCUTS = computed(() => ['arrows', 'galleryArrows', 'homeEnd', 'open', 'select', 'selectAll', 'rename', 'trash', 'cut', 'copy',
-  'paste', 'newFolder', 'menu', 'close', 'history', 'help',
+  'paste', 'moveTo', 'copyTo', 'newFolder', 'menu', 'close', 'history', 'help',
   ...(layout.dualPane ? ['switchPane', 'copyOther', 'moveOther'] : []),
   ...(layout.tabs ? ['newTab', 'closeTab', 'openTab'] : [])]);
 </script>
