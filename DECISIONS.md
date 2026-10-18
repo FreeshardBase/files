@@ -1139,3 +1139,13 @@ The issue names the caps ("e.g. 500" per item, "e.g. 20 000" per author) and the
 - **No rate limit.** The caps bound what a member can store; a rate limit would only slow reaching them.
 
 Why: the issue's fix with the least new surface: two counts in the insert's transaction, one error code, one index.
+
+## 2026-10-18: The German trash list in the 960 px page column (#309)
+
+Question: the issue offers two fixes: stack the `.trash-list` rows on the page column's width (a container query at 1000 px), or let the trash's actions cell wrap its two buttons. Which one?
+
+- **The buttons wrap, in the trash only.** Above 1200 px the trash's "Restore" and "Delete permanently" stand one over the other in their cell, each on one line, at the same width. The stacked rows at 1200 px and below are unchanged.
+- **Not the container query.** The page column is never wider than 960 px, so a 1000 px container threshold would stack every list with buttons (recent, favourites, shared, members, cloud accounts, storage) at every width. They all fit in the column as tables in both languages. Only the trash, with a location, two figures and two long German buttons, needs about 1000 px.
+- **In every language.** The layout does not depend on the locale. English trash rows get the same two-line cell, so switching the language never changes the table's form.
+
+Why: this is the smallest change that keeps the trash inside the column, and the other lists keep their measured layout (#237).
