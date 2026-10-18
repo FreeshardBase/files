@@ -6,18 +6,21 @@ import { useI18n } from 'vue-i18n';
 import type { Entry } from '@files/shared';
 
 export type ItemAction = 'download' | 'favourite' | 'share' | 'details' | 'rename' | 'cut' | 'copy' | 'trash'
-  | 'copyToOther' | 'moveToOther';
+  | 'copyToOther' | 'moveToOther' | 'moveTo' | 'copyTo';
 // `toOther`: a second pane takes items (#218): copying there only reads the items, moving there also changes this source.
 export type ItemProps = { entries: Entry[]; selected: string[]; editable: boolean; shareable: boolean; starred: string[];
   toOther?: boolean };
 type Emits = {
-  open: (e: Entry) => void; select: (paths: string[]) => void; action: (a: ItemAction, entries: Entry[]) => void; paste: () => void;
+  open: (e: Entry) => void; select: (paths: string[]) => void; paste: () => void;
+  // `from`: the menu button the action was chosen in, for a dialog to give the focus back to (#339).
+  action: (a: ItemAction, entries: Entry[], from?: HTMLElement) => void;
 };
 
 // Rename, favourite, share and details act on the item itself, never on the whole selection.
 const SINGLE = new Set(['rename', 'favourite', 'share', 'details']);
 
-export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i: number) => void }) {
+export function useItemActions(props: ItemProps, emit: Emits,
+  ui: { showMenu: (i: number) => void; menuButton: (i: number) => HTMLElement | undefined }) {
   const { t } = useI18n();
   let anchor = 0; // where a Shift+click range starts
   const chosen = computed(() => new Set(props.selected));
@@ -38,7 +41,7 @@ export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i
   // destructive action alone under a hairline.
   const menuItems = computed(() => ([
     'download', ...(props.shareable ? ['share'] as const : []), 'details',
-    ...(props.editable ? ['rename', 'cut', 'copy'] as const : []),
+    ...(props.editable ? ['rename', 'cut', 'copy', 'moveTo'] as const : []), 'copyTo',
     ...(props.toOther ? ['copyToOther', ...(props.editable ? ['moveToOther'] as const : [])] as const : []),
     'favourite', ...(props.editable ? ['trash'] as const : []),
   ] as const).map((id) => ({ id, label: t(`actions.${id}`), danger: id === 'trash' })));
@@ -47,7 +50,9 @@ export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i
   const isFavourite = (e: Entry) => starredSet.value.has(e.path);
   const itemsFor = (e: Entry) => menuItems.value.map((m) => m.id === 'favourite'
     ? { id: m.id, label: t(isFavourite(e) ? 'favourites.remove' : 'favourites.add') } : m);
-  function fromMenu(i: number, id: string) { emit.action(id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i)); }
+  function fromMenu(i: number, id: string) {
+    emit.action(id as ItemAction, SINGLE.has(id) ? [props.entries[i]!] : targets(i), ui.menuButton(i));
+  }
 
   /** The keys that select, act or open; true when the key was one of them. Navigation keys belong to each view. */
   function onActionKey(e: KeyboardEvent, i: number): boolean {
@@ -61,6 +66,9 @@ export function useItemActions(props: ItemProps, emit: Emits, ui: { showMenu: (i
     else if (props.editable && mod && key === 'c' && handled()) emit.action('copy', targets(i));
     else if (props.editable && mod && key === 'x' && handled()) emit.action('cut', targets(i));
     else if (props.editable && mod && key === 'v' && handled()) emit.paste();
+    // "Move to…" and "Copy to…" (#339): the folder picker.
+    else if (props.editable && e.shiftKey && !mod && !e.altKey && key === 'm' && handled()) emit.action('moveTo', targets(i));
+    else if (e.shiftKey && !mod && !e.altKey && key === 'c' && handled()) emit.action('copyTo', targets(i));
     else if (mod && key === 'a' && handled()) emit.select(props.entries.map((x) => x.path));
     else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) ui.showMenu(i);
     else if (key === 'Enter' && handled()) emit.open(entry); // a folder opens, a file opens in the preview

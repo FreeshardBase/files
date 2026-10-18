@@ -801,6 +801,18 @@ a:where(:hover) { text-decoration: underline; }
   border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere;
 }
 .picker-folder:hover { color: var(--line); }
+/* "Move to…" / "Copy to…" (#339): the picker in a dialog. A selected folder is listed but cannot be opened. */
+.picker-folder:disabled { color: var(--ink-muted); cursor: not-allowed; }
+.picker-folder .fs-label { display: block; margin: 0 0 2px; }
+.picker-note { font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
+.picker-hint { margin: var(--space-3) 0 0; font-size: var(--fs-small); color: var(--ink-muted); }
+.picker-more { margin-top: var(--space-2); }
+.picker-new-folder { margin-top: var(--space-3); }
+.picker-new-folder-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+@media (max-width: 600px) {
+  .move-to-crumbs .crumb { min-height: 44px; }
+  .move-to-action { min-height: 44px; }
+}
 @media (max-width: 600px) {
   .picker-folder { min-height: 44px; }
   .migrate-actions .button { flex: 1 1 auto; justify-content: center; min-height: 44px; }

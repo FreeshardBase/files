@@ -130,7 +130,8 @@ test('the item menu: open and look actions first, trash last under a hairline in
     await menuButton(page, 'ledger.csv').click();
     const menu = page.getByRole('menu');
     await expect(menu.getByRole('menuitem')).toHaveText([/Download|Herunterladen/, /Share|Freigeben|Teilen/, 'Details',
-      /Rename|Umbenennen/, /Move|Verschieben/, /Copy|Kopieren/, /Add to favourites|Zu Favoriten hinzufügen/,
+      /Rename|Umbenennen/, /Move|Verschieben/, /Copy|Kopieren/, /Move to…|Verschieben nach/, /Copy to…|Kopieren nach/,
+      /Add to favourites|Zu Favoriten hinzufügen/,
       /Move to trash|In den Papierkorb/]);
     const separator = menu.getByRole('separator');
     await expect(separator).toHaveCount(1);

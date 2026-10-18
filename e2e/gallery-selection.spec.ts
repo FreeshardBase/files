@@ -30,7 +30,7 @@ const gallery = (page: Page) => page.getByRole('list', { name: /Galerie|Gallery/
 const tile = (page: Page, name: string): Locator => gallery(page).getByRole('button', { name, exact: true });
 const check = (page: Page, name: string): Locator => gallery(page).getByRole('checkbox', { name: `Select ${name}` });
 const bar = (page: Page) => page.getByRole('group', { name: /^(Aktionen für die Auswahl|Actions for the selection)$/ });
-const MENU = ['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Add to favourites', 'Move to trash'];
+const MENU = ['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Move to…', 'Copy to…', 'Add to favourites', 'Move to trash'];
 
 test('gallery: click opens, Ctrl/Shift+click and Space select, hover shows the checkbox, the context menu and the bar act', async ({ page }, info) => {
   test.skip(mobile(info), 'mouse and keyboard; the phone has the touch test');

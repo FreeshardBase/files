@@ -24,6 +24,7 @@ import CollisionDialog, { type CollisionChoice } from './CollisionDialog.vue';
 import NameRulesDialog, { type NameChoice } from './NameRulesDialog.vue';
 import RenameDialog from './RenameDialog.vue';
 import NewFolderDialog from './NewFolderDialog.vue';
+import MoveToDialog from './MoveToDialog.vue';
 import BatchRenameDialog from './BatchRenameDialog.vue';
 import PreviewDialog from './PreviewDialog.vue';
 import GalleryGrid from './GalleryGrid.vue';
@@ -518,8 +519,11 @@ async function toggleFavourite(e: Entry) {
   }
 }
 
-function onAction(action: ItemAction, entries: Entry[]) {
-  if (action === 'download') download(entries);
+function onAction(action: ItemAction, entries: Entry[], from?: HTMLElement) {
+  if (action === 'moveTo' || action === 'copyTo') {
+    picking.value = { mode: action === 'moveTo' ? 'move' : 'copy', source: folder.source, dir: folder.path, entries,
+      returnFocus: from ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null) };
+  } else if (action === 'download') download(entries);
   else if (action === 'favourite') void toggleFavourite(entries[0]!);
   else if (action === 'share') sharing.value = entries[0]!;
   else if (action === 'details') details.value = entries[0]!;
@@ -627,6 +631,29 @@ async function toOther(mode: 'move' | 'copy', entries = selectedEntries.value) {
   }
 }
 const canCopyOther = computed(() => props.other?.editable === true);
+
+// "Move to…" / "Copy to…" (#339): the folder picker across all places. Into this source the items move or copy directly
+// with the collision question; into another one a transfer job runs (a move is copy, verify, delete), asked against the
+// target's whole listing first, as for a paste.
+const picking = ref<{ mode: 'move' | 'copy'; source: string; dir: string; entries: Entry[]; returnFocus: HTMLElement | null } | null>(null);
+async function sendTo(target: { source: string; path: string; nameRules: NameRuleSet }) {
+  const p = picking.value!;
+  picking.value = null;
+  if (acting.value) return;
+  acting.value = true;
+  try {
+    if (target.source === p.source) await transfer(p.mode, p.entries.map((e) => ({ from: e.path, name: e.name })), target.path, p.source);
+    else {
+      const taken = (await listAll(target.source, target.path)).map((e) => e.name);
+      await startJob(p.mode, p.source, p.entries, target.source, target.path, taken, target.nameRules);
+    }
+  } catch (e) {
+    if (!(e instanceof ApiFailure)) throw e;
+    failures.value = { heading: t('transfer.failedHeading'), items: [t(`errors.${e.code}`)] }; // handled: the target could not be listed
+  } finally {
+    acting.value = false;
+  }
+}
 // A middle click on a folder (#219) opens it in a new tab, when there are tabs.
 function openTab(e: Entry) { if (props.tabs) emit('openTab', source.value, e.path); }
 defineExpose({
@@ -782,6 +809,14 @@ defineExpose({
             </button>
             <button
               type="button"
+              class="button"
+              :disabled="acting"
+              @click="onAction('moveTo', selectedEntries)"
+            >
+              {{ $t('actions.moveTo') }}
+            </button>
+            <button
+              type="button"
               class="button tag-button"
               :aria-label="$t('tags.addToSelection')"
               :title="$t('tags.addToSelection')"
@@ -801,6 +836,14 @@ defineExpose({
               {{ $t('actions.trash') }}
             </button>
           </template>
+          <button
+            type="button"
+            class="button"
+            :disabled="acting"
+            @click="onAction('copyTo', selectedEntries)"
+          >
+            {{ $t('actions.copyTo') }}
+          </button>
           <!-- Two panes (#218): straight into the folder the other pane shows. -->
           <template v-if="canCopyOther">
             <button
@@ -892,6 +935,16 @@ defineExpose({
       :busy="creating.busy"
       @submit="createFolder"
       @cancel="creating = null"
+    />
+    <MoveToDialog
+      v-if="picking"
+      :mode="picking.mode"
+      :source="picking.source"
+      :dir="picking.dir"
+      :entries="picking.entries"
+      :return-focus="picking.returnFocus"
+      @choose="sendTo"
+      @cancel="picking = null"
     />
     <AddTagDialog
       v-if="tagging"
