@@ -201,9 +201,12 @@ export function markPlaced(db: Db, uploadId: string, name: string): void {
   db.prepare('UPDATE file_request_uploads SET placed_name = ?, placed_at = ? WHERE upload_id = ?').run(name, new Date().toISOString(), uploadId);
 }
 
-/** The visitor's own uploads to this request that are in progress or received, oldest first. */
+/**
+ * The visitor's own uploads to this request that are in progress or received, oldest first. Each under the name sent, never
+ * the saved one: keep-both numbers it only when the folder holds that name, which would let the visitor probe it (#305).
+ */
 export function visitorUploads(db: Db, requestId: string, visitor: string): VisitorUpload[] {
-  const rows = db.prepare(`SELECT u.upload_id AS id, COALESCE(u.placed_name, u.name) AS name, u.length AS size,
+  const rows = db.prepare(`SELECT u.upload_id AS id, u.name, u.length AS size,
       CASE WHEN u.placed_at IS NOT NULL THEN u.length ELSE COALESCE(up.received, 0) END AS offset, u.placed_at IS NOT NULL AS done
     FROM file_request_uploads u LEFT JOIN uploads up ON up.id = u.upload_id
     WHERE u.request_id = ? AND u.visitor = ? AND u.upload_id IS NOT NULL AND (u.placed_at IS NOT NULL OR up.id IS NOT NULL)

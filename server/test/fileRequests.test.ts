@@ -178,6 +178,24 @@ describe('the visitor', () => {
     expect(existsSync(join(root, 'report.txt'))).toBe(false);
   });
 
+  // #305: keep-both appends ` (1)` only when the name is taken, so showing the saved name would let a visitor probe the folder.
+  it('sees the names they sent, never the keep-both name that reveals a file of the folder', async () => {
+    const dir = await folder({ 'secret-contract.pdf': 'owner only' });
+    const r = await request(dir);
+    const v = await visitor(r.token);
+    for (const name of ['secret-contract.pdf', 'not-there.pdf']) {
+      const c = await create(r.token, v, name, 0);
+      expect(c.statusCode, c.body).toBe(201);
+      expect((await patch(String(c.headers.location), v, '')).statusCode).toBe(204);
+    }
+    expect(namesIn(dir)).toEqual(['not-there.pdf', 'secret-contract (1).pdf', 'secret-contract.pdf']);
+    const mine = await info(r.token, v);
+    expect(mine.uploads!.map((u) => [u.name, u.done])).toEqual([['secret-contract.pdf', true], ['not-there.pdf', true]]);
+    expect(JSON.stringify(mine)).not.toContain('(1)');
+    // The owner sees where each file was saved.
+    expect((await files(r.id)).map((f) => f.name).sort()).toEqual(['not-there.pdf', 'secret-contract (1).pdf']);
+  });
+
   it('names are sanitised and never leave the target folder (#94); colliding names are all kept', async () => {
     const parent = await folder();
     await ok(op('mkdir', { path: `${parent}/inbox` }));
