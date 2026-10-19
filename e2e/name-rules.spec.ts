@@ -56,6 +56,35 @@ test('a file with a colon pasted into OneDrive asks with the suggestion; a renam
   await expect(dialog(page)).toContainText(/„:“ ist bei OneDrive nicht erlaubt\.|“:” is not allowed in OneDrive\./);
   await expect(dialog(page).getByTestId('name-suggestion')).toHaveText('Bericht_ Q3.pdf');
   await expect(dialog(page).getByTestId('name-suggestion').locator('mark')).toHaveText(['_']);
+  // #358: the suggestion is a name, so it is set in the UI face; its mark is a selection (teal underline on the 9 %
+  // teal tint, never amber); and the blocks keep 16 px apart, like the dialog's fields.
+  const look = await dialog(page).evaluate((d) => {
+    const probe = (v: string) => {
+      const el = document.createElement('span');
+      el.style.color = `color-mix(in srgb, var(${v}) 9%, transparent)`;
+      el.style.borderBottom = `2px solid var(${v})`;
+      d.append(el);
+      const s = getComputedStyle(el);
+      const out = { tint: s.color, line: s.borderBottomColor };
+      el.remove();
+      return out;
+    };
+    const mark = getComputedStyle(d.querySelector('.name-rules-mark')!);
+    const bottom = (sel: string) => d.querySelector(sel)!.getBoundingClientRect().bottom;
+    const top = (sel: string) => d.querySelector(sel)!.getBoundingClientRect().top;
+    return {
+      font: getComputedStyle(d.querySelector('.name-rules-preview')!).fontFamily,
+      markLine: mark.borderBottomColor, markFill: mark.backgroundColor,
+      line: probe('--line').line, dataTint: probe('--data').tint,
+      gapReasons: top('.name-rules-suggestion') - bottom('.name-rules-reasons'),
+      gapSuggestion: top('.app-dialog-form') - bottom('.name-rules-suggestion'),
+    };
+  });
+  expect(look.font).not.toContain('Plex Mono');
+  expect(look.markLine).toBe(look.line);
+  expect(look.markFill).toBe(look.dataTint);
+  expect(look.gapReasons).toBeGreaterThanOrEqual(12);
+  expect(look.gapSuggestion).toBeGreaterThanOrEqual(12);
   const field = dialog(page).getByRole('textbox');
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('Bericht_ Q3.pdf');

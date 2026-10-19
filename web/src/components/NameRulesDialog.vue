@@ -114,10 +114,11 @@ function submit() {
 </template>
 
 <style scoped>
-.name-rules-reasons { margin: 0; padding-left: 1.25rem; color: var(--ink-muted); }
-.name-rules-suggestion { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; }
-.name-rules-preview { font-family: var(--font-mono); overflow-wrap: anywhere; }
-/* A replaced character: the accent behind it and under it, so it reads without colour too. */
-.name-rules-mark { background: color-mix(in srgb, var(--accent) 18%, transparent); color: inherit;
-  border-bottom: 2px solid var(--accent); font-weight: 600; }
+.name-rules-reasons { margin: 0 0 var(--space-4); padding-left: 1.25rem; color: var(--ink-muted); }
+.name-rules-suggestion { display: flex; flex-direction: column; gap: 0.25rem; margin: 0 0 var(--space-4); }
+.name-rules-preview { overflow-wrap: anywhere; }
+/* A replaced character is marked like a selection: the teal tint behind it and the teal line under it, so it reads
+   without colour too. Amber stays the forward action's (#358). */
+.name-rules-mark { background: color-mix(in srgb, var(--data) 9%, transparent); color: inherit;
+  border-bottom: 2px solid var(--line); font-weight: 600; }
 </style>
