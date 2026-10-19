@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The transfer panel (spec §3.8, #152): one row per copy or move between sources, live from the server's event stream,
 // with its progress, cancel while it runs, and the items that failed once it has ended; migrations and their cleanups
-// (#153) link to their page. It uses the upload panel's sheet
+// (#153) link to their page, an import to the import page (#354). It uses the upload panel's sheet
 // (DESIGN.md), so both read as one kind of thing. A job of several items is labelled by their count, with the names in a
 // disclosure (#234). An ended job shows in full for a few seconds once seen, then a successful one leaves and any other
 // folds into one summary line, where it stays until dismissed.
@@ -33,6 +33,12 @@ const label = (j: TransferJob) => (many(j)
   : t(`transfers.label.${j.kind === 'transfer' ? j.mode : j.kind}`, { name: j.name, target: target(j) }));
 // A migration and its cleanup (#153) link to the migration's page, with the summary and the cleanup.
 const migrationOf = (j: TransferJob) => (j.kind === 'migration' ? j.id : j.kind === 'cleanup' ? j.origin : null);
+// An import (#354) links to the import page, which shows the latest import's report.
+const pageOf = (j: TransferJob) => {
+  if (j.kind === 'import') return '/import';
+  const m = migrationOf(j);
+  return m ? `/migrate/${m}` : null;
+};
 const stateText = (j: TransferJob) => {
   if (j.status === 'running') return t('transfers.state.running', { done: j.done, total: j.total, size: formatSize(j.bytes, intlLocale(locale.value)) });
   if (j.status === 'completed_with_errors') return t('transfers.state.completed_with_errors', { failed: j.failed.length, total: j.total });
@@ -120,9 +126,9 @@ const rows = computed(() => (unfolded.value ? [...shown.value, ...folded.value] 
         </div>
         <span class="upload-actions">
           <RouterLink
-            v-if="migrationOf(j)"
+            v-if="pageOf(j)"
             class="button"
-            :to="`/migrate/${migrationOf(j)}`"
+            :to="pageOf(j)!"
             :aria-label="t('transfers.summaryLabel', { name: j.name })"
           >
             {{ t('transfers.summary') }}

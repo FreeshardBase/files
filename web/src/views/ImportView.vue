@@ -22,7 +22,11 @@ const picked = ref<string[]>([]);
 const alert = ref('');
 const busy = ref(false);
 const jobId = ref('');
-const job = computed<TransferJob | undefined>(() => transfers.jobs.find((j) => j.id === jobId.value));
+// The job this page started, or else the member's latest import (#354): the report outlives the page, and the panel row
+// of an import links back here.
+const job = computed<TransferJob | undefined>(() => (jobId.value
+  ? transfers.jobs.find((j) => j.id === jobId.value)
+  : transfers.jobs.find((j) => j.kind === 'import')));
 const files = ref<HTMLInputElement>();
 
 const report = (e: unknown) => {

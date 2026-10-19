@@ -1272,3 +1272,13 @@ The owner decided to add a menu for the empty area and to make the context menu 
 - **Long-press.** As before: a touch held still for half a second; more than 10 px of movement or a scroll the browser takes over (pointercancel) cancels it. On touch screens rows take no text selection and no callout, as tiles already did.
 
 Why: the toolbar's actions where the pointer is, on the same code paths, and no app menu where it would offer nothing.
+
+## 2026-10-19: Where a finished import's report lives (#354)
+
+The issue offered two ways; decided:
+
+- **A completed import keeps its row** (it does not clear itself like a copy): dismissing it on the server would lose the skipped list, which only the job carries. After a few seconds it folds into the panel's one-line summary like any other ended job that stays (#234), so it no longer holds the top of every folder in full.
+- **The row links to `/import`** ("Summary", as a migration's row links to its page).
+- **The import page shows the job it started, or else the member's newest `kind: 'import'` job** from the transfers store, so its status, skipped and failed lists and "Open the folder" survive a remount and a reload. "Clear finished" or dismissing the row ends that.
+
+Why: the report stays reachable where the member looks for it, with no new storage and no second copy of the job.
