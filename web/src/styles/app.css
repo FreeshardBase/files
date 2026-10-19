@@ -1230,6 +1230,14 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
     flex: 1 1 auto; display: flex; align-items: center; box-sizing: border-box; min-height: 44px;
     padding-block: calc((44px - 1.5em) / 2); margin: -10px 0;
   }
+  /* In the folder list's wrapping name block (#336) the link's base size is 0, not the name's width (#367): a long name
+     never moves to a flex line of its own under the icon, it wraps beside it. The link keeps its 8rem beside the chips,
+     so only the chips wrap under the name. */
+  .folder-list .name-inner > a, .folder-list .name-inner > .link { flex-basis: 0; }
+  /* The icon stands centred on the name's first line, not on a two-line name: the link's first 24 px (its 44 px less
+     the −10 px margins) hold a 20 px icon 2 px down and a 28 px thumbnail 2 px up. */
+  .folder-list .name-inner > .icon { align-self: flex-start; margin-top: 2px; }
+  .folder-list .name-inner > .row-thumb { align-self: flex-start; margin-top: -2px; }
   .members-form { flex-wrap: wrap; }
   .share-radio, .settings-radio { min-height: 44px; }
 }

@@ -190,3 +190,35 @@ test.describe('phone list rows (#336)', () => {
     });
   }
 });
+
+// #367: a long name's link never moves to a flex line of its own under the icon; the icon and the name's first line
+// share one line, and the name wraps beside the icon.
+test.describe('phone folder row icon (#367)', () => {
+  test.skip(({ isMobile }) => !isMobile, 'phone widths only');
+  const NAME = 'Steuererklärung 2025 – Belege und Quittungen für das Finanzamt (endgültige Fassung).txt';
+
+  test('#367 a long file name wraps beside its icon, not under it', async ({ page }, info) => {
+    await page.goto('/home');
+    await expect(page.getByRole('navigation', { name: /Orte|Places/ })).toBeAttached();
+    const dir = `/icon-zeile-${tag(info)}`;
+    await post(page, '/api/v1/sources/home/mkdir', { path: dir }, 201);
+    try {
+      const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`${dir}/${NAME}`)}&onCollision=fail`,
+        { data: Buffer.from('x'), headers: { ...await headers(page), 'content-type': 'application/octet-stream' } });
+      expect(r.status(), await r.text()).toBe(201);
+      await page.goto(`/home${dir}`);
+      const row = page.locator('tbody tr', { has: page.locator('.name-text').getByText(NAME, { exact: true }) });
+      const text = row.locator('.name-inner > a .name-text');
+      await expect(text).toBeVisible();
+      expect(await lines(text), 'the name needs two lines').toBe(2);
+      const lineHeight = await text.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+      const icon = await box(row.locator('.name-inner .icon'));
+      const name = await box(text);
+      expect(Math.abs(icon.y - name.y), 'the icon is not on the first line of the name').toBeLessThan(0.5 * lineHeight);
+      expect(icon.x + icon.width, 'the icon is not left of the name').toBeLessThanOrEqual(name.x + EPS);
+    } finally {
+      const r = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [dir] }, headers: await headers(page) });
+      expect(r.status(), await r.text()).toBe(204);
+    }
+  });
+});
