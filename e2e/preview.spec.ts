@@ -217,3 +217,14 @@ test('arrow keys switch files, the buttons too; Esc closes and focus returns to 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await focusedRowName(page)).toBe('one.txt');
 });
+
+test('on a phone a short text file still gets a full-height preview, not a half-height sheet at the bottom (#368)', async ({ page, isMobile }, info) => {
+  test.skip(!isMobile, 'phone widths only');
+  await setup(page, `short-${tag(info)}`, { 'short.txt': 'line one\nline two\n' });
+  const d = await openPreview(page, 'short.txt');
+  await expect(d.locator('.preview-text')).toContainText('line two');
+  const box = await d.boundingBox();
+  const innerHeight = await page.evaluate(() => window.innerHeight);
+  // The scrim margin is --space-2 (8 px) top and bottom; one more pixel for rounding.
+  expect(box!.height).toBeGreaterThanOrEqual(innerHeight - 17);
+});
