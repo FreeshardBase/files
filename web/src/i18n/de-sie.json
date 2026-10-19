@@ -910,6 +910,7 @@
     "SMART_FOLDER_LIMIT": "Sie können höchstens {max} intelligente Ordner anlegen.",
     "COMMENT_INVALID": "Ein Kommentar braucht Text mit höchstens {max} Zeichen, ohne Steuerzeichen.",
     "COMMENT_LIMIT": "Die Grenze von {max} Kommentaren ist erreicht. Erst müssen ältere Kommentare gelöscht werden.",
+    "JOB_LIMIT": "Es laufen schon zu viele Übertragungen. Eine neue können Sie starten, sobald eine davon fertig ist oder abgebrochen wurde.",
     "RENAME_CONFLICT": "Einige neue Namen sind vergeben oder nicht erlaubt. Wählen Sie für jeden markierten Namen, was passieren soll.",
     "SCAN_RUNNING": "Eine Suche nach doppelten Dateien läuft schon.",
     "DUPLICATE_CHANGED": "Seit der Suche geändert, deshalb behalten.",

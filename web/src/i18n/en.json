@@ -910,6 +910,7 @@
     "SMART_FOLDER_LIMIT": "You can keep at most {max} smart folders.",
     "COMMENT_INVALID": "A comment needs text of at most {max} characters, without control characters.",
     "COMMENT_LIMIT": "The limit of {max} comments has been reached. Older comments must be deleted first.",
+    "JOB_LIMIT": "Too many transfers are already running. A new one can start once one of them has finished or been cancelled.",
     "RENAME_CONFLICT": "Some new names are taken or not allowed. Choose what to do with each flagged name.",
     "SCAN_RUNNING": "A search for duplicates is already running.",
     "DUPLICATE_CHANGED": "Changed since the search, so it was kept.",
