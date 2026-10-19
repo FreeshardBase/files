@@ -117,29 +117,40 @@ describe('process startup', () => {
   it('boots with a 32-character shard secret and shuts down cleanly with exit 0 on SIGTERM', async () => {
     const idp = await startFakeIdp();
     const dataDir = mkdtempSync(join(tmpdir(), 'files-startup-'));
-    const port = await freePort();
-    const child = spawn(process.execPath, ['--import', 'tsx', mainTs], {
-      env: {
-        PATH: process.env.PATH, NODE_ENV: 'production',
-        FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: dataDir,
-        FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1BcD4F',
-        FILES_OIDC_ISSUER: idp.issuer, FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
-        FILES_LOG_LEVEL: 'fatal', FILES_PORT: String(port),
-        FILES_WEB_DIST: join(dataDir, 'no-web-dist'),
-      },
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
-    let stderr = '';
-    child.stderr.on('data', (c) => { stderr += c; });
-    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
-      child.on('exit', (code, signal) => resolve({ code, signal })));
-    try {
-      let up = false;
-      for (let i = 0; i < 100 && !up; i++) {
-        try { up = (await fetch(`http://127.0.0.1:${port}/healthz`)).ok; }
-        catch { await new Promise((r) => setTimeout(r, 100)); }
+    // freePort() releases the port before the child binds it, so a parallel test file can take it in between.
+    // Retry with a fresh port only when the child died of EADDRINUSE; any other failure fails the test.
+    type Exit = { code: number | null; signal: NodeJS.Signals | null };
+    const boot = async () => {
+      const port = await freePort();
+      const child = spawn(process.execPath, ['--import', 'tsx', mainTs], {
+        env: {
+          PATH: process.env.PATH, NODE_ENV: 'production',
+          FILES_PUBLIC_URL: 'https://files.example.com', FILES_DATA_DIR: dataDir,
+          FILES_SESSION_SECRET: 's'.repeat(48), FILES_ENCRYPTION_KEY: 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1BcD4F',
+          FILES_OIDC_ISSUER: idp.issuer, FILES_OIDC_CLIENT_ID: 'files', FILES_OIDC_CLIENT_SECRET: 'files-secret',
+          FILES_LOG_LEVEL: 'fatal', FILES_PORT: String(port),
+          FILES_WEB_DIST: join(dataDir, 'no-web-dist'),
+        },
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      const run = { child, stderr: '', up: false, exit: null as Exit | null, exited: null as unknown as Promise<Exit> };
+      child.stderr.on('data', (c) => { run.stderr += c; });
+      run.exited = new Promise<Exit>((resolve) =>
+        child.on('exit', (code, signal) => { run.exit = { code, signal }; resolve(run.exit); }));
+      for (let i = 0; i < 100 && !run.up && !run.exit; i++) {
+        try { run.up = (await fetch(`http://127.0.0.1:${port}/healthz`)).ok; }
+        catch { await new Promise((r) => setTimeout(r, 100)); } // handled: not listening yet, poll again
       }
-      expect(up, stderr).toBe(true);
+      return run;
+    };
+    let run = await boot();
+    for (let attempt = 1; attempt < 5 && !run.up && run.stderr.includes('EADDRINUSE'); attempt++) {
+      await run.exited;
+      run = await boot();
+    }
+    const { child, exited, stderr } = run;
+    try {
+      expect(run.up, stderr).toBe(true);
       const t0 = Date.now();
       child.kill('SIGTERM');
       const res = await exited;

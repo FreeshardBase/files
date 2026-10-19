@@ -31,6 +31,17 @@ test('import a Takeout ZIP from the import page, see the report and the imported
   await expect(page.getByTestId('import-skipped')).toContainText(/Immich/);
   await expect(page.getByTestId('import-failed')).toHaveCount(0);
 
+  // #354: the report outlives the page. A fresh load of another view, then back through the panel row's link to the
+  // import page, which restores the member's latest import with its skipped list.
+  await page.goto('/home');
+  await expect(page.getByRole('navigation', { name: /Orte|Places/ })).toBeAttached();
+  await page.getByTestId('transfer-panel').getByRole('listitem')
+    .filter({ has: page.locator('.upload-name', { hasText: new RegExp(`/${dir}$`) }) })
+    .getByRole('link', { name: /Zusammenfassung von|Summary of/ }).click();
+  await expect(page).toHaveURL(/\/import$/);
+  await expect(page.getByRole('status').filter({ hasText: /Import fertig|Import finished/ })).toContainText('2');
+  await expect(page.getByTestId('import-skipped')).toContainText('takeout-001.zip/Takeout/Google Photos');
+
   await page.getByRole('link', { name: /Ordner öffnen|Open the folder/ }).click();
   const names = page.locator('tbody .name');
   await expect(names.getByText('Docs', { exact: true })).toBeVisible();
