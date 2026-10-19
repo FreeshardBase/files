@@ -661,11 +661,12 @@ a:where(:hover) { text-decoration: underline; }
 @media (min-width: 601px) {
   .toolbar:has(.selection-bar) { position: sticky; top: 0; z-index: 3; background: var(--bg); }
   .toolbar:has(.selection-bar) .toolbar-actions { display: none; }
-  /* The bar keeps its one row beside the title (#212 added "Add tag"): the crumbs give way and the last one is cut with
-     an ellipsis while the selection lasts, instead of pushing the bar below them. */
+  /* The bar stays beside the title (#212 added "Add tag"): the crumbs give way and the last one is cut with an ellipsis
+     while the selection lasts, but keep 8rem for it; a bar wider than the rest (German, two panes) wraps onto a second
+     row inside the page column instead of scrolling the page sideways (#365). */
   .toolbar:has(.selection-bar) { flex-wrap: nowrap; }
-  .toolbar:has(.selection-bar) .selection-bar { flex: none; }
-  .toolbar:has(.selection-bar) .breadcrumbs { flex: 1 1 auto; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  .toolbar:has(.selection-bar) .selection-bar { flex: 0 1 auto; min-width: 0; }
+  .toolbar:has(.selection-bar) .breadcrumbs { flex: 1 1 auto; min-width: 8rem; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
   .toolbar:has(.selection-bar) .breadcrumbs > * { min-width: 0; }
   .toolbar:has(.selection-bar) .breadcrumbs a[aria-current='page'] { overflow: hidden; text-overflow: ellipsis; }
 }

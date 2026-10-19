@@ -885,14 +885,6 @@ defineExpose({
                 aria-hidden="true"
               />
             </button>
-            <button
-              type="button"
-              class="button danger"
-              :disabled="acting"
-              @click="onAction('trash', selectedEntries)"
-            >
-              {{ $t('actions.trash') }}
-            </button>
           </template>
           <button
             type="button"
@@ -922,6 +914,16 @@ defineExpose({
               {{ $t('actions.moveToOther') }}
             </button>
           </template>
+          <!-- The destructive action comes last (DESIGN.md, #365). -->
+          <button
+            v-if="editable"
+            type="button"
+            class="button danger"
+            :disabled="acting"
+            @click="onAction('trash', selectedEntries)"
+          >
+            {{ $t('actions.trash') }}
+          </button>
         </template>
         <template v-if="clipboard.items && canPaste">
           <button
