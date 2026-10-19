@@ -448,7 +448,8 @@ a:where(:hover) { text-decoration: underline; }
 .markdown hr { border: none; border-top: var(--border-w) solid var(--border); }
 .md-image { color: var(--ink-muted); font-style: italic; }
 @media (max-width: 600px) {
-  .app-dialog.app-dialog-wide { max-height: calc(100dvh - 2 * var(--space-2)); padding: var(--space-4); }
+  /* A definite height (#368): a short file's preview fills the screen too, instead of a half sheet at the bottom. */
+  .app-dialog.app-dialog-wide { height: calc(100dvh - 2 * var(--space-2)); max-height: calc(100dvh - 2 * var(--space-2)); padding: var(--space-4); }
   .preview-nav { flex: 1 1 100%; justify-content: space-between; margin-right: 0; }
 }
 

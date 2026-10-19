@@ -1314,3 +1314,11 @@ Question: at 1280 px in German the selection bar (two items, or two panes) is wi
 Decision: the bar wraps onto a second row inside the page column (the title keeps at least 8rem, cut with an ellipsis). Only then does the toolbar grow and the list move down, by exactly that second row. A bar that fits one row still leaves the list where it was. "In den Papierkorb" is always the last button.
 
 Why: a page that scrolls sideways and cuts a button off is a defect; a list moving by one row while a long bar is open is not. A "More" menu for the secondary actions would keep one row, but it hides actions and needs a new menu, which YAGNI and the issue's own suggested fix (wrapping) argue against.
+
+## 2026-10-19: On phone width every wide dialog is full height (#368)
+
+Question: the fix gives `.app-dialog-wide` a fixed height on phones so a short preview fills the screen. The batch-rename dialog is also `wide`; should it keep sizing to its content?
+
+Decision: no special case. On phone width every wide dialog, the preview and batch rename, is the viewport height minus the scrim margin. Batch rename's body is already `flex: 1 1 auto`, inside the column sheet, so it takes the extra room; its E2E tests pass on mobile-chrome unchanged.
+
+Why: DESIGN.md calls a wide dialog the full-screen sheet on a phone. One rule is simpler than a modifier for each dialog, and a full-height batch rename is not a defect (YAGNI).
