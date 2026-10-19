@@ -436,7 +436,7 @@
     "create": "Create",
     "cancel": "Cancel",
     "newFolderLabel": "Name",
-    "invalid": "A name can’t be empty, contain “/” or be “.” or “..”.",
+    "invalid": "A name can’t be empty, contain “/”, control characters or “�”, or be “.” or “..”.",
     "created": "Created folder {name}"
   },
   "upload": {
@@ -572,7 +572,7 @@
     "label": "New name",
     "submit": "Rename",
     "cancel": "Cancel",
-    "invalid": "A name can’t be empty, contain “/” or be “.” or “..”.",
+    "invalid": "A name can’t be empty, contain “/”, control characters or “�”, or be “.” or “..”.",
     "tooLong": "The name is too long: at most 255 characters, and accented letters and symbols count twice or more.",
     "failed": "Renaming didn’t work: {reason}"
   },

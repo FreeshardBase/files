@@ -5,7 +5,7 @@
 // question: Esc counts as "skip" for this item only.
 import { computed, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { checkName, suggestName, type NameRuleSet } from '@files/shared';
+import { checkName, hasUnsafeChar, suggestName, type NameRuleSet } from '@files/shared';
 import AppDialog from './AppDialog.vue';
 import { issueText, nameRefusal } from '../nameRules.ts';
 
@@ -22,7 +22,7 @@ const reasons = checkName(props.rules, props.name, props.dir).map((i) => issueTe
 const marked = new Set(suggestion.replaced);
 const chars = [...suggestion.name].map((c, i) => ({ c, mark: marked.has(i) }));
 const typed = computed(() => value.value.trim());
-const refusal = computed(() => (typed.value === '' || typed.value.includes('/') ? t('rename.invalid')
+const refusal = computed(() => (typed.value === '' || typed.value.includes('/') || hasUnsafeChar(typed.value) ? t('rename.invalid')
   : nameRefusal(t, props.rules, typed.value, props.dir)));
 function submit() {
   if (refusal.value === null) emit('choose', { name: typed.value, all: false });

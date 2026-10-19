@@ -5,7 +5,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import type { Connection, MigrationScan, TransferJob } from '@files/shared';
+import { hasUnsafeChar, type Connection, type MigrationScan, type TransferJob } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
@@ -32,7 +32,7 @@ const conn = computed<Connection | undefined>(() => connections.bySource(source.
 const account = computed(() => (conn.value ? t('nav.connection', { provider: conn.value.providerName, account: conn.value.account }) : ''));
 const fromLabel = computed(() => (from.value === '/' ? t('migrate.wholeAccount', { account: account.value }) : `${account.value}${from.value}`));
 const toLabel = computed(() => `${t('nav.home')}${dir.value === '/' ? '' : dir.value}/${name.value.trim()}`);
-const nameValid = computed(() => { const n = name.value.trim(); return n !== '' && n !== '.' && n !== '..' && !n.includes('/'); });
+const nameValid = computed(() => { const n = name.value.trim(); return n !== '' && n !== '.' && n !== '..' && !n.includes('/') && !hasUnsafeChar(n); });
 const size = (n: number) => formatSize(n, intlLocale(locale.value));
 
 onMounted(async () => {

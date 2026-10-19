@@ -42,6 +42,8 @@ File content is served inline only for images (not SVG), video, audio, PDF and `
 
 On-disk names that are not canonical (NFD-normalised, containing control characters, or invalid UTF-8) are skipped in listings. They cannot round-trip through the API's path rules, so showing them would offer entries the user cannot open.
 
+Amended 2026-10-19 (#379): a name containing U+FFFD is treated as invalid UTF-8 and hidden too, so the path rules of a home (`normalizeHomePath`, used by `resolveInRoot` and the local backend) refuse U+FFFD like a control character (`PATH_INVALID` on every write path), and a file request visitor's file or uploader name loses it like a control character. Otherwise any member with write access, or a visitor, could plant files the listing, the ZIP download and the reindex never show. A file whose name contains U+FFFD and was put on the disk outside the app (a restored backup) stays unaddressable, as other non-canonical names do. Cloud sources keep U+FFFD: their listings show such names, so they must stay addressable there; a transfer of one into a home fails that item with `PATH_INVALID`, as a control character does. The web's name dialogs refuse U+FFFD everywhere, a simpler rule than one per source.
+
 ## 2026-10-14: upload content-type gate before body parsing
 
 The upload route checks the content type (`application/octet-stream`) in `onRequest`, before any body parser runs. Otherwise a JSON or text content type would make Fastify buffer the whole body in memory, which is a denial of service.

@@ -3,7 +3,7 @@
 // `error` and keeps the dialog open with the field focused. Esc or "Cancel" creates nothing.
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { suggestName, type NameRuleSet } from '@files/shared';
+import { hasUnsafeChar, suggestName, type NameRuleSet } from '@files/shared';
 import AppDialog from './AppDialog.vue';
 import { nameRefusal } from '../nameRules.ts';
 
@@ -37,7 +37,7 @@ function submit() {
   if (props.busy) return;
   const name = value.value.trim();
   // The server checks names too; this only saves a round trip for the obvious cases.
-  invalid.value = name === '' || name === '.' || name === '..' || name.includes('/');
+  invalid.value = name === '' || name === '.' || name === '..' || name.includes('/') || hasUnsafeChar(name);
   if (invalid.value || ruleRefusal.value !== null) { input.value?.focus(); return; }
   emit('submit', name);
 }

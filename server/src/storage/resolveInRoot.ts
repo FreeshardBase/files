@@ -18,8 +18,18 @@ export function normalizeUserPath(userPath: string): string {
   return '/' + segments.join('/');
 }
 
+/**
+ * `normalizeUserPath` for a path in a home on disk, which also refuses U+FFFD (#379): a home listing hides names holding
+ * it (invalid UTF-8 on disk, storage/local.ts `addressable`), so no path in a home may contain it and no write creates
+ * one. Cloud sources list such names and still address them through `normalizeUserPath`.
+ */
+export function normalizeHomePath(userPath: string): string {
+  if (typeof userPath === 'string' && userPath.includes('�')) throw new AppError('PATH_INVALID');
+  return normalizeUserPath(userPath);
+}
+
 export async function resolveInRoot(root: string, userPath: string): Promise<string> {
-  const normalized = normalizeUserPath(userPath);
+  const normalized = normalizeHomePath(userPath);
   const realRoot = await realpath(root);
   const segments = normalized.split('/').filter(Boolean);
   if (Buffer.byteLength(join(realRoot, ...segments)) > MAX_PATH_BYTES) throw new AppError('PATH_INVALID');

@@ -95,6 +95,24 @@ test('renaming onto a taken name says so in the open dialog; Esc keeps both file
   expect(await download(page, 'b.txt')).toBe('B');
 });
 
+test('a rename to a name with U+FFFD is refused in the dialog and never sent; the list keeps the old name (#379)', async ({ page }, info) => {
+  const dir = `rename-fffd-${tag(info)}`;
+  await setup(page, dir, { 'a.txt': 'A' });
+  const moves: string[] = [];
+  page.on('request', (r) => { if (r.url().includes('/api/v1/sources/home/move')) moves.push(r.url()); });
+  await row(page, 'a.txt').focus();
+  await page.keyboard.press('F2');
+  const input = renameDialog(page).getByRole('textbox');
+  await input.fill('x�.txt');
+  await page.keyboard.press('Enter');
+  await expect(input).toHaveAccessibleDescription(/kein „�“|or “�”/);
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  await page.keyboard.press('Escape');
+  await expect(renameDialog(page)).toHaveCount(0);
+  expect(await names(page)).toEqual(['a.txt']);
+  expect(moves).toEqual([]);
+});
+
 test('drag and drop onto a folder moves the item into it', async ({ page }, info) => {
   test.skip(isMobile(info), 'touch has no HTML5 drag and drop; the action menu test covers moving on mobile');
   const dir = `dnd-${tag(info)}`;
