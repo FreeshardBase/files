@@ -7,12 +7,15 @@ import { nextTick, onBeforeUnmount, ref } from 'vue';
 // A `danger` item (the destructive one, last) sits under a hairline and takes the danger colour (#241).
 export type MenuItem = { id: string; label: string; danger?: boolean };
 // With `text` the button is a labelled forward-action button in the tab order (the phone toolbar's "Upload", #245)
-// instead of a row's "…", and Esc or choosing puts the focus back on it.
-const props = defineProps<{ label: string; items: MenuItem[]; text?: string }>();
+// instead of a row's "…", and Esc or choosing puts the focus back on it. `heading` is the menu's title and name (a row's
+// menu acting on a selection says how many, #340). `bare`: no button at all; the menu opens at the point given to `show`
+// (the empty area's context menu, #340).
+const props = defineProps<{ label: string; items: MenuItem[]; text?: string; heading?: string; bare?: boolean }>();
 const emit = defineEmits<{ select: [string]; closed: [] }>();
 const open = ref(false);
 const up = ref(false);
 const right = ref(false);
+const at = ref<{ x: number; y: number } | null>(null);
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const menu = ref<HTMLElement>();
@@ -25,13 +28,19 @@ function onOutside(e: Event) {
 // hangs to the left of its button unless it would run past the left edge and there is more room to the right (a tile in
 // the gallery's first column, #229).
 function place() {
+  if (at.value) { // at a point: kept inside the viewport
+    const { offsetWidth: w, offsetHeight: h } = menu.value!;
+    at.value = { x: Math.max(0, Math.min(at.value.x, innerWidth - w)), y: Math.max(0, Math.min(at.value.y, innerHeight - h)) };
+    return;
+  }
   const button = root.value!.getBoundingClientRect();
   const below = window.innerHeight - button.bottom;
   up.value = menu.value!.offsetHeight > below && button.top > below;
   right.value = menu.value!.offsetWidth > button.right && window.innerWidth - button.left > button.right;
 }
-async function show() {
+async function show(point?: { x: number; y: number }) {
   up.value = false; right.value = false;
+  at.value = point ?? null;
   open.value = true;
   document.addEventListener('pointerdown', onOutside, true);
   await nextTick();
@@ -68,6 +77,7 @@ defineExpose({ show, trigger });
     class="item-menu"
   >
     <button
+      v-if="!bare"
       ref="trigger"
       type="button"
       :class="text ? 'button primary menu-trigger' : 'icon-button'"
@@ -95,13 +105,22 @@ defineExpose({ show, trigger });
       v-if="open"
       ref="menu"
       class="menu"
-      :class="{ 'menu-up': up, 'menu-right': right }"
+      :class="{ 'menu-up': up, 'menu-right': right, 'menu-at': at }"
+      :style="at ? { left: `${at.x}px`, top: `${at.y}px` } : undefined"
       role="menu"
-      :aria-label="label"
+      :aria-label="heading ?? label"
       @keydown="onKey"
       @click.stop
       @dblclick.stop
     >
+      <li
+        v-if="heading"
+        class="menu-heading"
+        role="presentation"
+        aria-hidden="true"
+      >
+        {{ heading }}
+      </li>
       <template
         v-for="item in items"
         :key="item.id"

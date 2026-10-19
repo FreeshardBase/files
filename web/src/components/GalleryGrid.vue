@@ -11,7 +11,7 @@ import type { Entry } from '@files/shared';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { nameParts } from '../format.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
-import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
+import { useItemActions, useLongPress, wantsNativeMenu, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
 import TagChips from './TagChips.vue';
 
@@ -30,7 +30,7 @@ const grid = ref<HTMLElement>();
 // The menus of the rendered tiles by index, collected anew on every render.
 const menus = new Map<number, InstanceType<typeof ItemMenu>>();
 onBeforeUpdate(() => menus.clear());
-const { chosen, toggle, itemsFor, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
+const { chosen, toggle, itemsFor, headingFor, selectForMenu, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
   open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (...args) => emit('action', ...args),
   paste: () => emit('paste'),
 }, { showMenu: (i) => { void menus.get(i)?.show(); }, menuButton: (i) => menus.get(i)?.trigger });
@@ -95,9 +95,11 @@ function onClick(e: MouseEvent, i: number) {
   if (!onSelectClick(e, i)) emit('open', props.entries[i]!);
 }
 function onContextMenu(e: MouseEvent, i: number) {
+  if (wantsNativeMenu(e)) return;
   e.preventDefault();
   if (press.touching()) return; // a held touch selects instead
   active.value = i;
+  selectForMenu(i); // a tile outside the selection is selected alone first (#340)
   void menus.get(i)?.show();
 }
 defineExpose({
@@ -196,6 +198,7 @@ defineExpose({
             class="gallery-menu"
             :label="$t('actions.menu', { name: e.name })"
             :items="itemsFor(e)"
+            :heading="headingFor(e)"
             @select="fromMenu(i, $event)"
             @closed="focusTile(i)"
           />

@@ -96,6 +96,7 @@ describe('FileList actions', () => {
     expect(w.emitted('action')).toBeUndefined();
     expect(w.emitted('paste')).toBeUndefined();
     expect(w.findAll('tbody tr').map((r) => r.attributes('draggable'))).toEqual(['false', 'false']);
+    await w.setProps({ selected: [] });
     await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
     // Copying out of it only reads the items (#339).
     expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Details', 'Copy to…', 'Add to favourites']);
@@ -111,7 +112,7 @@ describe('FileList actions', () => {
     w.unmount();
   });
   it('the member\'s own items offer "Share", which acts on the row alone', async () => {
-    const w = mount(FileList, { props: { ...both, shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
+    const w = mount(FileList, { props: { ...both, selected: ['/a b.txt'], shareable: true }, attachTo: document.body, global: { plugins: [i18n] } });
     await w.findAll('.item-menu .icon-button')[0]!.trigger('click');
     const items = w.findAll('[role=menuitem]');
     expect(items.map((i) => i.text())).toEqual(['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Move to…', 'Copy to…',
@@ -168,10 +169,16 @@ describe('FileList actions', () => {
     await stars[0]!.trigger('click');
     expect(w.emitted('action')).toEqual([['favourite', [entries[0]]]]);
     expect(w.emitted('open')).toBeUndefined(); // the star is not a click on the row's name
+    // A menu on a selection of both acts on both (#340): it says so and has no entry for one item.
+    await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
+    expect(w.find('[role=menu]').attributes('aria-label')).toBe('2 items');
+    expect(w.findAll('[role=menuitem]').map((i) => i.text())).toEqual(['Download', 'Move', 'Copy', 'Move to…', 'Copy to…', 'Move to trash']);
+    await w.find('[role=menu]').trigger('keydown', { key: 'Escape' });
+    await w.setProps({ selected: ['/Fotos'] });
     await w.findAll('.item-menu .icon-button')[1]!.trigger('click');
     const fav = w.findAll('[role=menuitem]').find((i) => i.text() === 'Remove from favourites')!;
     await fav.trigger('click');
-    // the row, though the selection holds both
+    // the row, which is outside the selection
     expect(w.emitted('action')![1]).toEqual(['favourite', [entries[1]], w.findAll('.item-menu .icon-button')[1]!.element]);
     w.unmount();
   });

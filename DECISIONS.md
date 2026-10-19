@@ -1259,3 +1259,16 @@ The owner decided: between sources a drop copies, Shift moves; desktop only. Que
 - **Still only from the own list.** Rows are dragged only where the member may change things, as before; a drag from a read share (which "Copy to…" allows) is left for later.
 
 Why: one drag reaches any folder the member may change, with the same questions and job as the menu path, which keyboard members keep.
+
+## 2026-10-19: Context menu of the empty area, selection-aware menus (#340)
+
+The owner decided to add a menu for the empty area and to make the context menu robust. Questions the issue left open, decided from the spec and YAGNI:
+
+- **What is the empty area.** The folder's content outside a row or tile, its controls, links and fields. The content is at least half the viewport high, so a short list leaves room under it.
+- **Its entries.** "New folder", "Upload files", "Upload folder" where the member may upload (the toolbar's own pickers and dialog), and "Move here (n)" / "Copy here (n)" while items are marked and the folder may change. Where none applies (a read share, a folder that failed to open) the page does not take the event and the browser's menu shows.
+- **A menu on a selection of several** acts on all of them, is named and titled "n items", and leaves out what acts on one item only (rename, share, details, favourite); the selection bar has the batch rename. A right-click or long-press on an item outside the selection selects only it first; Shift+F10 and the ContextMenu key on a focused item do not change the selection (focus is not selection), so the menu acts on that item alone, as before.
+- **Keys with no item focused.** Shift+F10 and the ContextMenu key open the area's menu when the focus is on the folder's content itself or nowhere (the body), in the focused pane, with no dialog open; Esc gives the focus back to the content.
+- **The browser's menu stays** in fields and editable content and over selected text, in the list, the gallery and the empty area. Links in the preview are outside the folder's content and never had the app's menu.
+- **Long-press.** As before: a touch held still for half a second; more than 10 px of movement or a scroll the browser takes over (pointercancel) cancels it. On touch screens rows take no text selection and no callout, as tiles already did.
+
+Why: the toolbar's actions where the pointer is, on the same code paths, and no app menu where it would offer nothing.

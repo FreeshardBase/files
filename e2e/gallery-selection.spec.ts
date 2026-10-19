@@ -31,6 +31,8 @@ const tile = (page: Page, name: string): Locator => gallery(page).getByRole('but
 const check = (page: Page, name: string): Locator => gallery(page).getByRole('checkbox', { name: `Select ${name}` });
 const bar = (page: Page) => page.getByRole('group', { name: /^(Aktionen für die Auswahl|Actions for the selection)$/ });
 const MENU = ['Download', 'Share', 'Details', 'Rename', 'Move', 'Copy', 'Move to…', 'Copy to…', 'Add to favourites', 'Move to trash'];
+// On a tile of a selection of several, the menu leaves out what acts on one item only (#340).
+const MULTI = ['Download', 'Move', 'Copy', 'Move to…', 'Copy to…', 'Move to trash'];
 
 test('gallery: click opens, Ctrl/Shift+click and Space select, hover shows the checkbox, the context menu and the bar act', async ({ page }, info) => {
   test.skip(mobile(info), 'mouse and keyboard; the phone has the touch test');
@@ -81,22 +83,35 @@ test('gallery: click opens, Ctrl/Shift+click and Space select, hover shows the c
   await expect(tile(page, 'd.txt')).toBeFocused();
   await expect(check(page, 'a.txt')).toBeChecked();
 
-  // The context menu offers the list's actions; Rename acts on the tile itself.
+  // The context menu on a selected tile acts on the whole selection and says how many (#340).
+  await tile(page, 'b.txt').click({ button: 'right' });
+  await expect(page.getByRole('menu')).toHaveAccessibleName('3 items');
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(MULTI);
+  await page.keyboard.press('Escape');
+  // On a tile outside the selection it selects only that tile and offers the list's actions; Rename acts on the tile.
   await tile(page, 'd.txt').click({ button: 'right' });
   await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(MENU);
   await expect(page.getByRole('menuitem').first()).toBeFocused();
+  await expect(check(page, 'd.txt')).toBeChecked();
+  await expect(gallery(page).locator('li.selected')).toHaveCount(1);
   await page.getByRole('menuitem', { name: 'Rename' }).click();
   const rename = page.getByRole('dialog', { name: 'Rename' });
   await expect(rename.getByRole('textbox')).toHaveValue('d.txt');
   await rename.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  // Shift+F10 opens the same menu from the keyboard; Esc closes it and the tile keeps the focus.
+  // Shift+F10 opens the same menu from the keyboard, without changing the selection; Esc closes it and the tile keeps
+  // the focus.
   await tile(page, 'b.txt').focus();
   await page.keyboard.press('Shift+F10');
   await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(MENU);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(tile(page, 'b.txt')).toBeFocused();
+  await expect(gallery(page).locator('li.selected')).toHaveCount(1); // still only d.txt
+  await tile(page, 'a.txt').click({ modifiers: ['ControlOrMeta'] });
+  await tile(page, 'c.txt').click({ modifiers: ['Shift'] });
+  for (const n of ['a.txt', 'b.txt', 'c.txt']) await expect(check(page, n)).toBeChecked();
+  await expect(gallery(page).locator('li.selected')).toHaveCount(3);
 
   // The selection bar moves the selected tiles to the trash.
   await bar(page).getByRole('button', { name: 'Move to trash' }).click();
@@ -150,9 +165,10 @@ test('gallery on a phone: long-press selects, taps on the checkbox add to it, th
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // The tile's menu button opens the list's actions; "Move" there marks the whole selection.
+  // The menu button of a selected tile opens the selection's actions (#340); "Move" there marks the whole selection.
   await gallery(page).getByRole('button', { name: 'Actions for c.txt' }).tap();
-  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(MENU);
+  await expect(page.getByRole('menu')).toHaveAccessibleName('2 items');
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(MULTI);
   // c.txt starts the second row of tiles: its menu hangs to the right and stays on the screen.
   const m = (await page.getByRole('menu').boundingBox())!;
   const width = await page.evaluate(() => window.innerWidth);
