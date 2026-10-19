@@ -196,6 +196,17 @@ describe('the visitor', () => {
     expect((await files(r.id)).map((f) => f.name).sort()).toEqual(['not-there.pdf', 'secret-contract (1).pdf']);
   });
 
+  it('a visitor\'s name loses U+FFFD like a control character, so the file appears in the owner\'s listing (#379)', async () => {
+    const dir = await folder();
+    const r = await request(dir, { askName: true });
+    const v = await visitor(r.token);
+    expect((await upload(r.token, v, 'invoice�.pdf', 'pdf', { uploader: 'Test� User' })).statusCode).toBe(204);
+    expect(namesIn(dir)).toEqual(['invoice.pdf']);
+    const listed = await ok(t.app.inject({ url: `/api/v1/sources/home/list?path=${encodeURIComponent(dir)}`, headers: { cookie: owner.cookie } }));
+    expect((listed.json().entries as Entry[]).map((e) => e.name)).toEqual(['invoice.pdf']);
+    expect((await files(r.id)).map((f) => [f.name, f.uploader])).toEqual([['invoice.pdf', 'Test User']]);
+  });
+
   it('names are sanitised and never leave the target folder (#94); colliding names are all kept', async () => {
     const parent = await folder();
     await ok(op('mkdir', { path: `${parent}/inbox` }));

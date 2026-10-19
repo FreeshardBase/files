@@ -24,7 +24,7 @@ describe('batch rename plan', () => {
     expect(nameProblem('')).toBe('empty');
     expect(nameProblem('a/b')).toBe('slash');
     expect(nameProblem('é'.repeat(128))).toBe('long');
-    for (const n of ['.', '..', '.files', '.0123456789abcdef.upload', 'a\u0007', 'a‮', 'end.', 'end ']) expect(nameProblem(n)).toBe('reserved');
+    for (const n of ['.', '..', '.files', '.0123456789abcdef.upload', 'a\u0007', 'a‮', 'a�', 'end.', 'end ']) expect(nameProblem(n)).toBe('reserved');
     expect(nameProblem('Holiday 001.jpg')).toBeNull();
   });
 

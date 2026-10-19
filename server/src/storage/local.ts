@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyBaseLogger } from 'fastify';
 import type { CollisionPolicy, Entry, HomeUsage, LargeFolder, OpenUpload, ThumbSize, TrashItem } from '@files/shared';
 import { AppError } from '../errors.ts';
-import { normalizeUserPath, resolveInRoot } from './resolveInRoot.ts';
+import { normalizeHomePath, resolveInRoot } from './resolveInRoot.ts';
 import { RangeNotSatisfiable, type ByteRange, type Revision, type StorageBackend, type WriteOptions } from './backend.ts';
 import { lookupMime } from './mime.ts';
 import type { Db } from '../db.ts';
@@ -109,10 +109,10 @@ function decodeCursor(cursor: string): SortKey {
   return { d: k.d, n: k.n };
 }
 
-// A listed name must round-trip through normalizeUserPath unchanged, else it could not be addressed again.
+// A listed name must round-trip through normalizeHomePath unchanged, else it could not be addressed again.
 function addressable(name: string): boolean {
   if (name.includes('\uFFFD') || TEMP_NAME.test(name)) return false; // U+FFFD: invalid UTF-8 on disk
-  try { return normalizeUserPath('/' + name) === '/' + name; }
+  try { return normalizeHomePath('/' + name) === '/' + name; }
   catch { return false; } // handled: unaddressable on-disk name is skipped
 }
 
@@ -214,7 +214,7 @@ export class LocalBackend implements StorageBackend {
 
   // Every user path goes through here: normalise, refuse the internal area and temp names, resolve inside the root.
   private async abs(p: string) {
-    const n = normalizeUserPath(p);
+    const n = normalizeHomePath(p);
     if (n === `/${INTERNAL}` || n.startsWith(`/${INTERNAL}/`)) throw new AppError('PATH_INVALID');
     if (n !== '/' && TEMP_NAME.test(basename(n))) throw new AppError('PATH_INVALID');
     await mkdir(this.root, { recursive: true });
@@ -222,7 +222,7 @@ export class LocalBackend implements StorageBackend {
   }
 
   private entry(userPath: string, st: { isDirectory(): boolean; size: number; mtime: Date }): Entry {
-    const path = normalizeUserPath(userPath);
+    const path = normalizeHomePath(userPath);
     const name = path === '/' ? '/' : basename(path);
     const isDir = st.isDirectory();
     return { name, path, type: isDir ? 'directory' : 'file', size: isDir ? 0 : st.size,
@@ -255,14 +255,14 @@ export class LocalBackend implements StorageBackend {
 
   /** The kept versions of a file (#154), oldest first; the file itself is not one of them. */
   async revisions(p: string): Promise<Revision[]> {
-    const n = normalizeUserPath(p);
+    const n = normalizeHomePath(p);
     await this.statFile(n);
     return this.liveVersions(n).map((v) => ({ id: v.id, modified: v.modified, size: v.size }));
   }
 
   /** The bytes of one kept version of the file at `p`; a version of any other file is NOT_FOUND. */
   async readRevision(p: string, id: string): Promise<Awaited<ReturnType<StorageBackend['read']>>> {
-    const n = normalizeUserPath(p);
+    const n = normalizeHomePath(p);
     await this.abs(n);
     const row = this.versionRow(n, id);
     if (!row) throw new AppError('NOT_FOUND');
@@ -288,7 +288,7 @@ export class LocalBackend implements StorageBackend {
   restoreRevision(p: string, id: string): Promise<Entry> { return this.restoreRevisionImpl(p, id).catch(rethrowMapped); }
 
   private async restoreRevisionImpl(p: string, id: string): Promise<Entry> {
-    const n = normalizeUserPath(p);
+    const n = normalizeHomePath(p);
     const target = await this.abs(n);
     if (!this.versionRow(n, id)) throw new AppError('NOT_FOUND');
     await this.statFile(n);
@@ -365,7 +365,7 @@ export class LocalBackend implements StorageBackend {
     const st = await lstat(a).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
     if (st.isDirectory()) throw new AppError('IS_A_DIRECTORY');
     if (!st.isFile()) throw new AppError('NOT_FOUND');
-    return thumbs.get({ userId, path: normalizeUserPath(p), abs: a, etag: etagOf(this.index.etagKey, st), mime: lookupMime(basename(a)) }, size);
+    return thumbs.get({ userId, path: normalizeHomePath(p), abs: a, etag: etagOf(this.index.etagKey, st), mime: lookupMime(basename(a)) }, size);
   }
 
   // After a write, move or delete has landed: the thumbnails of the paths it touched (and beneath them) go. A stale one
@@ -418,7 +418,7 @@ export class LocalBackend implements StorageBackend {
   }
 
   private async endpoints(from: string, to: string, policy: CollisionPolicy) {
-    const nf = normalizeUserPath(from); const nt = normalizeUserPath(to);
+    const nf = normalizeHomePath(from); const nt = normalizeHomePath(to);
     if (nf === '/' || nt === '/') throw new AppError('PATH_INVALID');
     const src = await this.abs(nf); const dst = await this.abs(nt);
     const st = await lstat(src).then((s) => s, (e) => { if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND'); throw e; });
@@ -521,7 +521,7 @@ export class LocalBackend implements StorageBackend {
 
   private async deleteImpl(paths: readonly string[]): Promise<void> {
     if (paths.length === 0) throw new AppError('VALIDATION');
-    const norm = [...new Set(paths.map(normalizeUserPath))];
+    const norm = [...new Set(paths.map(normalizeHomePath))];
     if (norm.includes('/')) throw new AppError('PATH_INVALID');
     // An item beneath another selected one goes to the trash with it.
     const top = norm.filter((p) => !norm.some((q) => p.startsWith(q + '/')));
@@ -583,7 +583,7 @@ export class LocalBackend implements StorageBackend {
     if (this.index.disk && row.size > await this.index.disk.left()) throw new AppError('STORAGE_FULL');
     const src = await this.trashBytes(id);
     const trash = await this.internalDir('trash');
-    const nt = normalizeUserPath(row.original_path);
+    const nt = normalizeHomePath(row.original_path);
     const dst = await this.abs(nt); // refuses symlinks and files on the way, like any user path
     await mkdir(dirname(dst), { recursive: true }).catch((e) => {
       if (isErr(e, 'ENOTDIR') || isErr(e, 'EEXIST')) throw new AppError('NOT_A_DIRECTORY', undefined, { cause: e });
@@ -775,7 +775,7 @@ export class LocalBackend implements StorageBackend {
 
   private async createUploadImpl(u: CreateUpload) {
     if (u.length > u.maxBytes) throw new AppError('PAYLOAD_TOO_LARGE');
-    const nt = normalizeUserPath(u.path);
+    const nt = normalizeHomePath(u.path);
     if (nt === '/') throw new AppError('PATH_INVALID');
     // An upload for another source (a file request into a cloud folder) is only staged here: its path is not in this home.
     if (u.source === 'home') {
@@ -957,7 +957,7 @@ export class LocalBackend implements StorageBackend {
   private async placeUpload(row: UploadRow, policy: CollisionPolicy, onPlaced?: (name: string) => void): Promise<Entry> {
     // Staged for another source: only its caller's `UploadPlacement` places it (a file request into a cloud folder).
     if (row.source !== 'home' && !onPlaced) throw new AppError('NOT_SUPPORTED');
-    const nt = normalizeUserPath(row.path);
+    const nt = normalizeHomePath(row.path);
     const target = await this.abs(nt);
     await mkdir(dirname(target), { recursive: true }).catch((e) => {
       if (isErr(e, 'ENOTDIR') || isErr(e, 'EEXIST')) throw new AppError('NOT_A_DIRECTORY', undefined, { cause: e });
@@ -1003,7 +1003,7 @@ export class LocalBackend implements StorageBackend {
       if (isErr(e, 'ENOTDIR')) throw new AppError('NOT_A_DIRECTORY');
       throw e;
     }
-    const base = normalizeUserPath(p);
+    const base = normalizeHomePath(p);
     const keyed = dirents
       .filter((d) => !(base === '/' && d.name === INTERNAL) && (d.isFile() || d.isDirectory()) && addressable(d.name))
       .map((d) => ({ d, key: { d: d.isDirectory() ? 1 : 0, n: d.name } as SortKey }))
@@ -1053,7 +1053,7 @@ export class LocalBackend implements StorageBackend {
     const a = await this.abs(p);
     await mkdir(dirname(a), { recursive: true });
     await mkdir(a).catch((e) => { if (isErr(e, 'EEXIST')) throw new AppError('FILE_EXISTS'); throw e; });
-    this.index.db.transaction(() => this.indexPlaced(normalizeUserPath(p), a)).immediate();
+    this.index.db.transaction(() => this.indexPlaced(normalizeHomePath(p), a)).immediate();
     return this.statImpl(p);
   }
 
@@ -1113,7 +1113,7 @@ export class LocalBackend implements StorageBackend {
       let rel: string;
       if (opts.onCollision === 'replace') {
         // The content being replaced is kept as a version, in the transaction that puts the new bytes in place.
-        rel = normalizeUserPath(p);
+        rel = normalizeHomePath(p);
         const versions = await this.internalDir('versions');
         this.atomically((fs) => {
           this.keepVersion(fs, versions, target, rel);
@@ -1127,7 +1127,7 @@ export class LocalBackend implements StorageBackend {
       } else {
         const finalPath = await this.place(tmp, target, opts.onCollision);
         await syncDir(dir);
-        rel = join(dirname(normalizeUserPath(p)), basename(finalPath));
+        rel = join(dirname(normalizeHomePath(p)), basename(finalPath));
         db.transaction(() => { recordRecent(db, userId, rel, 'file'); this.indexPlaced(rel, finalPath); }).immediate();
       }
       await this.forgetThumbs(rel);

@@ -21,6 +21,10 @@ describe('resolveInRoot', () => {
   it('resolves "/" to the root itself', async () => {
     expect(await resolveInRoot(root, '/')).toBe(root);
   });
+  it('refuses U+FFFD in a home path, which a cloud path may hold (#379)', async () => {
+    expect(await code(resolveInRoot(root, '/docs/a�.txt'))).toBe('PATH_INVALID');
+    expect(normalizeUserPath('/docs/a�.txt')).toBe('/docs/a�.txt');
+  });
   it.each([
     '/../outside/secret.txt', '/docs/../../outside', '..', '/docs/..', 'a\u0000b', '/a\nb', '',
     '/.', '/docs/./a.txt', '/docs\\..\\..\\outside', '/a\\b', '/' + 'x'.repeat(256),

@@ -75,21 +75,24 @@ export type RenameRow = { path: string; name: string; to: string; action: 'renam
   conflict: RenameConflict | null; problem: NameProblem | null; policy: RenamePolicy | null; onCollision: 'fail' | 'replace' };
 export type RenamePlan = { rows: RenameRow[]; blocked: boolean };
 
-// eslint-disable-next-line no-control-regex -- the C0 and C1 control characters are exactly what is refused
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
-const BIDI = /[؜‎‏‪-‮⁦-⁩]/;
+// Control and bidi characters, and U+FFFD, which listings hide (it stands for invalid UTF-8 on disk, #379); the server
+// refuses the same characters (storage/resolveInRoot.ts).
+const UNSAFE_CHAR = /[\p{Cc}\p{Bidi_Control}�]/u;
 const TEMP_UPLOAD = /^\.[0-9a-f]{16}\.upload$/;
+
+/** Whether `name` holds a character no file or folder name may contain: a control or bidi character, or U+FFFD. */
+export const hasUnsafeChar = (name: string) => UNSAFE_CHAR.test(name);
 
 /**
  * Why `name` cannot be a file or folder name, or null. Reserved: `.`, `..`, the app's internal `.files`, the name of a
- * temporary upload file, control or bidi characters, and a trailing space or dot (Windows, WebDAV clients and OneDrive
- * refuse those).
+ * temporary upload file, control or bidi characters, U+FFFD, and a trailing space or dot (Windows, WebDAV clients and
+ * OneDrive refuse those).
  */
 export function nameProblem(name: string): NameProblem | null {
   if (name === '') return 'empty';
   if (name.includes('/')) return 'slash';
   if (new TextEncoder().encode(name).length > MAX_NAME_BYTES) return 'long';
-  if (name === '.' || name === '..' || name === '.files' || TEMP_UPLOAD.test(name) || CONTROL.test(name) || BIDI.test(name)
+  if (name === '.' || name === '..' || name === '.files' || TEMP_UPLOAD.test(name) || hasUnsafeChar(name)
     || /[ .]$/.test(name)) return 'reserved';
   return null;
 }

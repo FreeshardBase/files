@@ -436,7 +436,7 @@
     "create": "Erstellen",
     "cancel": "Abbrechen",
     "newFolderLabel": "Name",
-    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten.",
+    "invalid": "Ein Name darf nicht leer sein, kein „/“, keine Steuerzeichen und kein „�“ enthalten und nicht „.“ oder „..“ lauten.",
     "created": "Ordner {name} erstellt"
   },
   "upload": {
@@ -572,7 +572,7 @@
     "label": "Neuer Name",
     "submit": "Umbenennen",
     "cancel": "Abbrechen",
-    "invalid": "Ein Name darf nicht leer sein, kein „/“ enthalten und nicht „.“ oder „..“ lauten.",
+    "invalid": "Ein Name darf nicht leer sein, kein „/“, keine Steuerzeichen und kein „�“ enthalten und nicht „.“ oder „..“ lauten.",
     "tooLong": "Der Name ist zu lang: höchstens 255 Zeichen, Umlaute und Sonderzeichen zählen doppelt oder mehr.",
     "failed": "Umbenennen hat nicht geklappt: {reason}"
   },

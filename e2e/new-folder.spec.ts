@@ -73,6 +73,14 @@ test('the name is checked; a taken name says so and keeps the dialog open; Esc c
   await input.fill('a/b');
   await page.keyboard.press('Enter');
   await expect(d).toContainText(/darf nicht leer|can’t be empty/);
+  // #379: U+FFFD is refused here like a control character, before anything is sent.
+  const mkdirs: string[] = [];
+  page.on('request', (r) => { if (r.url().includes('/api/v1/sources/home/mkdir')) mkdirs.push(r.url()); });
+  await input.fill('x�');
+  await page.keyboard.press('Enter');
+  await expect(d).toContainText(/kein „�“|or “�”/);
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(mkdirs).toEqual([]);
 
   await input.fill('Ordner');
   await page.keyboard.press('Enter');

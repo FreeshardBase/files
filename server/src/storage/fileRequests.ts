@@ -21,8 +21,8 @@ const OPEN = '(u.placed_at IS NULL AND (u.upload_id IS NULL OR u.upload_id IN (S
 export const MAX_OPEN_PER_VISITOR = 10;
 export const MAX_OPEN_PER_REQUEST = 100;
 
-// Control characters and bidi marks, as `normalizeUserPath` refuses them; here they are dropped instead.
-const UNSAFE = /[\p{Cc}\p{Bidi_Control}]/gu;
+// Control characters, bidi marks and U+FFFD (#379), as `normalizeHomePath` refuses them; here they are dropped instead.
+const UNSAFE = /[\p{Cc}\p{Bidi_Control}�]/gu;
 const MAX_NAME_BYTES = 255;
 /** The name of an upload whose name has nothing left after sanitising. */
 export const FALLBACK_NAME = 'upload';
