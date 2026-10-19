@@ -294,6 +294,8 @@ a:where(:hover) { text-decoration: underline; }
 }
 @media (max-width: 600px) {
   .app-dialog-scrim { align-items: flex-end; padding: var(--space-2); }
+  /* Auto margins beat align-items (#355): only the top one stays auto, so a dialog taller than the window still scrolls. */
+  .app-dialog { margin: auto 0 0; }
   .app-dialog-actions .button { flex: 1 1 auto; justify-content: center; }
   /* Three answers do not fit one row (#245): the collision dialog stacks them full width, the forward action on top. */
   .app-dialog-actions:has(> .collision-action) { flex-direction: column-reverse; }
