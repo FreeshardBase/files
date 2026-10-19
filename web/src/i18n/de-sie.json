@@ -217,8 +217,10 @@
       "title": "Die Festplatte des Shards",
       "usedOf": "{used} von {total} belegt · {free} frei",
       "bar": "Belegter Platz auf der Festplatte des Shards",
-      "reserveDefault": "Für den Shard freigehalten: {reserve} (die Voreinstellung, 5 GiB oder 5 % der Festplatte, je nachdem, was mehr ist). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "reserveDefault": "Für den Shard freigehalten: {reserve} (die Voreinstellung, {min} oder {share} der Festplatte, je nachdem, was mehr ist). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
       "reserveSet": "Für den Shard freigehalten: {reserve} (festgelegt mit FILES_DISK_RESERVE={setting}). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
+      "reserveMin": "5 GiB",
+      "reserveShare": "5 %",
       "warningTitle": "Die Festplatte des Shards ist fast voll",
       "warningText": "Sobald nur noch die Reserve frei ist, kann niemand mehr Dateien speichern. Leeren Sie den Papierkorb, löschen Sie alte Versionen oder bitten Sie die Mitglieder, Platz zu schaffen."
     }
@@ -346,7 +348,6 @@
     "remove": "Tag „{tag}“ entfernen",
     "none": "Keine Tags.",
     "addLabel": "Neuer Tag",
-    "addPlaceholder": "Tag hinzufügen",
     "add": "Tag hinzufügen",
     "addToSelection": "Tag hinzufügen",
     "addTitle": "Tag zu einem Element hinzufügen | Tag zu {count} Elementen hinzufügen",

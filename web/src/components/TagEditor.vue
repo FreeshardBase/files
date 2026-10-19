@@ -114,7 +114,7 @@ async function remove(tag: string) {
       @submit.prevent="add"
     >
       <label
-        class="visually-hidden"
+        class="fs-label"
         :for="`${listId}-input`"
       >{{ t('tags.addLabel') }}</label>
       <input
@@ -124,7 +124,6 @@ async function remove(tag: string) {
         type="text"
         :list="listId"
         :maxlength="MAX_TAG_LENGTH * 2"
-        :placeholder="t('tags.addPlaceholder')"
         autocomplete="off"
         spellcheck="false"
         enterkeyhint="done"
