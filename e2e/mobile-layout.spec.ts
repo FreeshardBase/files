@@ -116,6 +116,33 @@ test('the folder toolbar is one row on the phone; "Upload folder" and "New folde
   }
 });
 
+// #355: the auto margin of `.app-dialog` used to beat the scrim's `align-items: flex-end`, so the sheet stayed centred.
+test('a dialog sits at the bottom edge on the phone and stays centred on the desktop (#355 M6)', async ({ page }, info) => {
+  await mkdir(page, `${PARENT}/m6`);
+  await page.goto(`/home${PARENT}/m6`);
+  await expect(page.locator('.toolbar-actions')).toBeVisible();
+  if (mobile(info)) {
+    await addMenu(page).click();
+    await page.getByRole('menuitem', { name: /^(Neuer Ordner|New folder)$/ }).click();
+  } else {
+    await page.locator('.toolbar-actions').getByRole('button', { name: /^(Neuer Ordner|New folder)$/ }).click();
+  }
+  const dialog = page.getByRole('dialog', { name: /Neuer Ordner|New folder/ });
+  await expect(dialog.getByRole('textbox')).toBeFocused();
+  const b = await box(dialog);
+  const height = page.viewportSize()!.height;
+  const below = height - (b.y + b.height);
+  if (mobile(info)) {
+    // The scrim's padding (8 px) under the sheet, nothing more.
+    expect(below).toBeLessThanOrEqual(9);
+    expect(below).toBeGreaterThanOrEqual(0);
+  } else {
+    expect(Math.abs(b.y - below)).toBeLessThan(2);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
 test('two actions in a list row share it at equal width on the phone (#245 M2)', async ({ page }, info) => {
   for (const scheme of SCHEMES) {
     await page.emulateMedia({ colorScheme: scheme });
