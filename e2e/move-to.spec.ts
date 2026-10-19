@@ -133,3 +133,33 @@ test('Esc closes the picker and puts the focus back on the menu button; Shift+M 
   await page.keyboard.press('Escape');
   await expect(row(page, 'note.txt')).toBeFocused();
 });
+
+test('#356: opening a place, a subfolder or a crumb keeps the focus in the picker, on the current crumb', async ({ page }, info) => {
+  const headers = await signedIn(page);
+  const dir = `/focuspick-${info.project.name}`;
+  await freshDir(page, headers, dir, ['note.txt'], ['Sub']);
+
+  await page.goto(`/home${dir}`);
+  await row(page, 'note.txt').getByRole('button', { name: /(Aktionen für|Actions for) note\.txt/ }).click();
+  await menuItem(page, 'move').click();
+  const dialog = picker(page, 'move');
+  await expect(dialog).toBeVisible();
+  const current = dialog.getByRole('navigation').locator('[aria-current="location"]');
+
+  await dialog.getByRole('button', { name: /^(Mein Speicher|My storage)$/ }).focus();
+  await page.keyboard.press('Enter');
+  await expect(current).toHaveText(/^(Mein Speicher|My storage)$/);
+  await expect(dialog.locator(':focus')).toHaveCount(1);
+  await expect(current).toBeFocused();
+
+  await dialog.getByRole('button', { name: dir.slice(1), exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(current).toHaveText(dir.slice(1));
+  await expect(current).toBeFocused();
+
+  // Back to the places through the first crumb.
+  await dialog.getByRole('navigation').getByRole('button').first().focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('button', { name: /^(Mein Speicher|My storage)$/ })).toBeVisible();
+  await expect(current).toBeFocused();
+});

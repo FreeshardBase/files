@@ -73,10 +73,15 @@ async function fetchPage(cursor?: string) {
     if (id === seq) loading.value = false;
   }
 }
-function go(target: Target | null) {
+// The button that opened the place or folder leaves the DOM; the focus goes to the current crumb (#356), as the
+// migration wizard moves it to the new step.
+const crumbNav = ref<HTMLElement>();
+async function go(target: Target | null) {
   at.value = target; folders.value = []; next.value = undefined; access.value = 'read'; error.value = ''; creating.value = null;
   if (target) void fetchPage();
   else { seq++; loading.value = false; }
+  await nextTick();
+  crumbNav.value?.querySelector<HTMLElement>('[aria-current="location"]')?.focus();
 }
 
 const crumbs = computed(() => {
@@ -133,7 +138,7 @@ async function createFolder() {
     return;
   }
   workspace.touch('move-to', here.source, [here.path]); // a pane showing that folder relists
-  if (at.value === here) go({ source: here.source, path: created.path });
+  if (at.value === here) await go({ source: here.source, path: created.path });
 }
 </script>
 
@@ -144,6 +149,7 @@ async function createFolder() {
     @close="emit('cancel')"
   >
     <nav
+      ref="crumbNav"
       class="breadcrumbs picker-crumbs move-to-crumbs"
       :aria-label="t('moveTo.path')"
     >
