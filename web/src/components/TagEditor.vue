@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // The chip editor of one item in the details drawer (#212): its tags as chips (each a link to the tag view) with a
 // remove button, and with `editable` a field that adds a tag (Enter or "Add"), suggesting the member's other tags. A
-// refusal (too long, the 21st tag) stays in the editor with the typed name.
-import { computed, onMounted, ref, useId } from 'vue';
+// refusal (too long, the 21st tag) stays in the editor with the typed name. Adding or removing keeps the focus in the
+// drawer (#381): after adding on the field, after removing on the next chip's remove button, else the field.
+import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { foldTag, MAX_TAG_LENGTH, MAX_TAGS_PER_ITEM, normalizeTagName, tagColor } from '@files/shared';
 import { ApiFailure } from '../api/client.ts';
@@ -16,6 +17,8 @@ const tags = ref<string[] | null>(null);
 const value = ref('');
 const error = ref('');
 const busy = ref(false);
+const root = ref<HTMLElement>();
+const input = ref<HTMLInputElement>();
 const headingId = useId();
 const listId = useId();
 const errorId = useId();
@@ -26,6 +29,14 @@ const suggestions = computed(() => {
 const fail = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
   error.value = t(`errors.${e.code}`, e.params ?? {});
+};
+// After the next render: the chip's remove button at `index` (or the last one), else the field; without the field (the
+// 20th tag) the last remove button.
+const focus = async (index?: number) => {
+  await nextTick();
+  const buttons = root.value?.querySelectorAll<HTMLElement>('.tag-remove') ?? [];
+  const chip = index === undefined ? undefined : buttons[Math.min(index, buttons.length - 1)];
+  (chip ?? input.value ?? buttons[buttons.length - 1])?.focus();
 };
 
 onMounted(async () => {
@@ -46,18 +57,24 @@ async function add() {
     value.value = '';
   } catch (e) { fail(e); }
   finally { busy.value = false; }
+  // "Add tag" is disabled while busy and with an empty field: the field keeps the focus for the next tag.
+  void focus();
 }
 async function remove(tag: string) {
   error.value = '';
   try {
     await store.remove(props.source, props.path, tag);
+    const at = (tags.value ?? []).indexOf(tag);
     tags.value = (tags.value ?? []).filter((x) => x !== tag);
+    // The chip took its button with it.
+    void focus(at);
   } catch (e) { fail(e); }
 }
 </script>
 
 <template>
   <section
+    ref="root"
     class="tag-editor"
     :aria-labelledby="headingId"
   >
@@ -119,6 +136,7 @@ async function remove(tag: string) {
       >{{ t('tags.addLabel') }}</label>
       <input
         :id="`${listId}-input`"
+        ref="input"
         v-model="value"
         class="fs-input"
         type="text"
