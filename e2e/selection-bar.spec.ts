@@ -87,3 +87,42 @@ test('an item menu near the bottom of the viewport opens upward; one near the to
   expect(m.y).toBeGreaterThanOrEqual(f.y + f.height / 2); // below its button
   expect(m.y + m.height).toBeLessThanOrEqual(height + 0.5);
 });
+
+// #365: at 1280 px in German the bar wraps inside the page column instead of pushing the page into a horizontal
+// scroll; the current crumb keeps an (ellipsised) title, and "In den Papierkorb" is the bar's last button.
+test('#365 the German selection bar stays inside the page column at 1280 px, trash last', async ({ page }, info) => {
+  test.skip(isMobile(info), 'desktop layout');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const putLocale = async (locale: 'de-du' | null) =>
+    expect((await page.request.put('/api/v1/settings', { headers, data: { locale, theme: 'system' } })).status()).toBe(200);
+  const dir = `selbar365-${tag(info)}`;
+  expect([201, 409]).toContain((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status());
+  await putLocale('de-du');
+  try {
+    await page.goto('/home');
+    await row(page, dir).getByRole('checkbox').check();
+    await expect(bar(page)).toBeVisible();
+    await expect(bar(page).getByRole('button', { name: 'Umbenennen' })).toBeVisible();
+
+    const { scrollWidth, innerWidth } = await page.evaluate(() =>
+      ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
+    expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+    const column = await box(page.locator('.page').filter({ has: bar(page) }));
+    const buttons = bar(page).locator('.button');
+    const count = await buttons.count();
+    for (let i = 0; i < count; i++) {
+      const b = await box(buttons.nth(i));
+      expect(b.x + b.width).toBeLessThanOrEqual(column.x + column.width + 0.5);
+    }
+    const current = page.getByRole('navigation', { name: 'Pfad' }).locator('a[aria-current="page"]');
+    await expect(current).toHaveText('Mein Speicher');
+    expect((await box(current)).width).toBeGreaterThan(0);
+    await expect(buttons.last()).toHaveText('In den Papierkorb');
+  } finally {
+    await putLocale(null);
+  }
+});

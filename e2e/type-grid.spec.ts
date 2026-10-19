@@ -314,12 +314,16 @@ test('the selection bar counts the selection, takes the toolbar\'s place and nev
     await expect(row(page, 'c.txt')).toBeVisible();
     const list = page.locator('table.file-list');
     const before = await box(list);
+    const toolbarBefore = await box(page.locator('.toolbar'));
     await row(page, 'a.txt').getByRole('checkbox').check();
     await row(page, 'b.txt').getByRole('checkbox').check();
     const bar = page.getByRole('group', { name: /^(Aktionen für die Auswahl|Actions for the selection)$/ });
     await expect(bar).toBeVisible();
     await expect(bar.locator(':scope > *').first()).toHaveText(/^(2 ausgewählt|2 selected)$/);
-    expect(Math.abs((await box(list)).y - before.y)).toBeLessThan(0.5);
+    // The list moves only by what a bar too wide for one row adds to the toolbar when it wraps (#365); a one-row bar
+    // leaves it in place.
+    const grown = (await box(page.locator('.toolbar'))).height - toolbarBefore.height;
+    expect(Math.abs((await box(list)).y - before.y - grown)).toBeLessThan(0.5);
     if (!mobile(info)) {
       // In place of the toolbar's actions, at the right end of the toolbar.
       await expect(page.locator('.toolbar-actions')).toBeHidden();

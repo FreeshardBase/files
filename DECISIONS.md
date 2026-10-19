@@ -1306,3 +1306,11 @@ Decision (amends #304 and #320):
 - **Accepted:** a visitor PATCH that stays connected keeps its upload's rest on the owner's quota (a running upload never expires), bounded by the open-upload caps (10 per visitor, 100 per request). That is the owner's business (#304), not the shard's disk.
 
 Why: the disk reserve is every member's, so what costs the visitor nothing must cost it nothing; the quota is the owner's business. A check before each window of bytes keeps #320's guarantee against bytes that actually arrive, up to the bounded overshoot above.
+
+## 2026-10-19: A selection bar too wide for one row wraps and pushes the list (#365)
+
+Question: at 1280 px in German the selection bar (two items, or two panes) is wider than the page column beside the title. #239 wants the list never to move when a selection starts; #365 wants no horizontal scroll and a visible title.
+
+Decision: the bar wraps onto a second row inside the page column (the title keeps at least 8rem, cut with an ellipsis). Only then does the toolbar grow and the list move down, by exactly that second row. A bar that fits one row still leaves the list where it was. "In den Papierkorb" is always the last button.
+
+Why: a page that scrolls sideways and cuts a button off is a defect; a list moving by one row while a long bar is open is not. A "More" menu for the secondary actions would keep one row, but it hides actions and needs a new menu, which YAGNI and the issue's own suggested fix (wrapping) argue against.
