@@ -98,6 +98,7 @@ async function axe(page: Page, what: string) {
 }
 
 test('axe finds no serious or critical violation on the main screens and dialogs, in both themes (#125)', async ({ page }, info) => {
+  test.slow(); // every screen and four dialogs, twice: ~25 s alone, past 30 s under the full suite's load
   const dir = await sampleFolder(page, info, 'axe');
   await trashFile(page, `${dir}/old.txt`);
   for (const theme of ['light', 'dark'] as const) {
