@@ -59,3 +59,39 @@ test.describe('on a shard whose disk is down to the reserve', () => {
     expect(dialogs).toEqual([]);
   });
 });
+
+// #370: the reserve sentence sets its size and the default's figures in the mono face (#317), and writes the percentage
+// the locale's way (#247): "5 %" with a no-break space in German, "5%" in English. Sets the language and resets it.
+const NBSP = ' ';
+for (const c of [
+  { locale: 'de-du', percent: `5${NBSP}%` }, { locale: 'de-sie', percent: `5${NBSP}%` }, { locale: 'en', percent: '5%' },
+] as const) {
+  test(`${c.locale}: the reserve sentence sets the reserve and the default's figures in the mono face (#370)`, async ({ page }) => {
+    await page.goto('/storage');
+    await expect(page.locator('.storage-reserve')).toBeVisible();
+    const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+    const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+    const put = async (locale: string | null) => {
+      const r = await page.request.put('/api/v1/settings', { data: { locale, theme: 'system' }, headers });
+      expect(r.status(), await r.text()).toBe(200);
+    };
+    await put(c.locale);
+    try {
+      await page.reload();
+      const reserve = page.locator('.storage-reserve');
+      await expect(reserve).toContainText(c.locale === 'en' ? 'Kept free for the shard' : 'Für den Shard freigehalten');
+      expect(await reserve.evaluate((el) => getComputedStyle(el).fontFamily)).not.toContain('IBM Plex Mono');
+      const figures = reserve.locator('.value-mono');
+      await expect(figures).toHaveText([/^[\d.,]+\s?[kMGT]B$/, /^5\sGiB$/, /^5\s?%$/]);
+      for (const f of await figures.all()) {
+        expect(await f.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('IBM Plex Mono');
+      }
+      const text = (await reserve.textContent())!;
+      expect(text).toContain(c.percent);
+      expect(text).not.toContain('5 %');
+      if (c.locale === 'en') expect(text).not.toContain(`5${NBSP}%`);
+    } finally {
+      await put(null);
+    }
+  });
+}

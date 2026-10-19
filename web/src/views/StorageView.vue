@@ -29,11 +29,6 @@ const diskText = computed(() => {
   const d = disk.status!;
   return t('storage.disk.usedOf', { used: size(d.total - d.free), total: size(d.total), free: size(d.free) });
 });
-const reserveText = computed(() => {
-  const d = disk.status!;
-  return d.setting === null ? t('storage.disk.reserveDefault', { reserve: size(d.reserve) })
-    : t('storage.disk.reserveSet', { reserve: size(d.reserve), setting: d.setting });
-});
 const home = computed(() => storage.overview?.home);
 const shardText = computed(() => {
   const h = home.value!;
@@ -149,9 +144,25 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
             :label="$t('storage.disk.bar')"
             :text="diskText"
           />
-          <p class="storage-reserve">
-            {{ reserveText }}
-          </p>
+          <i18n-t
+            :keypath="disk.status.setting === null ? 'storage.disk.reserveDefault' : 'storage.disk.reserveSet'"
+            tag="p"
+            class="storage-reserve"
+            scope="global"
+          >
+            <template #reserve>
+              <span class="value-mono">{{ size(disk.status.reserve) }}</span>
+            </template>
+            <template #setting>
+              {{ disk.status.setting }}
+            </template>
+            <template #min>
+              <span class="value-mono">{{ $t('storage.disk.reserveMin') }}</span>
+            </template>
+            <template #share>
+              <span class="value-mono">{{ $t('storage.disk.reserveShare') }}</span>
+            </template>
+          </i18n-t>
           <div
             v-if="disk.status.warning"
             class="alert-banner"

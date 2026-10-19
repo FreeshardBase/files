@@ -351,7 +351,7 @@ a:where(:hover) { text-decoration: underline; }
 .link-form { margin-top: var(--space-3); padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }
 /* The link form's actions and "New public link" sit right, like every action row (#238). */
 .link-form-actions { padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }
-.link-new { display: flex; justify-content: flex-end; }
+.link-new { display: flex; justify-content: flex-end; margin-bottom: var(--space-4); }
 .link-page { max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 .link-kind { margin: 0 0 var(--space-1); font-size: var(--fs-label); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--ink-muted); }
 .link-name { margin-bottom: var(--space-4); overflow-wrap: anywhere; }
@@ -1100,7 +1100,9 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   border: 0; border-radius: 50%; background: none; color: var(--ink-muted); cursor: pointer; }
 .tag-remove:hover { color: var(--danger); }
 .tag-remove .icon { width: 12px; height: 12px; }
-.tag-add { display: flex; gap: var(--space-2); }
+/* The field's visible label sits on its own line above the input and the button (#372, DESIGN.md Fields). */
+.tag-add { display: flex; flex-wrap: wrap; column-gap: var(--space-2); }
+.tag-add .fs-label { display: block; flex-basis: 100%; margin-bottom: 5px; }
 .tag-add .fs-input { flex: 1 1 auto; min-width: 0; }
 /* The button keeps its label on one line (#313: German "Tag hinzufügen" broke in two); the input takes the rest. */
 .tag-add .button { flex: none; white-space: nowrap; }

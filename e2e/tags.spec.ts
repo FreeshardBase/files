@@ -160,3 +160,28 @@ test('the drawer\'s add-tag button keeps its German label on one line', async ({
     expect((await settings(null)).status()).toBe(200);
   }
 });
+
+// #372: the drawer's tag field has a visible label above it and no placeholder (DESIGN.md Fields).
+test('the details drawer labels the tag field visibly, without a placeholder (#372)', async ({ page }, info) => {
+  await page.goto('/home');
+  await expect(nav(page)).toBeAttached();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const dir = `tag-label-${tag(info)}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  expect((await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/note.txt`)}&onCollision=fail`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: 'note' })).status()).toBe(201);
+  await page.goto(`/home/${dir}`);
+  await row(page, 'note.txt').getByRole('button', { name: /(Aktionen für|Actions for) note\.txt/ }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^(Details)$/ }).click();
+  const drawer = page.getByRole('dialog', { name: /note\.txt/ });
+  const field = drawer.getByRole('combobox', { name: /^(Neuer Tag|New tag)$/ });
+  await expect(field).toBeVisible();
+  const label = drawer.locator(`label[for="${await field.getAttribute('id')}"]`);
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(/^(Neuer Tag|New tag)$/);
+  await expect(label).toHaveClass(/fs-label/);
+  await expect(field).not.toHaveAttribute('placeholder');
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+});

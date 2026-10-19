@@ -152,3 +152,18 @@ test('home: a link to a file opened from Recent shows after creating and reopeni
   await reopenShows(page, d, file, link);
   await visitorSees(browser, info, baseURL!, link, file);
 });
+
+// #371: "New public link" keeps the usual block spacing (--space-4) above the action row's hairline.
+test('the “New public link” button keeps 16 px above the dialog’s action row (#371)', async ({ page }, info) => {
+  const w = await home(page);
+  const dir = `link-gap-${tag(info)}`;
+  await put(page, w, `/${dir}/gap.txt`, 'gap');
+  await page.goto(folderUrl(w, dir));
+  const d = await openShareDialog(page, 'gap.txt');
+  const button = d.getByRole('button', { name: /Neuer öffentlicher Link|New public link/ });
+  await expect(button).toBeVisible();
+  const bottom = (await button.boundingBox())!;
+  const actions = (await d.locator('.app-dialog-actions').boundingBox())!;
+  expect(actions.y - (bottom.y + bottom.height)).toBeGreaterThanOrEqual(16);
+  await closeDialog(d);
+});
