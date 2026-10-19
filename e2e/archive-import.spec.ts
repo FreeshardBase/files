@@ -21,8 +21,7 @@ test('import a Takeout ZIP from the import page, see the report and the imported
     { name: 'Takeout/Drive/top.txt', data: 'top' },
     { name: 'Takeout/Google Photos/2020/img.jpg', data: 'jpeg' },
   ]);
-  await page.getByLabel(/ZIP-Archive in diesen Ordner hochladen|Upload ZIP archives into this folder/)
-    .setInputFiles({ name: 'takeout-001.zip', mimeType: 'application/zip', buffer: zip });
+  await page.getByTestId('import-upload-input').setInputFiles({ name: 'takeout-001.zip', mimeType: 'application/zip', buffer: zip });
   await expect(page.getByRole('checkbox', { name: 'takeout-001.zip' })).toBeChecked();
   await page.getByRole('button', { name: /Import starten|Start import/ }).click();
 
@@ -48,4 +47,43 @@ test('import a Takeout ZIP from the import page, see the report and the imported
   await expect(names.getByText('top.txt', { exact: true })).toBeVisible();
   await expect(names.getByText('takeout-001.zip', { exact: true })).toBeVisible();
   await expect(names.getByText('Google Photos', { exact: true })).toHaveCount(0);
+});
+
+// #357: on de-du the archive picker is the app's outline upload button over a hidden input, a one-file import reads
+// "1 Datei importiert", and the settled job clears the choice, so "Import starten" cannot import the same archive twice.
+test('de-du: upload button, singular count, Start disabled after the import', async ({ page }, info) => {
+  await page.goto('/home');
+  await expect(page.getByRole('navigation', { name: /Orte|Places/ })).toBeAttached();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const putLocale = async (locale: 'de-du' | null) => {
+    const r = await page.request.put('/api/v1/settings', { data: { locale, theme: 'system' }, headers });
+    expect(r.status(), await r.text()).toBe(200);
+  };
+  const dir = `import357-${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  await putLocale('de-du');
+  try {
+    await page.goto('/import');
+    await expect(page.getByRole('heading', { level: 1, name: 'Export-Archiv importieren' })).toBeVisible();
+    await page.getByRole('button', { name: dir, exact: true }).click();
+    await expect(page.getByText(/noch kein ZIP-Archiv/)).toBeVisible();
+
+    await expect(page.locator('input[type=file]:visible')).toHaveCount(0);
+    const pick = page.getByRole('button', { name: /ZIP-Archive hochladen/ });
+    await expect(pick).toBeVisible();
+    const chooser = page.waitForEvent('filechooser');
+    await pick.click();
+    await (await chooser).setFiles({ name: 'one-357.zip', mimeType: 'application/zip',
+      buffer: makeZip([{ name: 'Takeout/Drive/only.txt', data: 'only' }]) });
+    await expect(page.getByRole('checkbox', { name: 'one-357.zip' })).toBeChecked();
+    const start = page.getByRole('button', { name: 'Import starten' });
+    await start.click();
+
+    await expect(page.getByRole('status').filter({ hasText: /Import fertig/ })).toContainText('1 Datei importiert.');
+    await expect(start).toBeDisabled();
+    await expect(page.getByRole('checkbox', { name: 'one-357.zip' })).not.toBeChecked();
+  } finally {
+    await putLocale(null);
+  }
 });

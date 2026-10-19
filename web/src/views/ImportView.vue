@@ -28,6 +28,7 @@ const job = computed<TransferJob | undefined>(() => (jobId.value
   ? transfers.jobs.find((j) => j.id === jobId.value)
   : transfers.jobs.find((j) => j.kind === 'import')));
 const files = ref<HTMLInputElement>();
+const pickButton = ref<HTMLButtonElement>();
 
 const report = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
@@ -44,13 +45,15 @@ async function listZips() {
   } catch (e) { report(e); } // handled: shown in the alert line
 }
 watch(dir, () => { picked.value = []; void listZips(); }, { immediate: true });
+// A settled job clears the choice (#357), so "Start import" cannot import the same archives a second time.
+watch(() => [job.value?.id, job.value?.status], ([, status]) => { if (status && status !== 'running') picked.value = []; });
 
 function upload() {
   const list = [...(files.value?.files ?? [])];
   if (!list.length) return;
   const at = dir.value;
   uploads.enqueue(list.map((file) => ({ file, rel: file.name })), { source: 'home', dir: at }, {
-    returnFocus: files.value,
+    returnFocus: pickButton.value,
     settled: () => {
       for (const f of list) if (!picked.value.includes(f.name)) picked.value.push(f.name);
       if (at === dir.value) void listZips();
@@ -74,7 +77,7 @@ const statusText = computed(() => {
   const j = job.value;
   if (!j) return '';
   if (j.status === 'running') return t('archiveImport.running', { done: j.done, total: j.total });
-  return t(`archiveImport.${j.status}`, { count: j.verifiedFiles });
+  return t(`archiveImport.${j.status}`, { count: j.verifiedFiles }, j.verifiedFiles);
 });
 const shortPath = (p: string) => p.slice(p.lastIndexOf('/', p.indexOf('.zip/') >= 0 ? p.indexOf('.zip/') : p.length) + 1);
 </script>
@@ -104,18 +107,26 @@ const shortPath = (p: string) => p.slice(p.lastIndexOf('/', p.indexOf('.zip/') >
       :root-label="t('nav.home')"
       :label="t('archiveImport.target')"
     />
-    <label
-      class="fs-label"
-      for="import-upload"
-    >{{ t('archiveImport.upload') }}</label>
-    <input
-      id="import-upload"
-      ref="files"
-      type="file"
-      accept=".zip,application/zip"
-      multiple
-      @change="upload()"
-    >
+    <!-- The app's upload pattern (#357): an outline button opens a hidden picker, so no native file input shows. -->
+    <div class="migrate-actions">
+      <button
+        ref="pickButton"
+        type="button"
+        class="button upload"
+        @click="files?.click()"
+      >
+        {{ t('archiveImport.upload') }}
+      </button>
+      <input
+        ref="files"
+        type="file"
+        accept=".zip,application/zip"
+        multiple
+        hidden
+        data-testid="import-upload-input"
+        @change="upload()"
+      >
+    </div>
     <fieldset class="migrate-accounts">
       <legend class="fs-label">
         {{ t('archiveImport.archives') }}
@@ -177,7 +188,10 @@ const shortPath = (p: string) => p.slice(p.lastIndexOf('/', p.indexOf('.zip/') >
         <h2 class="migrate-step">
           {{ t('archiveImport.failedTitle') }}
         </h2>
-        <ul data-testid="import-failed">
+        <ul
+          class="transfer-failures migrate-failures"
+          data-testid="import-failed"
+        >
           <li
             v-for="f in job.failed"
             :key="f.path"

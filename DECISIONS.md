@@ -1282,3 +1282,14 @@ The issue offered two ways; decided:
 - **The import page shows the job it started, or else the member's newest `kind: 'import'` job** from the transfers store, so its status, skipped and failed lists and "Open the folder" survive a remount and a reload. "Clear finished" or dismissing the row ends that.
 
 Why: the report stays reachable where the member looks for it, with no new storage and no second copy of the job.
+
+## 2026-10-19: The import page's archive picker and Start after an import (#357)
+
+Question: should the "Upload ZIP archives" control be a `<label class="button">` around a hidden input (the toolbar's `UploadButton`), and what happens to the chosen archives once an import ends?
+
+- **A real `<button class="button upload">` opens a `hidden` file input**, the pattern of FolderPane's empty-folder upload button. A label is not a button for assistive tech and leaves the focus on an invisible input; the button has its role, takes the focus, and is where a dialog opened by the upload returns the focus.
+- **The label is "ZIP-Archive hochladen" / "Upload ZIP archives"**; the folder it goes into is named by the folder picker right above it.
+- **A settled job (any status but `running`) clears the checked archives**, so "Start import" is disabled and cannot import the same ZIP a second time as "name (1)" copies. Checking an archive again starts a new import on purpose.
+- **The status lines have singular and plural forms** ("1 Datei importiert", "2 Dateien importiert"), and the failures use the transfer panel's small `--danger` list (`transfer-failures`), as DESIGN.md "Migration" asks.
+
+Why: the same upload control and failure list as everywhere else in the app, and no accidental duplicate import.
