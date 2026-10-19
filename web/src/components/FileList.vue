@@ -7,7 +7,7 @@ import { downloadHref } from '../api/paths.ts';
 import { acceptDrag, drag, droppedPaths, springLeave, springOver, startDrag, type DropMode } from '../dnd.ts';
 import { hasThumbnail, pageThumb, thumbnailHref } from '../preview.ts';
 import { useWindowedRows, WINDOW_FROM, type Slot } from '../virtual.ts';
-import { useItemActions, useLongPress, type ItemAction } from '../itemActions.ts';
+import { useItemActions, useLongPress, wantsNativeMenu, type ItemAction } from '../itemActions.ts';
 import ItemMenu from './ItemMenu.vue';
 import NameText from './NameText.vue';
 import TagChips from './TagChips.vue';
@@ -79,7 +79,7 @@ const items = computed(() => slots.value.map((s: Slot): Item => (s.row === undef
 const rowEl = (i: number) => body.value?.querySelector<HTMLElement>(`tr[aria-rowindex="${i + 2}"]`);
 
 // Selection, the item menu and the action keys are the gallery's too (#229).
-const { chosen, toggle, targets, itemsFor, isFavourite, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
+const { chosen, toggle, targets, itemsFor, headingFor, selectForMenu, isFavourite, fromMenu, onActionKey, onSelectClick } = useItemActions(props, {
   open: (e) => emit('open', e), select: (paths) => emit('update:selected', paths), action: (...args) => emit('action', ...args),
   paste: () => emit('paste'),
 }, { showMenu: (i) => { void menus.get(i)?.show(); }, menuButton: (i) => menus.get(i)?.trigger });
@@ -112,13 +112,19 @@ function onFileClick(e: MouseEvent, entry: Entry) {
   e.preventDefault();
   emit('open', entry);
 }
-function onContextMenu(e: MouseEvent, i: number) {
-  e.preventDefault();
+// The context menu and a long-press (#160) open the row's menu; on a row outside the selection, after selecting only it
+// (#340). The browser keeps its own menu over selected text and in the row's checkbox.
+function showMenu(i: number) {
   active.value = i;
+  selectForMenu(i);
   void menus.get(i)?.show();
 }
-// Long-press (#160): a touch held still opens the row's menu, as the context menu does with a mouse.
-const press = useLongPress((i) => { active.value = i; void menus.get(i)?.show(); });
+function onContextMenu(e: MouseEvent, i: number) {
+  if (wantsNativeMenu(e)) return;
+  e.preventDefault();
+  showMenu(i);
+}
+const press = useLongPress(showMenu);
 // A folder row takes dragged items (#338) and, held under them, asks to be opened; never a folder that is itself dragged.
 watch(() => drag.items, (i) => { if (!i) dropTarget.value = null; }); // ended or cancelled without a leave
 const dragged = (entry: Entry) => drag.items?.source === props.source && drag.items.paths.includes(entry.path);
@@ -360,6 +366,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                 :ref="(el) => { if (el) menus.set(i, el as InstanceType<typeof ItemMenu>) }"
                 :label="$t('actions.menu', { name: e.name })"
                 :items="itemsFor(e)"
+                :heading="headingFor(e)"
                 @select="fromMenu(i, $event)"
                 @closed="focusRow(i)"
               />

@@ -15,7 +15,7 @@ import { downloadHref, folderRoute, sourceApi } from '../api/paths.ts';
 import ShareDialog from './ShareDialog.vue';
 import DetailsDrawer from './DetailsDrawer.vue';
 import FileList from './FileList.vue';
-import type { ItemAction } from '../itemActions.ts';
+import { useLongPress, wantsNativeMenu, type ItemAction } from '../itemActions.ts';
 import Breadcrumbs from './Breadcrumbs.vue';
 import UploadButton from './UploadButton.vue';
 import ItemMenu, { type MenuItem } from './ItemMenu.vue';
@@ -419,8 +419,43 @@ function onAdd(id: string) {
   else if (id === 'folder') uploadButton.value!.folderInput!.click();
   else creating.value = { error: null, busy: false };
 }
+// The empty area's context menu (#340): right-click or long-press on the folder's content outside an item, or Shift+F10
+// and the ContextMenu key with no item focused. It offers what the toolbar does here, plus Paste once items are marked;
+// where none of it applies there is no menu and the browser keeps its own.
+const areaMenu = ref<InstanceType<typeof ItemMenu>>();
+const areaItems = computed<MenuItem[]>(() => (folder.error ? [] : [
+  ...(canUpload.value ? ['mkdir', 'files', 'folder'].map((id) => addItems.value.find((m) => m.id === id)!) : []),
+  ...(canPaste.value && clipboard.items ? [{ id: 'paste', label: t(clipboard.items.mode === 'move' ? 'actions.pasteMove' : 'actions.pasteCopy',
+    { count: clipboard.items.entries.length }) }] : []),
+]));
+// Outside an item, its controls and any link or field.
+const inArea = (at: EventTarget | null) => at instanceof Element
+  && !at.closest('tbody tr, .gallery > li, .item-menu, a, button, input, select, textarea, label, [contenteditable]');
+function showArea(at: { x: number; y: number }) {
+  if (areaItems.value.length) void areaMenu.value?.show(at);
+}
+function onAreaContextMenu(e: MouseEvent) {
+  if (e.defaultPrevented || !inArea(e.target) || wantsNativeMenu(e) || !areaItems.value.length) return;
+  e.preventDefault();
+  showArea({ x: e.clientX, y: e.clientY });
+}
+const areaPress = useLongPress((_, at) => showArea(at), (e) => inArea(e.target));
+function onAreaAction(id: string) {
+  if (id === 'paste') void paste();
+  else onAdd(id);
+}
+// The menu keys with no item focused: focus on the folder's content itself or nowhere.
+function onAreaKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) || !areaItems.value.length) return;
+  if (e.target !== content.value && e.target !== document.body) return;
+  if (document.querySelector('[aria-modal="true"]')) return;
+  e.preventDefault();
+  const box = content.value!.getBoundingClientRect();
+  showArea({ x: box.left + 8, y: Math.max(box.top, 0) + 8 });
+}
 // Shift+N opens it, except while typing or while another dialog is open (as "?" does in App.vue), in the focused pane.
 function onKey(e: KeyboardEvent) {
+  if (props.focused) onAreaKey(e);
   if (!props.focused || e.key !== 'N' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat || !canUpload.value || creating.value) return;
   const at = e.target instanceof HTMLElement ? e.target : null;
   if (at?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
@@ -1025,7 +1060,23 @@ defineExpose({
       tabindex="-1"
       :aria-label="$t('a11y.folderContent', { folder: folderName })"
       :aria-busy="folder.loading"
+      @contextmenu="onAreaContextMenu"
+      @click.capture="areaPress.onClickCapture"
+      @pointerdown="areaPress.onPointerDown($event, 0)"
+      @pointermove="areaPress.onPointerMove"
+      @pointerup="areaPress.onPointerUp"
+      @pointercancel="areaPress.onPointerUp"
     >
+      <ItemMenu
+        v-if="areaItems.length"
+        ref="areaMenu"
+        bare
+        class="area-menu"
+        :label="$t('folder.areaMenu', { folder: folderName })"
+        :items="areaItems"
+        @select="onAreaAction"
+        @closed="content?.focus()"
+      />
       <p
         v-if="folder.loading && !skeleton"
         class="folder-loading"

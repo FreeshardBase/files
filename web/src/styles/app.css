@@ -456,7 +456,10 @@ a:where(:hover) { text-decoration: underline; }
 }
 .status { min-height: 1.5em; margin: 0 0 var(--space-3); font-size: var(--fs-small); color: var(--ink-muted); }
 /* While a folder loads (#228) the list stays in place, dimmed and inert, under the loading note. */
-.folder-content { position: relative; }
+/* The empty space under a short list is part of the content: it takes the area's context menu (#340). */
+.folder-content { position: relative; min-height: 50vh; }
+/* A long-press on a row opens its menu, never the system's text selection or callout (#340). */
+@media (pointer: coarse) { .file-list tbody tr { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
 .folder-content:focus-visible { outline-offset: var(--space-2); }
 .folder-loading {
   position: absolute; inset-block-start: var(--space-6); inset-inline: 0; z-index: 1; margin: 0;
@@ -869,6 +872,9 @@ a:where(:hover) { text-decoration: underline; }
    danger, under a hairline. */
 .menu button:hover, .menu button:focus { background: color-mix(in srgb, var(--ink) 5%, transparent); outline: none; }
 .menu button.menu-danger { color: var(--danger); }
+/* The empty area's menu opens where it was asked for (#340); a row's menu on a selection says how many it acts on. */
+.menu.menu-at { position: fixed; right: auto; bottom: auto; margin: 0; }
+.menu-heading { padding: 6px var(--space-4) 4px; font: 500 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); }
 .menu-separator { margin: var(--space-1) 0; border-top: var(--border-w) solid var(--border); }
 
 /* The guide's toast (PDF p.16, #241): the feedback of an action at the bottom right, a surface sheet with a hairline
