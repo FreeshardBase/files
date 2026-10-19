@@ -1335,3 +1335,11 @@ Decision:
 - **Accepted:** a member's single job can still hold one slot for a long item (a large file); with two slots and turns, another member's job gets the other slot as soon as it frees. Items per job stay bounded by the existing limits (1000 per request, 100 archives per import).
 
 Why: alternating is the smallest change that keeps one member from stalling another without a scheduler of weights or per-member slots (YAGNI); 10 running jobs is far beyond what one person starts by hand and bounds what a script can queue.
+
+## 2026-10-20: The details drawer counts only active public links as access (#382)
+
+Question: `GET /api/v1/links` returns every unrevoked link of the item, including expired ones and ones whose downloads are used up. Which of them does "Who has access" list, and how?
+
+Decision: only links that still open the item: not orphaned, not past `expiresAt`, and `downloads < maxDownloads` when there is a limit. Each is one row in the access list: its label ("Public link" when it has none) and the pill "Anyone with the link". Password, expiry and downloads stay in the share dialog. "Only you." shows only with no member share and no active link.
+
+Why: the drawer answers who can open the item now; an expired or used-up link opens nothing, so listing it would be the opposite error. The pill reuses the access row's shape; the full facts line is one click away in "Share …" (YAGNI).

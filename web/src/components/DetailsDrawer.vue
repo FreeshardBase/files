@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The details drawer of one item (#146, absorbs #52): type, size, modified, location, and who has access. In the
-// member's own home and own cloud connections it lists the members the item is shared with and offers "Share …" (#208);
+// member's own home and own cloud connections it lists the members the item is shared with and its active public links
+// (#382), and offers "Share …" (#208);
 // in a share it shows the caller's own access. Its tags with the chip editor (#212, with `edit`); a file's versions follow
 // (#154); the item can be starred (#155). Esc or the
 // head's X closes it; focus returns to the row. Kind and location are words, never a MIME type or a path (#242).
@@ -8,7 +9,7 @@
 // tab pattern's keys: one tab stop, the arrow keys, Home and End move between the tabs and select them.
 import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Access, Comment, Entry, Share, ShareList } from '@files/shared';
+import type { Access, Comment, Entry, PublicLink, PublicLinkList, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
 import { memberName } from '../memberName.ts';
@@ -71,10 +72,23 @@ onMounted(async () => {
   }
 });
 
+// The item's public links that still open it (#382): not expired, downloads left. An orphaned link cannot belong to an
+// item that is shown.
+const links = ref<PublicLink[] | null>(null);
+const active = (l: PublicLink, now: number) => !l.orphaned
+  && (l.expiresAt === null || Date.parse(l.expiresAt) > now)
+  && (l.maxDownloads === null || l.downloads < l.maxDownloads);
+const linkName = (l: PublicLink) => l.label || t('link.unnamed');
+
 onMounted(async () => {
   if (!own) return;
-  try { shares.value = (await api.get<ShareList>('/api/v1/shares', { source: props.source, path: props.entry.path })).items; }
-  catch (e) {
+  const query = { source: props.source, path: props.entry.path };
+  try {
+    const [s, l] = await Promise.all([api.get<ShareList>('/api/v1/shares', query), api.get<PublicLinkList>('/api/v1/links', query)]);
+    const now = Date.now();
+    links.value = l.items.filter((x) => active(x, now));
+    shares.value = s.items;
+  } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;
     error.value = t(`errors.${e.code}`);
   }
@@ -180,7 +194,7 @@ onMounted(async () => {
         {{ error }}
       </p>
       <ul
-        v-else-if="!own || (shares && shares.length)"
+        v-else-if="!own || (shares && shares.length) || (links && links.length)"
         class="fs-entry-list"
         :aria-labelledby="whoId"
       >
@@ -194,6 +208,13 @@ onMounted(async () => {
         >
           <span class="share-name">{{ memberName(s.grantee) }}</span>
           <span class="share-level fs-pill">{{ t(`share.${s.access}`) }}</span>
+        </li>
+        <li
+          v-for="l in links ?? []"
+          :key="l.id"
+        >
+          <span class="share-name">{{ linkName(l) }}</span>
+          <span class="share-level fs-pill">{{ t('details.anyoneWithLink') }}</span>
         </li>
       </ul>
       <p
