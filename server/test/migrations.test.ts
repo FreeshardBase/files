@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { homeRoot } from '../src/paths.ts';
@@ -229,6 +229,38 @@ describe('migrating a cloud account or folder to the shard', () => {
       { path: '/C/copy-gone.txt', code: 'COPY_CHANGED' },
     ]);
     expect(m.deleted).toEqual(['/C/fine.txt']);
+  });
+
+  it('a cleanup refused for the member\'s running jobs (JOB_LIMIT, #380) keeps its token and deletes nothing', async () => {
+    const { m, source } = mem();
+    m.put('/L/x.txt', 'x');
+    const mig = await settled(t, a, (await migrate(t, a, { from: source, path: '/L', name: 'L' })).id);
+    const url = `/api/v1/migrations/${mig.id}/cleanup`;
+    const token = (await as(t, a, 'GET', url)).json().token as string;
+    // Ten running jobs of testuser's, each held at its first read.
+    const { m: slow, source: from } = mem();
+    mkdirSync(join(home(t, a), 'held'), { recursive: true });
+    const paths = Array.from({ length: 10 }, (_, i) => `/held/${i}.bin`);
+    const held: Job[] = [];
+    for (const p of paths) {
+      slow.put(p, randomBytes(1000)); slow.stall(p);
+      const r = await as(t, a, 'POST', '/api/v1/transfers', { mode: 'copy', from, to: 'home', dir: '/held',
+        items: [{ path: p, onCollision: 'fail' }] });
+      expect(r.statusCode, r.body).toBe(201);
+      held.push(r.json() as Job);
+    }
+    const refused = await as(t, a, 'POST', url, { token });
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ code: 'JOB_LIMIT' });
+    expect(m.deleted).toEqual([]);
+    // Once one job ends, the same token starts the cleanup.
+    expect((await as(t, a, 'POST', `/api/v1/transfers/${held[0]!.id}/cancel`)).statusCode).toBe(200);
+    const r = await as(t, a, 'POST', url, { token });
+    expect(r.statusCode, r.body).toBe(201);
+    for (const p of paths) slow.release(p);
+    expect((await settled(t, a, (r.json() as Job).id)).status).toBe('completed');
+    expect(m.deleted).toEqual(['/L/x.txt']);
+    for (const j of held.slice(1)) expect((await settled(t, a, j.id)).status).toBe('completed');
   });
 
   it('cleanup without a valid confirmation token is refused and deletes nothing', async () => {

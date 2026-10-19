@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -456,5 +456,143 @@ describe('transfer event streams per member', () => {
     await settle();
     expect(first.ended()).toBe(false);
     for (const s of [first, ...rest]) s.destroy();
+  });
+});
+
+// #380: jobs of different members make progress independently. The scheduler serves the members with pending items in
+// turn, so one member's long queue never holds another's job at `pending`; and a member has at most
+// MAX_RUNNING_JOBS_PER_MEMBER running jobs (JOB_LIMIT, 409, beyond).
+describe('transfer scheduling across members', () => {
+  const MAX = 10;
+  let t: TestApp; let a: S; let b: S;
+  const slow = new MemBackend();
+  const fast = new MemBackend();
+  const slowB = new MemBackend();
+  const owned = new Map<string, ConnectedBackend[]>();
+  beforeAll(async () => {
+    t = await startTestApp({}, undefined, undefined, { connections: async (u) => owned.get(u.id) ?? [] });
+    a = await signIn(t, 'testuser');
+    b = await signIn(t, 'member');
+    owned.set(a.id, [{ id: 'slow', backend: slow }]);
+    owned.set(b.id, [{ id: 'fast', backend: fast }, { id: 'slowb', backend: slowB }]);
+  });
+  afterAll(async () => { await t.close(); });
+
+  it('two members with long queues take turns at the slots', async () => {
+    const mineA = Array.from({ length: 5 }, (_, i) => `/turnsA/${i}.bin`);
+    const mineB = Array.from({ length: 5 }, (_, i) => `/turnsB/${i}.bin`);
+    for (const p of mineA) { slow.put(p, randomBytes(1000)); slow.stall(p); }
+    for (const p of mineB) { slowB.put(p, randomBytes(1000)); slowB.stall(p); }
+    const ja = await start(t, a, { from: 'conn:slow', to: 'home', dir: fresh(t, a, 'turnsA'), paths: mineA });
+    await until(async () => slow.reads.size, (n) => n === 2, 'testuser holding both slots');
+    const jb = await start(t, b, { from: 'conn:slowb', to: 'home', dir: fresh(t, b, 'turnsB'), paths: mineB });
+    // Whose item started, in order: each release (of a running read, testuser's before the member's) frees exactly one
+    // slot, so exactly one new read follows it.
+    const order: string[] = ['a', 'a'];
+    const startedAll = () => [...slow.reads.keys(), ...slowB.reads.keys()];
+    const backendOf = (p: string) => (p.startsWith('/turnsA/') ? slow : slowB);
+    const released = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const before = startedAll();
+      const oldest = before.find((p) => !released.has(p))!;
+      released.add(oldest);
+      backendOf(oldest).release(oldest);
+      const after = await until(async () => startedAll(), (s) => s.length > before.length, 'the freed slot to be used');
+      const added = after.filter((p) => !before.includes(p));
+      expect(added).toHaveLength(1);
+      order.push(added[0]!.startsWith('/turnsA/') ? 'a' : 'b');
+    }
+    // testuser had both slots before the member came; from then on the members alternate.
+    expect(order.join('')).toBe('aabababa');
+    for (const p of mineA) slow.release(p);
+    for (const p of mineB) slowB.release(p);
+    expect((await settled(t, a, ja.id)).status).toBe('completed');
+    expect((await settled(t, b, jb.id)).status).toBe('completed');
+  });
+
+  it('a member\'s jobs created in the same millisecond start in the order they were created', async () => {
+    // MAX jobs: the first two start at once, the other eight only in the tie-break's order.
+    const paths = Array.from({ length: MAX }, (_, i) => `/tie/${i}.bin`);
+    for (const p of paths) { slow.put(p, randomBytes(1000)); slow.stall(p); }
+    const dir = fresh(t, a, 'tie');
+    // Only Date is frozen: every job gets the same created_at, timers and I/O run as usual.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const jobs: Job[] = [];
+    try {
+      for (const p of paths) jobs.push(await start(t, a, { from: 'conn:slow', to: 'home', dir, paths: [p] }));
+    } finally { vi.useRealTimers(); }
+    const started = () => [...slow.reads.keys()].filter((p) => p.startsWith('/tie/'));
+    for (let i = 0; i < paths.length - 2; i++) {
+      await until(async () => started().length, (n) => n === i + 2, 'the next job to start');
+      slow.release(started()[i]!);
+    }
+    await until(async () => started().length, (n) => n === paths.length, 'every job to start');
+    expect(started()).toEqual(paths);
+    for (const p of paths) slow.release(p);
+    for (const j of jobs) expect((await settled(t, a, j.id)).status).toBe('completed');
+  });
+
+  it('another member\'s job completes before the first member\'s second job starts its first item', async () => {
+    const first = Array.from({ length: 10 }, (_, i) => `/first/${i}.bin`);
+    const second = Array.from({ length: 10 }, (_, i) => `/second/${i}.bin`);
+    for (const p of [...first, ...second]) { slow.put(p, randomBytes(1000)); slow.stall(p); }
+    fast.put('/mine.txt', 'member bytes');
+    const j1 = await start(t, a, { from: 'conn:slow', to: 'home', dir: fresh(t, a, 'first'), paths: first });
+    const j2 = await start(t, a, { from: 'conn:slow', to: 'home', dir: fresh(t, a, 'second'), paths: second });
+    // This test's reads of testuser's in the order they started (a Map keeps insertion order).
+    const started = () => [...slow.reads.keys()].filter((p) => p.startsWith('/first/') || p.startsWith('/second/'));
+    await until(async () => started().length, (n) => n === 2, 'both slots reading testuser\'s first job');
+    const mine = await start(t, b, { from: 'conn:fast', to: 'home', dir: fresh(t, b, 'mine'), paths: ['/mine.txt'] });
+    const memberStatus = async () => (await jobOf(t, b, mine.id)).status;
+    // Release testuser's reads one at a time, oldest first, until the member's job is no longer running; note whether
+    // testuser's second job got a slot before that.
+    const released = new Set<string>();
+    let secondFirst = false;
+    while (await memberStatus() === 'running') {
+      if (started().some((p) => p.startsWith('/second/'))) secondFirst = true;
+      const next = started().find((p) => !released.has(p));
+      if (next === undefined) throw new Error(`nothing of testuser's left to release: ${JSON.stringify(started())}`);
+      released.add(next);
+      slow.release(next);
+      const before = started().length;
+      await until(async () => ({ n: started().length, s: await memberStatus() }), (v) => v.n > before || v.s !== 'running',
+        'the freed slot to be used');
+    }
+    expect(await memberStatus()).toBe('completed');
+    expect(secondFirst, `started before the member's job completed: ${JSON.stringify(started())}`).toBe(false);
+    // The member got the first slot that came free, so only one of testuser's items had to finish for it.
+    expect(released.size).toBe(1);
+    for (const p of [...first, ...second]) slow.release(p);
+    for (const j of [j1, j2]) expect((await settled(t, a, j.id)).status).toBe('completed');
+  });
+
+  it('a member\'s running job beyond the limit answers 409 JOB_LIMIT; another member and a cancelled job are not held', async () => {
+    const paths = Array.from({ length: MAX + 1 }, (_, i) => `/cap/${i}.bin`);
+    for (const p of paths) { slow.put(p, randomBytes(1000)); slow.stall(p); }
+    const dir = fresh(t, a, 'cap');
+    const jobs: Job[] = [];
+    for (const p of paths.slice(0, MAX)) jobs.push(await start(t, a, { from: 'conn:slow', to: 'home', dir, paths: [p] }));
+    const over = await as(t, a, 'POST', '/api/v1/transfers', { mode: 'copy', from: 'conn:slow', to: 'home', dir,
+      items: [{ path: paths[MAX], onCollision: 'fail' }] });
+    expect(over.statusCode, over.body).toBe(409);
+    expect(over.json()).toMatchObject({ code: 'JOB_LIMIT', params: { max: MAX } });
+    // Every kind of job counts and is held: a batch rename of one file in the home as well.
+    const renameDir = fresh(t, a, 'rename');
+    writeFileSync(join(home(t, a), renameDir, 'one.txt'), 'one');
+    const rename = await as(t, a, 'POST', '/api/v1/renames', { source: 'home', dir: renameDir,
+      ops: { find: 'one', replace: 'two' }, items: [{ path: `${renameDir}/one.txt` }] });
+    expect(rename.statusCode, rename.body).toBe(409);
+    expect(rename.json()).toMatchObject({ code: 'JOB_LIMIT' });
+    expect(existsSync(join(home(t, a), renameDir, 'one.txt'))).toBe(true);
+    // Another member is counted on their own; their job gets the first slot that comes free.
+    fast.put('/other.txt', 'other');
+    const theirs = await start(t, b, { from: 'conn:fast', to: 'home', dir: fresh(t, b, 'other'), paths: ['/other.txt'] });
+    // A cancelled job no longer counts.
+    expect((await as(t, a, 'POST', `/api/v1/transfers/${jobs[0]!.id}/cancel`)).statusCode).toBe(200);
+    slow.release(paths[0]!);
+    expect((await settled(t, b, theirs.id)).status).toBe('completed');
+    const again = await start(t, a, { from: 'conn:slow', to: 'home', dir, paths: [paths[MAX]!] });
+    for (const p of paths) slow.release(p);
+    for (const j of [...jobs.slice(1), again]) expect((await settled(t, a, j.id)).status).toBe('completed');
   });
 });

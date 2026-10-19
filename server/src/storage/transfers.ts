@@ -16,6 +16,8 @@ import { entryStream, openArchive, planArchive, type OpenedArchive } from './arc
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
 export const TRANSFER_CONCURRENCY = 2;
+/** Running jobs one member may have at once (#380); one more is JOB_LIMIT until one of them ends. */
+export const MAX_RUNNING_JOBS_PER_MEMBER = 10;
 /** Progress events per job at most this often while bytes flow; every state change is sent at once. */
 const PROGRESS_MS = 250;
 /** A transfer is not an upload: the member's quota limits what lands in the home, not the upload size limit. */
@@ -108,6 +110,9 @@ export class TransferEngine {
   private listeners = new Map<string, Set<(job: TransferJob) => void>>();
   /** The archives of running imports (#322), opened once per archive item (`job:seq`) and closed when the job ends. */
   private archives = new Map<string, Promise<OpenedArchive>>();
+  /** When each member was last given a slot (#380), as a turn number of this process: the lowest is served next. */
+  private served = new Map<string, number>();
+  private turns = 0;
   private stopping = false;
 
   constructor(private deps: Deps, private log: FastifyBaseLogger) {}
@@ -268,6 +273,9 @@ export class TransferEngine {
     // Deleting needs edit on the connection; the job's own checks run again for every item.
     if ((await sourceFor(this.deps, user, job.from_source)).access !== 'edit') throw new AppError('FORBIDDEN');
     const { db } = this.deps;
+    // A cleanup refused for the member's running jobs keeps its token: checked before the token is used up, and nothing
+    // awaits between here and the insert.
+    this.assertJobRoom(user.id);
     // Single use, also against a second request racing this one.
     if (db.prepare(`UPDATE transfer_jobs SET cleanup_token = NULL, cleanup_expires = NULL WHERE id = ? AND cleanup_token = ?`)
       .run(id, job.cleanup_token).changes !== 1) throw new AppError('CONFIRMATION_REQUIRED');
@@ -366,11 +374,18 @@ export class TransferEngine {
     return job;
   }
 
+  /** JOB_LIMIT once the member has MAX_RUNNING_JOBS_PER_MEMBER running jobs (#380). */
+  private assertJobRoom(userId: string): void {
+    const running = this.deps.db.prepare(`SELECT count(*) FROM transfer_jobs WHERE user_id = ? AND status = 'running'`).pluck().get(userId) as number;
+    if (running >= MAX_RUNNING_JOBS_PER_MEMBER) throw new AppError('JOB_LIMIT', { max: MAX_RUNNING_JOBS_PER_MEMBER });
+  }
+
   private insertJob(job: { user: User; kind: Kind; origin?: string; mode: 'copy' | 'move'; from: string; to: string; dir: string },
     items: NewItem[]): TransferJob {
     const id = randomBytes(16).toString('hex');
     const { db } = this.deps;
     db.transaction(() => {
+      this.assertJobRoom(job.user.id);
       db.prepare(`INSERT INTO transfer_jobs (id, user_id, kind, origin, mode, from_source, to_source, dir, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
         .run(id, job.user.id, job.kind, job.origin ?? null, job.mode, job.from, job.to, job.dir, new Date().toISOString());
@@ -440,15 +455,23 @@ export class TransferEngine {
     this.emit(jobId);
   }
 
-  // Starts pending items of running jobs, oldest job first, until the concurrency is used. Within a job, folders (and
-  // items not yet looked at) go before files, so its totals are complete early (#227).
+  // Starts pending items of running jobs until the concurrency is used. The members with pending items take turns
+  // (#380): the one served longest ago (among those never served, the one with the oldest job) gets the slot, for the
+  // next item of their oldest job (jobs created in the same millisecond in the order they were inserted, not by their
+  // random id). Within a job, folders (and items not yet looked at) go before files, so its totals
+  // are complete early (#227).
   private pump(): void {
     const { db } = this.deps;
     while (!this.stopping && this.active.size < TRANSFER_CONCURRENCY) {
+      const waiting = db.prepare(`SELECT j.user_id FROM transfer_items i JOIN transfer_jobs j ON j.id = i.job_id
+        WHERE i.status = 'pending' AND j.status = 'running' GROUP BY j.user_id ORDER BY min(j.created_at), j.user_id`)
+        .pluck().all() as string[];
+      if (!waiting.length) return;
+      const userId = waiting.reduce((x, y) => ((this.served.get(y) ?? 0) < (this.served.get(x) ?? 0) ? y : x));
+      this.served.set(userId, ++this.turns);
       const next = db.prepare(`SELECT i.job_id AS jobId, i.seq FROM transfer_items i JOIN transfer_jobs j ON j.id = i.job_id
-        WHERE i.status = 'pending' AND j.status = 'running' ORDER BY j.created_at, j.id, i.type IS 'file', i.seq LIMIT 1`)
-        .get() as { jobId: string; seq: number } | undefined;
-      if (!next) return;
+        WHERE i.status = 'pending' AND j.status = 'running' AND j.user_id = ?
+        ORDER BY j.created_at, j.rowid, i.type IS 'file', i.seq LIMIT 1`).get(userId) as { jobId: string; seq: number };
       db.prepare(`UPDATE transfer_items SET status = 'active' WHERE job_id = ? AND seq = ?`).run(next.jobId, next.seq);
       const key = `${next.jobId}:${next.seq}`;
       const ctl = new AbortController();
