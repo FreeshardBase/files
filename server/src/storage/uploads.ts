@@ -8,7 +8,7 @@ import type { TrashDeps } from './trash.ts';
 export type UploadExpiryResult = { removed: string[]; failed: string[] };
 
 /**
- * Removes every resumable upload that has had no bytes for `UPLOAD_TTL_MS` (its `Upload-Expires` has passed), with its
+ * Removes every resumable upload that has had no bytes for `UPLOAD_TTL_MS` (a visitor's: `VISITOR_UPLOAD_TTL_MS`; its `Upload-Expires` has passed), with its
  * staged bytes, through `LocalBackend.expireUploads`, and every open upload of a file request that is no longer live.
  * One that is receiving bytes right now is left for the next run.
  */

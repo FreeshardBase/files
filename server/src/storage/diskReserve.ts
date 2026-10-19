@@ -2,6 +2,7 @@ import { statfs } from 'node:fs/promises';
 import type { DiskStatus } from '@files/shared';
 import type { Db } from '../db.ts';
 import { AppError } from '../errors.ts';
+import { uploadBusy } from './uploadLocks.ts';
 
 // The disk reserve (#320): Files refuses any write that would leave less than the reserve free on its data volume, so a
 // member never fills the shard's disk for every app and the platform (FreeshardBase/freeshard#261). Unlike a quota it is
@@ -48,9 +49,9 @@ export type DiskHold = { bytes: number; written: number };
 
 /**
  * The shard's free space for writes: the volume's free bytes minus the reserve minus what is promised but not yet on
- * disk, which is the rest of every open tus upload (all members) and of every write or copy in flight. Checks that take
- * their bytes run under one lock, so two writes started together never share the same free bytes. The app runs as one
- * process.
+ * disk, which is the rest of every open tus upload (all members; never a file-request visitor's, #364) and of every write
+ * or copy in flight. Checks that take their bytes run under one lock, so two writes started together never
+ * share the same free bytes. The app runs as one process.
  */
 export class DiskReserve {
   private holds = new Set<DiskHold>();
@@ -73,12 +74,18 @@ export class DiskReserve {
 
   /**
    * Bytes that may still be written before the reserve is reached; negative once it is eaten into. `exceptUpload`'s own
-   * rest is not counted (its PATCH asks whether that rest fits).
+   * rest is not counted (its PATCH asks whether that rest fits). A file-request visitor's announced bytes never count
+   * (#364): its PATCH asks before each window of bytes whether it fits. An expired upload holds nothing, even before the
+   * expiry job removes it, unless it is receiving bytes right now.
    */
   async left(exceptUpload?: string): Promise<number> {
     const { total, free } = await this.opts.space(this.opts.dir);
-    let pending = this.opts.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE id IS NOT ?')
-      .pluck().get(exceptUpload ?? null) as number;
+    let pending = 0;
+    const rows = this.opts.db.prepare(`SELECT id, length - received AS rest, expires_at FROM uploads WHERE id IS NOT ?
+      AND id NOT IN (SELECT upload_id FROM file_request_uploads WHERE upload_id IS NOT NULL)`)
+      .all(exceptUpload ?? null) as { id: string; rest: number; expires_at: string }[];
+    const now = new Date().toISOString();
+    for (const r of rows) if (r.expires_at > now || uploadBusy(r.id)) pending += r.rest;
     for (const h of this.holds) pending += Math.max(0, h.bytes - h.written);
     return free - reserveBytes(this.opts.setting, total) - pending;
   }

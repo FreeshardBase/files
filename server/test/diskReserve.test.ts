@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import http from 'node:http';
 import { once } from 'node:events';
@@ -69,6 +70,48 @@ async function settled(t: TestApp, s: S, id: string): Promise<Job> {
     if (Date.now() > end) throw new Error(`job ${id} did not settle`);
     await new Promise((r) => setTimeout(r, 20));
   }
+}
+/** A member's tus PATCH of `length` bytes that has sent 1 KiB and waits; `finish` sends the rest and answers. */
+async function stalledPatch(t: TestApp, s: S, id: string, length: number) {
+  const body = new PassThrough();
+  const running = as(t, s, 'PATCH', `/api/v1/uploads/${id}`, body, { 'tus-resumable': '1.0.0', 'upload-offset': '0',
+    'content-length': String(length), 'content-type': 'application/offset+octet-stream' });
+  body.write(Buffer.alloc(KiB));
+  const staged = join(homeRoot(t.config.dataDir, s.id), '.files', 'uploads', id);
+  for (let i = 0; i < 300 && !(existsSync(staged) && statSync(staged).size >= KiB); i++) await new Promise((r) => setTimeout(r, 10));
+  expect(statSync(staged).size).toBeGreaterThanOrEqual(KiB);
+  return { finish: () => { body.end(Buffer.alloc(length - KiB)); return running; } };
+}
+/**
+ * A file-request visitor's upload of `length` bytes into `owner`'s new `folder`, and its PATCH over a real socket (a
+ * refused body is cut off mid-stream, which an injected request cannot answer) that has sent 1 KiB and waits.
+ */
+async function stalledVisitorPatch(t: TestApp, owner: S, folder: string, length: number) {
+  expect((await as(t, owner, 'POST', '/api/v1/sources/home/mkdir', { path: folder })).statusCode).toBe(201);
+  const token = (await as(t, owner, 'POST', '/api/v1/requests', { source: 'home', path: folder })).json().token as string;
+  const v = await t.app.inject({ url: `/r/${token}/info`, remoteAddress: '198.51.100.8' });
+  const cookie = ([] as string[]).concat(v.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]!).join('; ');
+  const visitor = { cookie, origin: ORIGIN, 'tus-resumable': '1.0.0' };
+  const create = await t.app.inject({ method: 'POST', url: `/r/${token}/uploads`, remoteAddress: '198.51.100.8',
+    headers: { ...visitor, 'upload-length': String(length), 'upload-metadata': `name ${b64('slow.bin')}` } });
+  expect(create.statusCode, create.body).toBe(201);
+  if (!t.app.server.listening) await t.app.listen({ port: 0, host: '127.0.0.1' });
+  const body = http.request({ port: (t.app.server.address() as AddressInfo).port, host: '127.0.0.1', method: 'PATCH',
+    path: String(create.headers.location), headers: { ...visitor, 'upload-offset': '0', 'content-length': String(length),
+      'content-type': 'application/offset+octet-stream' } });
+  body.on('error', () => undefined); // handled: the server cuts the refused body off; the response decides the test
+  const answered = once(body, 'response').then((args) => new Promise<{ statusCode?: number; body: string }>((resolve) => {
+    const res = args[0] as http.IncomingMessage;
+    let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => resolve({ statusCode: res.statusCode, body: b }));
+  }));
+  body.write(Buffer.alloc(KiB));
+  const id = uploadId(create.headers.location);
+  const staged = join(homeRoot(t.config.dataDir, owner.id), '.files', 'uploads', id);
+  for (let i = 0; i < 300 && !(existsSync(staged) && statSync(staged).size >= KiB); i++) await new Promise((r) => setTimeout(r, 10));
+  expect(statSync(staged).size).toBeGreaterThanOrEqual(KiB);
+  const answer = () => Promise.race([answered,
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error('no answer to the visitor PATCH')), 10_000))]);
+  return { id, body, answer };
 }
 const full = (r: { statusCode?: number; body: string }) => {
   expect(r.statusCode, r.body).toBe(507);
@@ -198,6 +241,106 @@ describe('the disk reserve refuses writes (#320)', () => {
     const skipped = await thumb(256);
     expect(skipped.statusCode, skipped.body).toBe(404);
     expect(skipped.json().code).toBe('NO_THUMBNAIL');
+  });
+
+  it('a visitor\'s declared but unsent file-request upload does not refuse other members\' writes (#364)', async () => {
+    expect((await as(t, admin, 'POST', '/api/v1/sources/home/mkdir', { path: '/inbox' })).statusCode).toBe(201);
+    const req = await as(t, admin, 'POST', '/api/v1/requests', { source: 'home', path: '/inbox' });
+    const token = req.json().token as string;
+    const v = await t.app.inject({ url: `/r/${token}/info`, remoteAddress: '198.51.100.7' });
+    const cookie = ([] as string[]).concat(v.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]!).join('; ');
+    const visitor = { cookie, origin: ORIGIN, 'tus-resumable': '1.0.0' };
+    const create = await t.app.inject({ method: 'POST', url: `/r/${token}/uploads`, remoteAddress: '198.51.100.7',
+      headers: { ...visitor, 'upload-length': String(2 * MiB), 'upload-metadata': `name ${b64('x.bin')}` } });
+    expect(create.statusCode, create.body).toBe(201);
+    // A visitor's upload lapses after a short idle time, not a day.
+    const expires = Date.parse(String(create.headers['upload-expires']));
+    expect(expires).toBeLessThanOrEqual(Date.now() + 15 * 60_000 + 1000);
+    expect(expires).toBeGreaterThan(Date.now() + 14 * 60_000);
+    // Red without the fix (507 STORAGE_FULL), green with it.
+    expect((await putBytes(t, member, '/still-fits.bin', Buffer.alloc(MiB))).statusCode).toBe(201);
+    expect((await tusCreate(t, admin, '/admin-fits.bin', MiB)).statusCode).toBe(201);
+    const adminUpload = t.db.prepare("SELECT id FROM uploads WHERE path = '/admin-fits.bin'").pluck().get() as string;
+    // The reserve still holds against bytes that really arrive: 2 MiB once only 1 MiB (less the admin's open 1 MiB) is left.
+    disk.free = 11 * MiB;
+    const patch = (offset: number, bytes: number) => t.app.inject({ method: 'PATCH', url: String(create.headers.location),
+      remoteAddress: '198.51.100.7', payload: Buffer.alloc(bytes),
+      headers: { ...visitor, 'upload-offset': String(offset), 'content-type': 'application/offset+octet-stream' } });
+    full(await patch(0, 2 * MiB));
+    expect((await as(t, admin, 'DELETE', `/api/v1/uploads/${adminUpload}`, undefined, { 'tus-resumable': '1.0.0' })).statusCode).toBe(204);
+    disk.free = 13 * MiB;
+    const first = await patch(0, MiB);
+    expect(first.statusCode, first.body).toBe(204);
+    // Each PATCH renews the short idle expiry, not a day.
+    const renewed = Date.parse(String(first.headers['upload-expires']));
+    expect(renewed).toBeLessThanOrEqual(Date.now() + 15 * 60_000 + 1000);
+    expect(renewed).toBeGreaterThan(Date.now() + 14 * 60_000);
+    expect((await patch(MiB, MiB)).statusCode).toBe(204);
+    expect(t.db.prepare("SELECT count(*) FROM file_request_uploads WHERE name = 'x.bin' AND placed_at IS NOT NULL").pluck().get()).toBe(1);
+    // Once placed, nothing of it is held any more.
+    expect((await putBytes(t, member, '/after.bin', Buffer.alloc(2 * MiB))).statusCode).toBe(201);
+  });
+
+  it('a visitor\'s PATCH that stalls or trickles in holds no disk, and each further 16 MiB must still fit (#364)', async () => {
+    disk.free = 40 * MiB; // 30 MiB may be written
+    const p = await stalledVisitorPatch(t, admin, '/drop', 28 * MiB);
+    try {
+      // The stalled PATCH declared 28 MiB but holds none of it: a member may write everything that is left.
+      expect((await putBytes(t, member, '/beside-slow.bin', Buffer.alloc(29 * MiB))).statusCode).toBe(201);
+      // Its bytes are still checked as they arrive: past the first 16 MiB, its remaining 12 MiB no longer fit once the
+      // volume has only 10 MiB left, and the PATCH is refused.
+      disk.free = 20 * MiB;
+      p.body.write(Buffer.alloc(16 * MiB));
+      full(await p.answer());
+    } finally { p.body.destroy(); }
+    const received = t.db.prepare('SELECT received FROM uploads WHERE id = ?').pluck().get(p.id) as number;
+    expect(received).toBeLessThanOrEqual(16 * MiB);
+  });
+
+  it('a stale open upload stops holding the disk once it has expired, before the hourly job removes it (#364)', async () => {
+    const r = await tusCreate(t, admin, '/stale.bin', 1.5 * MiB);
+    expect(r.statusCode, r.body).toBe(201);
+    full(await putBytes(t, member, '/blocked.bin', Buffer.alloc(MiB)));
+    t.db.prepare("UPDATE uploads SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(uploadId(r.headers.location));
+    expect((await putBytes(t, member, '/blocked.bin', Buffer.alloc(MiB))).statusCode).toBe(201);
+    expect((await as(t, admin, 'DELETE', `/api/v1/uploads/${uploadId(r.headers.location)}`, undefined, { 'tus-resumable': '1.0.0' })).statusCode).toBe(204);
+    // One that expires while it is receiving bytes still holds what it has yet to receive.
+    const busy = await tusCreate(t, member, '/busy.bin', MiB);
+    expect(busy.statusCode, busy.body).toBe(201);
+    const p = await stalledPatch(t, member, uploadId(busy.headers.location), MiB);
+    t.db.prepare("UPDATE uploads SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(uploadId(busy.headers.location));
+    full(await putBytes(t, member, '/beside-busy.bin', Buffer.alloc(MiB + 1)));
+    expect((await p.finish()).statusCode).toBe(204);
+  });
+
+  it('an expired open upload stops holding the member\'s quota before the hourly job removes it (#364)', async () => {
+    disk.free = 50 * MiB;
+    const used = ((await as(t, member, 'GET', '/api/v1/storage')).json() as { home: { usage: { total: number } } }).home.usage.total;
+    expect((await as(t, admin, 'PUT', `/api/v1/admin/members/${member.id}/quota`, { quotaBytes: used + 2 * MiB })).statusCode).toBe(200);
+    try {
+      const r = await tusCreate(t, member, '/quota-stale.bin', 1.5 * MiB);
+      expect(r.statusCode, r.body).toBe(201);
+      const second = await tusCreate(t, member, '/quota-next.bin', MiB);
+      expect(second.statusCode, second.body).toBe(507);
+      expect(second.json().code).toBe('QUOTA_EXCEEDED');
+      t.db.prepare("UPDATE uploads SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(uploadId(r.headers.location));
+      const third = await tusCreate(t, member, '/quota-next.bin', MiB);
+      expect(third.statusCode, third.body).toBe(201);
+      for (const u of [r, third]) {
+        expect((await as(t, member, 'DELETE', `/api/v1/uploads/${uploadId(u.headers.location)}`, undefined, { 'tus-resumable': '1.0.0' })).statusCode).toBe(204);
+      }
+      // One that expires while it is receiving bytes still holds what it has yet to receive.
+      const busy = await tusCreate(t, member, '/quota-busy.bin', MiB);
+      expect(busy.statusCode, busy.body).toBe(201);
+      const p = await stalledPatch(t, member, uploadId(busy.headers.location), MiB);
+      t.db.prepare("UPDATE uploads SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(uploadId(busy.headers.location));
+      const beside = await tusCreate(t, member, '/quota-beside.bin', 1.5 * MiB);
+      expect(beside.statusCode, beside.body).toBe(507);
+      expect(beside.json().code).toBe('QUOTA_EXCEEDED');
+      expect((await p.finish()).statusCode).toBe(204);
+    } finally {
+      expect((await as(t, admin, 'PUT', `/api/v1/admin/members/${member.id}/quota`, { quotaBytes: null })).statusCode).toBe(200);
+    }
   });
 
   it('shows the admin the volume, the reserve and a warning from 90 % used; members get FORBIDDEN', async () => {

@@ -613,6 +613,9 @@ export class TransferEngine {
     });
     // Aborting destroys what the target reads from, so its write fails and removes what it had staged.
     const abort = () => { meter.destroy(new Error(`transfer aborted: ${String(signal.reason)}`)); };
+    // An abort can land once both pipelines are done with `meter` but before it is torn down (at shutdown, while the
+    // target fsyncs): the write has its bytes and settles on its own, so the error then has no one left to fail.
+    meter.on('error', () => undefined); // handled: a write still reading meter rejects with the error itself
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
     pipeline(src.stream, meter, () => undefined); // a failure on either side destroys meter, so the write below rejects with it

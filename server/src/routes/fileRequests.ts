@@ -189,7 +189,7 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
     let id: string;
     try {
       const u = await home.createUpload({ source: row.source, path: childPath(row.path, name), length,
-        onCollision: 'keep-both', maxBytes: config.maxUploadBytes });
+        onCollision: 'keep-both', maxBytes: config.maxUploadBytes, visitor: true });
       id = u.id;
       attachUpload(db, reservation, id);
       reply.header('upload-expires', httpDate(u.expiresAt));

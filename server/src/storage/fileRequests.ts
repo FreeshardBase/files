@@ -161,7 +161,7 @@ export function dropReservation(db: Db, reservation: string): void {
 /**
  * Terminates the request's open uploads in the owner's home `home` (#304): the staged bytes and the `uploads` row go, so
  * the reservation is freed at once, and so does the request's row of each. One receiving bytes right now is left
- * (`busy`); the upload expiry job takes it once the request is no longer live, or after `UPLOAD_TTL_MS`.
+ * (`busy`); the upload expiry job takes it once the request is no longer live, or after `VISITOR_UPLOAD_TTL_MS`.
  */
 export async function discardOpenUploads(db: Db, home: LocalBackend, requestId: string): Promise<{ removed: string[]; busy: string[] }> {
   const ids = db.prepare(`SELECT upload_id FROM file_request_uploads WHERE request_id = ? AND placed_at IS NULL
