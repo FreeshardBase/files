@@ -63,6 +63,8 @@ async function send() {
     update([...props.comments, c]);
     text.value = '';
     message.value = t('comments.sent');
+    // "Send" is disabled once the field is empty: the field keeps the focus (#381).
+    void focus();
   } catch (e) { fail(e); }
   finally { busy.value = false; }
 }
