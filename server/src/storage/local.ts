@@ -16,6 +16,7 @@ import { recordRecent } from './recent.ts';
 import { indexedItem, indexItems, largestFolders, replaceIndex, searchIndex, type IndexedItem } from './nameIndex.ts';
 import type { ThumbnailCache } from './thumbnails.ts';
 import type { DiskHold, DiskReserve } from './diskReserve.ts';
+import { uploadBusy, withUpload } from './uploadLocks.ts';
 
 export const INTERNAL = '.files';
 export const TEMP_NAME = /^\.[0-9a-f]{16}\.upload$/;
@@ -25,6 +26,8 @@ export const UPLOAD_ID = /^[0-9a-f]{32}$/;
 const DAY_MS = 86_400_000;
 /** An upload expires this long after it was created or last received bytes. */
 export const UPLOAD_TTL_MS = DAY_MS;
+/** A file-request visitor's upload expires after this much idle time instead (#364): its announced bytes cost them nothing. */
+export const VISITOR_UPLOAD_TTL_MS = 15 * 60_000;
 type TrashRow = { id: string; original_path: string; type: 'file' | 'directory'; size: number; deleted_at: string };
 type VersionRow = { id: string; path: string; size: number; modified: string };
 type UploadRow = { id: string; source: string; path: string; length: number; received: number; on_collision: CollisionPolicy; expires_at: string };
@@ -41,15 +44,9 @@ export type UploadPlacement = { placed: (name: string) => void } & ({ path: stri
  * A resumable upload to open. `source` is where it goes: `home` is placed in this home at `path`; any other source is
  * only staged here and placed by the caller's `UploadPlacement` (a file request into a cloud folder, #217).
  */
-export type CreateUpload = { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number };
-
-// One request at a time per upload (tus forbids concurrent PATCHes); the app runs as one process.
-const busyUploads = new Set<string>();
-async function withUpload<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  if (busyUploads.has(id)) throw new AppError('UPLOAD_LOCKED');
-  busyUploads.add(id);
-  try { return await fn(); } finally { busyUploads.delete(id); }
-}
+export type CreateUpload = { source: string; path: string; length: number; onCollision: CollisionPolicy; maxBytes: number;
+  /** A file-request visitor's upload (#364): expires after `VISITOR_UPLOAD_TTL_MS` idle. */
+  visitor?: boolean };
 
 // Restore and purge of one member's trash run one at a time, so a purge never removes bytes a restore is moving; quota
 // reservations are taken and released under the same lock (#197). Not reentrant: nothing under it may take it again.
@@ -731,11 +728,20 @@ export class LocalBackend implements StorageBackend {
   largestFolders(limit: number): LargeFolder[] { return largestFolders(this.index.db, this.index.userId, limit); }
 
   // What open tus uploads other than `exceptUpload` have yet to send, plus what direct writes and copies in flight hold.
+  // An expired upload holds nothing, even before the expiry job removes it, unless it is receiving bytes right now (#364).
   private reserved(exceptUpload?: string): number {
     let held = 0;
     for (const r of inFlightOf(this.index.userId)) held += r.bytes;
-    return held + (this.index.db.prepare('SELECT COALESCE(SUM(length - received), 0) FROM uploads WHERE user_id = ? AND id IS NOT ?')
-      .pluck().get(this.index.userId, exceptUpload ?? null) as number);
+    const rows = this.index.db.prepare('SELECT id, length - received AS rest, expires_at FROM uploads WHERE user_id = ? AND id IS NOT ?')
+      .all(this.index.userId, exceptUpload ?? null) as { id: string; rest: number; expires_at: string }[];
+    const now = new Date().toISOString();
+    for (const r of rows) if (r.expires_at > now || uploadBusy(r.id)) held += r.rest;
+    return held;
+  }
+
+  // A file-request visitor's upload (#364), staged in this home: its rest never holds the disk.
+  private isVisitorUpload(id: string): boolean {
+    return this.index.db.prepare('SELECT 1 FROM file_request_uploads WHERE upload_id = ?').get(id) !== undefined;
   }
 
   private uploadRow(id: string): UploadRow | undefined {
@@ -781,7 +787,7 @@ export class LocalBackend implements StorageBackend {
     const { db, userId } = this.index;
     const id = randomBytes(16).toString('hex');
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + UPLOAD_TTL_MS).toISOString();
+    const expiresAt = new Date(now.getTime() + (u.visitor ? VISITOR_UPLOAD_TTL_MS : UPLOAD_TTL_MS)).toISOString();
     // Walk, reservation check and insert under the member's lock (shared with direct writes and copies, #197) and one
     // write lock, so two uploads or writes started at once cannot both take the last bytes.
     // The disk reserve (#320) is checked under its own lock too: every member's open uploads count against the one disk.
@@ -844,8 +850,14 @@ export class LocalBackend implements StorageBackend {
     const rest = row.length - row.received;
     if (declared !== undefined && declared > rest) { await this.dropUpload(id); throw new AppError('SIZE_MISMATCH'); }
     if (rest > 0 && rest > await this.remainingQuota(id)) throw new AppError('QUOTA_EXCEEDED');
-    // The rest was promised at creation, but the disk may have filled up since (#320).
-    if (rest > 0 && this.index.disk && rest > await this.index.disk.left(id)) throw new AppError('STORAGE_FULL');
+    const visitor = this.isVisitorUpload(id);
+    const disk = this.index.disk;
+    // A member's rest was promised at creation, but the disk may have filled up since (#320). A visitor's announced
+    // bytes hold nothing (#364), not even while this PATCH runs, since a body that stalls or trickles in would keep any
+    // hold for as long as it likes: like a write of unknown length, each window of up to 16 MiB must fit what is left
+    // before its bytes are written, so a refused PATCH ends with what arrived recorded.
+    const firstWindow = Math.min(rest, declared ?? rest, DISK_RECHECK_BYTES);
+    if (rest > 0 && disk && (visitor ? firstWindow > await disk.left() : rest > await disk.left(id))) throw new AppError('STORAGE_FULL');
     const file = await this.uploadBytes(id);
     const before = await lstat(file).then((s) => s, (e) => {
       if (isErr(e, 'ENOENT')) throw new AppError('NOT_FOUND', undefined, { cause: e });
@@ -857,11 +869,21 @@ export class LocalBackend implements StorageBackend {
     await truncate(file, row.received);
     let over = false; let failure: unknown;
     let written = 0;
+    // A visitor's PATCH may write up to `checked` without asking the disk reserve again.
+    let checked = visitor && disk ? firstWindow : Infinity;
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
+        const from = written;
         written += chunk.length;
         if (written > rest) { over = true; return cb(new AppError('SIZE_MISMATCH')); }
-        cb(null, chunk);
+        if (!disk || written <= checked) return cb(null, chunk);
+        // The checked window is used up: the next one, these bytes included, must fit before they are written.
+        const next = Math.max(written, Math.min(rest, from + DISK_RECHECK_BYTES));
+        disk.left().then((left) => {
+          if (next - from > left) return cb(new AppError('STORAGE_FULL'));
+          checked = next;
+          cb(null, chunk);
+        }, cb);
       },
     });
     await pipeline(body, limiter, createWriteStream(file, { flags: 'r+', start: row.received }))
@@ -870,7 +892,7 @@ export class LocalBackend implements StorageBackend {
     let size: number;
     try { await fh.sync(); size = (await fh.stat()).size; } finally { await fh.close(); }
     if (over) { await this.dropUpload(id); throw new AppError('SIZE_MISMATCH'); }
-    const expiresAt = new Date(Date.now() + UPLOAD_TTL_MS).toISOString();
+    const expiresAt = new Date(Date.now() + (visitor ? VISITOR_UPLOAD_TTL_MS : UPLOAD_TTL_MS)).toISOString();
     this.index.db.prepare('UPDATE uploads SET received = ?, expires_at = ? WHERE id = ? AND user_id = ?').run(size, expiresAt, id, this.index.userId);
     if (failure !== undefined) throw failure;
     const state: UploadState = { id, offset: size, length: row.length, expiresAt };
@@ -915,7 +937,7 @@ export class LocalBackend implements StorageBackend {
       .all(this.index.userId, now.toISOString()) as string[];
     const result = { removed: [] as string[], failed: [] as string[] };
     for (const id of ids) {
-      if (busyUploads.has(id)) continue;
+      if (uploadBusy(id)) continue;
       try { await withUpload(id, () => this.dropUpload(id)); result.removed.push(id); }
       catch (e) { // handled: logged with the upload id and reported as failed; the row stays for the next run
         log.error({ err: e, uploadId: id, userId: this.index.userId }, 'upload expiry could not remove an upload');
