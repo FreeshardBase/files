@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A folder browser inside a page (#153, the migration wizard): the subfolders of one folder of a source as buttons, and
 // crumbs back up. Opening a folder chooses it; the folder shown is the choice (`v-model`, a path).
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Entry, ListResponse } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
@@ -39,12 +39,21 @@ const crumbs = computed(() => {
   const segs = path.value.split('/').filter(Boolean);
   return [{ label: props.rootLabel, path: '/' }, ...segs.map((s, i) => ({ label: s, path: '/' + segs.slice(0, i + 1).join('/') }))];
 });
-const open = (name: string) => { path.value = path.value === '/' ? `/${name}` : `${path.value}/${name}`; };
+// The button that had the focus is gone after the re-render; the current crumb takes it, so it stays in the picker (and
+// inside the dialog where there is one) instead of falling to <body> (#366, as #356 in MoveToDialog).
+const crumbNav = ref<HTMLElement | null>(null);
+async function go(p: string) {
+  path.value = p;
+  await nextTick();
+  crumbNav.value?.querySelector<HTMLElement>('[aria-current="location"]')?.focus();
+}
+const open = (name: string) => go(path.value === '/' ? `/${name}` : `${path.value}/${name}`);
 </script>
 
 <template>
   <div class="folder-picker">
     <nav
+      ref="crumbNav"
       class="breadcrumbs picker-crumbs"
       :aria-label="label"
     >
@@ -61,7 +70,7 @@ const open = (name: string) => { path.value = path.value === '/' ? `/${name}` : 
           type="button"
           class="crumb"
           :aria-current="i === crumbs.length - 1 ? 'location' : undefined"
-          @click="path = c.path"
+          @click="go(c.path)"
         >
           {{ c.label }}
         </button>
