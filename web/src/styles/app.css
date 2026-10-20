@@ -907,8 +907,13 @@ a:where(:hover) { text-decoration: underline; }
 .toast-text { margin: 0; }
 .toast.shown .toast-text { margin: 0 0 var(--space-1); font-size: var(--fs-small); color: var(--ink); overflow-wrap: anywhere; }
 .toast-close .icon { width: 16px; height: 16px; background: var(--ink-muted); }
+/* On the phone the toast stands above the fixed selection sheet (#405); the folder measures the sheet into
+   --selection-bar-height, 0 without a selection. */
 @media (max-width: 600px) {
-  .toast { left: var(--space-3); right: var(--space-3); bottom: var(--space-3); max-width: none; }
+  .toast {
+    left: var(--space-3); right: var(--space-3); bottom: calc(var(--selection-bar-height, 0px) + var(--space-3));
+    max-width: none;
+  }
   .toast-text { flex: 1; }
 }
 
