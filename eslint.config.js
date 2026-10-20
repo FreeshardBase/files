@@ -18,7 +18,8 @@ const bannedDialogScript = [
 ];
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'docs/**'] },
+  // Generated output: a failed Playwright run writes the minified trace viewer into playwright-report/.
+  { ignores: ['**/dist/**', '**/node_modules/**', 'docs/**', 'playwright-report/**', 'test-results/**', 'coverage/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

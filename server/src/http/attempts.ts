@@ -37,6 +37,11 @@ export class AttemptLimiter {
     else if (e.failures === 0 && e.pending === 0) this.entries.delete(key);
   }
 
+  /** Forgets the key's settled attempts, for a key that has proven itself (a completed sign-in, #419). */
+  forget(key: string): void {
+    if (this.entries.get(key)?.pending === 0) this.entries.delete(key);
+  }
+
   // The key's entry with an ended window rolled over: dropped if nothing is in flight, else restarted without failures.
   private live(key: string, now: number) {
     const e = this.entries.get(key);
