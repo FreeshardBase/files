@@ -10,11 +10,13 @@ import { api, ApiFailure } from '../api/client.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
 import { formatSize, intlLocale } from '../format.ts';
+import { useLocations } from '../location.ts';
 import FolderPicker from '../components/FolderPicker.vue';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const connections = useConnectionsStore();
+const { folderLabel } = useLocations();
 const transfers = useTransfersStore();
 
 const step = ref<1 | 2 | 3>(1);
@@ -31,7 +33,7 @@ const usable = computed(() => connections.items.filter((c) => c.status === 'ok')
 const conn = computed<Connection | undefined>(() => connections.bySource(source.value));
 const account = computed(() => (conn.value ? t('nav.connection', { provider: conn.value.providerName, account: conn.value.account }) : ''));
 const fromLabel = computed(() => (from.value === '/' ? t('migrate.wholeAccount', { account: account.value }) : `${account.value}${from.value}`));
-const toLabel = computed(() => `${t('nav.home')}${dir.value === '/' ? '' : dir.value}/${name.value.trim()}`);
+const toLabel = computed(() => folderLabel('home', `${dir.value}/${name.value.trim()}`));
 const nameValid = computed(() => { const n = name.value.trim(); return n !== '' && n !== '.' && n !== '..' && !n.includes('/') && !hasUnsafeChar(n); });
 const size = (n: number) => formatSize(n, intlLocale(locale.value));
 
@@ -227,13 +229,20 @@ async function start() {
         <dd>{{ toLabel }}</dd>
         <template v-if="scan">
           <dt>{{ t('migrate.files') }}</dt>
-          <dd data-testid="scan-files">
+          <dd
+            class="value-mono"
+            data-testid="scan-files"
+          >
             {{ scan.files }}
           </dd>
           <dt>{{ t('migrate.folders') }}</dt>
-          <dd>{{ scan.folders }}</dd>
+          <dd class="value-mono">
+            {{ scan.folders }}
+          </dd>
           <dt>{{ t('migrate.size') }}</dt>
-          <dd>{{ size(scan.bytes) }}</dd>
+          <dd class="value-mono">
+            {{ size(scan.bytes) }}
+          </dd>
         </template>
       </dl>
       <p

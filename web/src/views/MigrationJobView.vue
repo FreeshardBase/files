@@ -11,9 +11,11 @@ import { api, ApiFailure } from '../api/client.ts';
 import { useTransfersStore } from '../stores/transfers.ts';
 import { useConnectionsStore } from '../stores/connections.ts';
 import { formatSize, intlLocale } from '../format.ts';
+import { useLocations } from '../location.ts';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 
 const { t, locale } = useI18n();
+const { folderLabel } = useLocations();
 const route = useRoute();
 const transfers = useTransfersStore();
 const connections = useConnectionsStore();
@@ -102,7 +104,7 @@ async function confirmCleanup() {
         <dt>{{ t('migrate.from') }}</dt>
         <dd>{{ account }}</dd>
         <dt>{{ t('migrate.to') }}</dt>
-        <dd>{{ `${t('nav.home')}${job.dir === '/' ? '' : job.dir}/${job.name}` }}</dd>
+        <dd>{{ folderLabel('home', `${job.dir}/${job.name}`) }}</dd>
         <dt>{{ t('migrate.state') }}</dt>
         <dd
           class="migrate-state"
@@ -132,13 +134,20 @@ async function confirmCleanup() {
         </h2>
         <dl class="details-facts">
           <dt>{{ t('migrate.summary.verified') }}</dt>
-          <dd data-testid="verified-files">
+          <dd
+            class="value-mono"
+            data-testid="verified-files"
+          >
             {{ job.verifiedFiles }}
           </dd>
           <dt>{{ t('migrate.size') }}</dt>
-          <dd>{{ size(job.bytes) }}</dd>
+          <dd class="value-mono">
+            {{ size(job.bytes) }}
+          </dd>
           <dt>{{ t('migrate.summary.failed') }}</dt>
-          <dd>{{ job.failed.length }}</dd>
+          <dd class="value-mono">
+            {{ job.failed.length }}
+          </dd>
         </dl>
         <p
           v-if="job.status === 'cancelled'"

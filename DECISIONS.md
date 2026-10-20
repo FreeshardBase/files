@@ -1359,3 +1359,11 @@ Question: up to 1200 px the members list hides its column headers, so the amount
 Decision: only on stacked rows. The amount field gets `<label class="fs-label members-limit-label" for="quota-amount-<id>">` "Storage limit" on its own line above the field, the unit and the buttons; the used cell gets the suffix "used" ("6.3 kB used"). Above 1200 px both are `display: none` and the table keeps its headers. The field keeps its `aria-label` "Storage limit for <name>", which contains the visible label. The quota figure stays without a word: "No storage limit" names itself, and a set limit stands right above the labelled field.
 
 Why: the wide table already labels every column; a second label in each row there would repeat it. The suffix and the label are the smallest change that gives every field its `.fs-label` (DESIGN.md "Fields") where the header is gone (YAGNI).
+
+## 2026-10-20: The default reserve's minimum comes from the server; every fact list sits on the baseline (#388, #387)
+
+Question: where does the storage page get the default reserve's "5 GiB" once it is formatted like every other size, and does the baseline alignment of the migration facts apply to the other `.details-facts` lists too?
+
+Decision: `GET /api/v1/admin/disk` returns `defaultMin`, `DEFAULT_RESERVE.bytes` in bytes, and the page formats it with `formatSize` ("5.4 GB"); the locale key `storage.disk.reserveMin` is gone. The "5 %" stays a locale string, since a percentage has no unit question. `align-items: baseline` is set on `.details-facts` itself, so the details drawer's facts get it too.
+
+Why: the figure is defined once on the server, where the reserve is computed; a copy in `@files/shared` or the locales could drift from it. A muted label above its value's baseline is wrong in every fact list, not only on the migration pages, and one rule is less than two (YAGNI).

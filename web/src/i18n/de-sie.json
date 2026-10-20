@@ -219,7 +219,6 @@
       "bar": "Belegter Platz auf der Festplatte des Shards",
       "reserveDefault": "Für den Shard freigehalten: {reserve} (die Voreinstellung, {min} oder {share} der Festplatte, je nachdem, was mehr ist). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
       "reserveSet": "Für den Shard freigehalten: {reserve} (festgelegt mit FILES_DISK_RESERVE={setting}). Uploads und Kopien, die diesen Platz bräuchten, werden abgelehnt.",
-      "reserveMin": "5 GiB",
       "reserveShare": "5 %",
       "warningTitle": "Die Festplatte des Shards ist fast voll",
       "warningText": "Sobald nur noch die Reserve frei ist, kann niemand mehr Dateien speichern. Leeren Sie den Papierkorb, löschen Sie alte Versionen oder bitten Sie die Mitglieder, Platz zu schaffen."

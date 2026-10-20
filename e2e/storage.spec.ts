@@ -8,6 +8,17 @@ const storageLink = (page: Page) => nav(page).getByRole('link', { name: /Speiche
 const membersLink = (page: Page) => nav(page).getByRole('link', { name: /Mitglieder|Members/ });
 const shardBar = (page: Page) => page.getByRole('meter', { name: /Belegter Speicher auf dem Shard|Storage used on the shard/ });
 
+// #388: the default reserve's minimum is a size like every other on the page, decimal ("5.4 GB"), never "5 GiB".
+test('#388: the reserve sentence writes the default minimum in decimal units', async ({ page }) => {
+  await page.goto('/storage');
+  const reserve = page.locator('.storage-reserve');
+  await expect(reserve).toContainText(/die Voreinstellung|the default/);
+  await expect(reserve).not.toContainText(/GiB/);
+  const min = reserve.locator('.value-mono').nth(1);
+  await expect(min).toHaveText(/^5[,.]4\sGB$/);
+  await expect(reserve).toContainText(/(die Voreinstellung|the default), 5[,.]4\sGB /);
+});
+
 /** A second browser context signed in as `login`, with the project's device. */
 async function signedIn(browser: Browser, info: TestInfo, baseURL: string, login: string): Promise<Page> {
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = info.project.use;

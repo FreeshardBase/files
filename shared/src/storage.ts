@@ -47,9 +47,10 @@ export type StorageOverview = {
 /**
  * `GET /api/v1/admin/disk` (#320): the data volume's size and free bytes, the reserve Files keeps free on it (writes that
  * would leave less are STORAGE_FULL), the admin's `FILES_DISK_RESERVE` as given (`null`: the default, max(5 GiB, 5 %)),
+ * `defaultMin`, the default's fixed minimum in bytes (shown in the default's sentence, formatted like every size, #388),
  * and `warning` from 90 % used or once the free bytes are down to the reserve.
  */
-export type DiskStatus = { total: number; free: number; reserve: number; setting: string | null; warning: boolean };
+export type DiskStatus = { total: number; free: number; reserve: number; setting: string | null; defaultMin: number; warning: boolean };
 
 /** One member on the admin page: their shard usage and quota. */
 export type MemberUsage = { id: string; displayName: string; email?: string; role: 'admin' | 'member'; used: number; quota: number | null };
