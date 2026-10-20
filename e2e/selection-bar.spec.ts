@@ -224,3 +224,58 @@ test('#403 Esc and the bar\'s clear button clear the selection and bring Upload 
   const del = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [`/${dir}`] }, headers });
   expect(del.status(), await del.text()).toBe(204);
 });
+
+// #404: while a selection lasts the crumbs give way without overlapping: an earlier crumb that has to shrink is cut
+// with its own ellipsis instead of running its letters through the "/", and the current one keeps at least 8rem.
+test('#404 with a selection the German crumbs are cut with ellipses and never overlap', async ({ page }, info) => {
+  test.skip(isMobile(info), 'desktop layout');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const putLocale = async (locale: 'de-du' | null) =>
+    expect((await page.request.put('/api/v1/settings', { headers, data: { locale, theme: 'system' } })).status()).toBe(200);
+  const dir = `Projekte-404-${tag(info)}`;
+  const sub = 'Steuer 2026';
+  for (const path of [`/${dir}`, `/${dir}/${sub}`]) {
+    expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path } })).status()).toBe(201);
+  }
+  const put = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/${sub}/beleg.txt`)}&onCollision=fail`,
+    { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from('beleg') });
+  expect(put.status()).toBe(201);
+  await putLocale('de-du');
+  try {
+    await page.goto(`/home/${encodeURIComponent(dir)}/${encodeURIComponent(sub)}`);
+    await row(page, 'beleg.txt').getByRole('checkbox').check();
+    await expect(bar(page).getByRole('button', { name: 'Umbenennen' })).toBeVisible();
+
+    const crumbs = page.getByRole('navigation', { name: 'Pfad' });
+    await expect(crumbs.locator('a')).toHaveText(['Mein Speicher', dir, sub]);
+    const links = await crumbs.locator('a').evaluateAll((els) => els.map((e) => {
+      const s = getComputedStyle(e);
+      return { text: e.textContent!.trim(), scrollWidth: e.scrollWidth, clientWidth: e.clientWidth,
+        overflow: s.overflowX, textOverflow: s.textOverflow };
+    }));
+    // The crumbs did have to give way here (otherwise the test proves nothing) ...
+    expect(links.some((l) => l.scrollWidth > l.clientWidth)).toBe(true);
+    // ... and every crumb either fits or is cut with its own ellipsis.
+    for (const l of links.filter((x) => x.scrollWidth > x.clientWidth)) {
+      expect({ text: l.text, overflow: l.overflow, textOverflow: l.textOverflow })
+        .toEqual({ text: l.text, overflow: 'hidden', textOverflow: 'ellipsis' });
+    }
+    // The current crumb keeps at least 8rem.
+    const rem = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+    expect((await box(crumbs.locator('a[aria-current="page"]'))).width).toBeGreaterThanOrEqual(8 * rem - 0.5);
+    // Neighbouring crumbs and separators never overlap.
+    const boxes = await crumbs.locator(':scope > *').evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    }));
+    for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThanOrEqual(boxes[i - 1].right - 0.5);
+  } finally {
+    await putLocale(null);
+    const del = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [`/${dir}`] }, headers });
+    expect(del.status(), await del.text()).toBe(204);
+  }
+});
