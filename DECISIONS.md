@@ -1388,3 +1388,11 @@ Question: a password-protected link answered `info` with the item's name and typ
 Decision: while locked, `GET /s/<token>/info` is `{ locked: true }` and nothing else; `name` and `type` are optional in `PublicLinkInfo` and come only once the link is unlocked, as before. The page keeps the header with the app's name, as on every visitor page; the kind line says "Shared link" instead of "Shared file"/"Shared folder", the heading is "Protected link" (`link.page.lockedTitle`), and the existing line "This link is protected by a password." stands above the password field. A link without a password is unlocked at once and is unchanged.
 
 Why: the owner set the password to keep the item private, and what it is called and whether it is a file or a folder is part of that; file requests already answer only the owner-written label while locked. The link's label stays owner-only: it was written for the owner's list ("For the accountant"), not for visitors, and showing it would be a new disclosure nobody asked for (YAGNI).
+
+## 2026-10-20: One step clears a selection: Esc and a clear button (#403)
+
+Question: after Ctrl+A (or "New folder", which selects what it creates) nothing cleared the selection but unticking every row, and on the desktop the bar keeps Upload hidden meanwhile. Which ways out, and do a select-all checkbox in the list header or Ctrl+A as a toggle come with them?
+
+Decision: Esc on a row or tile clears a non-empty selection (`onActionKey`; open menus and dialogs stop the key first), and the selection bar has a borderless icon button "Clear selection" (`icon-close`, aria-label) right after the count, on the desktop bar and on the phone's bottom bar alike. The shortcuts dialog lists "Esc: clear the selection". No header checkbox, Ctrl+A stays select-all, and a click on the empty area does not clear.
+
+Why: the issue's expected behaviour asks for exactly these two ways; the clear button sits beside the count it resets, where both a mouse and a finger look for it. A header checkbox and a toggling Ctrl+A would be a second and third way to the same state (YAGNI), and clearing on an empty-area click would fight the empty area's own menu (#340).

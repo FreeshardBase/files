@@ -826,6 +826,20 @@ defineExpose({
           v-if="selectedEntries.length"
           class="selection-count"
         >{{ $t('actions.selected', { count: selectedEntries.length }) }}</span>
+        <!-- One step out of a selection (#403), on the desktop bar and on the phone sheet alike. -->
+        <button
+          v-if="selectedEntries.length"
+          type="button"
+          class="icon-button clear-selection"
+          :aria-label="$t('actions.clearSelection')"
+          :title="$t('actions.clearSelection')"
+          @click="selected = []"
+        >
+          <span
+            class="icon icon-close"
+            aria-hidden="true"
+          />
+        </button>
         <template v-if="selectedEntries.length">
           <a
             class="button"

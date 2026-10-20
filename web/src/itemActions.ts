@@ -89,6 +89,8 @@ export function useItemActions(props: ItemProps, emit: Emits,
     else if (props.editable && e.shiftKey && !mod && !e.altKey && key === 'm' && handled()) emit.action('moveTo', targets(i));
     else if (e.shiftKey && !mod && !e.altKey && key === 'c' && handled()) emit.action('copyTo', targets(i));
     else if (mod && key === 'a' && handled()) emit.select(props.entries.map((x) => x.path));
+    // Esc clears the selection (#403); open menus and dialogs stop it before it gets here.
+    else if (key === 'Escape' && chosen.value.size > 0 && handled()) emit.select([]);
     else if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && handled()) ui.showMenu(i);
     else if (key === 'Enter' && handled()) emit.open(entry); // a folder opens, a file opens in the preview
     else return false;
