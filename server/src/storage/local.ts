@@ -947,9 +947,14 @@ export class LocalBackend implements StorageBackend {
     return result;
   }
 
+  // A visitor's file not placed goes with its upload (#401): a row left behind would count nowhere and stay forever.
   private async dropUpload(id: string): Promise<void> {
     await rm(await this.uploadBytes(id), { force: true });
-    this.index.db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(id, this.index.userId);
+    const { db, userId } = this.index;
+    db.transaction(() => {
+      if (db.prepare('DELETE FROM uploads WHERE id = ? AND user_id = ?').run(id, userId).changes === 0) return;
+      db.prepare('DELETE FROM file_request_uploads WHERE upload_id = ? AND placed_at IS NULL').run(id);
+    })();
   }
 
   // Moves the staged bytes to the target and deletes the row in one transaction (renames undone if the commit fails).

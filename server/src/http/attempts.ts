@@ -1,3 +1,4 @@
+import { isIPv6 } from 'node:net';
 import type { FastifyReply } from 'fastify';
 import { AppError } from '../errors.ts';
 
@@ -56,6 +57,35 @@ export class AttemptLimiter {
 export const PASSWORD_WINDOW_MS = 15 * 60_000;
 export const PASSWORD_PER_ITEM = 5;
 export const PASSWORD_PER_IP = 20;
+
+/** Uploads a file-request visitor may start (#401): 60 per request and visitor session, and 60 per address, a minute. */
+export const CREATIONS_WINDOW_MS = 60_000;
+export const CREATIONS_PER_WINDOW = 60;
+
+/**
+ * The key of a client address for a per-address limit: an IPv4 address itself (also IPv4-mapped), an IPv6 address its
+ * /64, the smallest block one subscriber usually gets, so rotating within it does not reset the count (#401).
+ */
+export function addressKey(ip: string): string {
+  if (!isIPv6(ip)) return ip;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1]!;
+  const [head, tail] = ip.split('::') as [string, string | undefined];
+  const left = head === '' ? [] : head.split(':');
+  const right = tail === undefined || tail === '' ? [] : tail.split(':');
+  const groups = tail === undefined ? left : [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right];
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
+
+/**
+ * Counts one action under every limiter at once, whatever its outcome: 429 with `retry-after` while any key is blocked
+ * (the refused one is not counted), else every key takes one more.
+ */
+export function rateLimit(reply: FastifyReply, limits: readonly (readonly [AttemptLimiter, string])[]): void {
+  const wait = Math.max(0, ...limits.map(([limiter, key]) => limiter.blockedFor(key)));
+  if (wait > 0) { reply.header('retry-after', String(wait)); throw new AppError('TOO_MANY_ATTEMPTS'); }
+  for (const [limiter, key] of limits) { limiter.begin(key); limiter.end(key, true); }
+}
 
 /**
  * Checks a visitor's password under every limiter at once: 429 with `retry-after` while any key is blocked, else the

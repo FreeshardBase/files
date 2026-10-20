@@ -6,7 +6,8 @@ import { CreateFileRequest, LinkToken, UnlockRequest, UpdateFileRequest, type Er
 import { AppError } from '../errors.ts';
 import { requireUser } from '../auth/guard.ts';
 import { cookieNames } from '../auth/cookies.ts';
-import { AttemptLimiter, checkPassword, PASSWORD_PER_ITEM, PASSWORD_WINDOW_MS } from '../http/attempts.ts';
+import { addressKey, AttemptLimiter, checkPassword, CREATIONS_PER_WINDOW, CREATIONS_WINDOW_MS, PASSWORD_PER_ITEM, PASSWORD_WINDOW_MS,
+  rateLimit } from '../http/attempts.ts';
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { homeOf, ownerSource, parseSource, resolveSource } from '../storage/resolveSource.ts';
 import { UPLOAD_ID, type UploadPlacement } from '../storage/local.ts';
@@ -36,6 +37,8 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
   const { db, config } = app.deps;
   const cookie = cookieNames(config).request;
   const perRequest = new AttemptLimiter(PASSWORD_PER_ITEM, PASSWORD_WINDOW_MS);
+  const creationsPerVisitor = new AttemptLimiter(CREATIONS_PER_WINDOW, CREATIONS_WINDOW_MS);
+  const creationsPerIp = new AttemptLimiter(CREATIONS_PER_WINDOW, CREATIONS_WINDOW_MS);
 
   app.post('/api/v1/requests', async (req, reply) => {
     const { user } = requireUser(req);
@@ -144,7 +147,7 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
   function info(req: FastifyRequest, reply: FastifyReply, row: RequestRow): FileRequestInfo {
     const v = visit(req, reply, row);
     if (!unlocked(row, v)) return { label: row.label, locked: true };
-    return { label: row.label, locked: false, askName: row.ask_name === 1, expiresAt: row.expires_at, ...remaining(db, row),
+    return { label: row.label, locked: false, askName: row.ask_name === 1, expiresAt: row.expires_at, ...remaining(db, row, v.visitor),
       uploads: visitorUploads(db, row.id, v.visitor) };
   }
 
@@ -172,6 +175,8 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
   // always keep-both.
   async function createUpload(req: FastifyRequest, reply: FastifyReply, row: RequestRow) {
     const v = uploader(req, reply, row);
+    // Every attempt counts, a refused one too: creation is what the file caps guard, so it cannot be hammered (#401).
+    rateLimit(reply, [[creationsPerVisitor, `visitor:${row.id}:${v.visitor}`], [creationsPerIp, `ip:${addressKey(req.ip)}`]]);
     if (req.headers['upload-defer-length'] !== undefined) throw new AppError('VALIDATION');
     const h = z.object({ 'upload-length': Digits, 'upload-metadata': z.string().min(1) }).parse(req.headers);
     const length = h['upload-length'];

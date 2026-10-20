@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { extname } from 'node:path';
-import type { FileRequest, ReceivedFile, VisitorUpload } from '@files/shared';
+import { MAX_REQUEST_FILES, MAX_REQUEST_FILES_PER_VISITOR, type FileRequest, type ReceivedFile, type VisitorUpload } from '@files/shared';
 import { AppError } from '../errors.ts';
 import type { Db } from '../db.ts';
 import { truncateBytes, type LocalBackend } from './local.ts';
@@ -20,6 +20,12 @@ const OPEN = '(u.placed_at IS NULL AND (u.upload_id IS NULL OR u.upload_id IN (S
 /** At most this many open uploads per visitor and per request, whatever the limits (#304). */
 export const MAX_OPEN_PER_VISITOR = 10;
 export const MAX_OPEN_PER_REQUEST = 100;
+/**
+ * At most this many files per request and per visitor, placed or open, whatever the limits (#401): a zero-byte file passes
+ * every byte check yet costs an inode and rows. A request without `max_files` takes `MAX_FILES_PER_REQUEST`.
+ */
+export const MAX_FILES_PER_REQUEST = MAX_REQUEST_FILES;
+export const MAX_FILES_PER_VISITOR = MAX_REQUEST_FILES_PER_VISITOR;
 
 // Control characters, bidi marks and U+FFFD (#379), as `normalizeHomePath` refuses them; here they are dropped instead.
 const UNSAFE = /[\p{Cc}\p{Bidi_Control}�]/gu;
@@ -50,10 +56,13 @@ export function cleanUploader(raw: string | undefined): string | null {
 }
 
 type Usage = { files: number; bytes: number };
-function usage(db: Db, requestId: string): Usage {
-  return db.prepare(`SELECT COUNT(*) AS files, COALESCE(SUM(u.length), 0) AS bytes FROM file_request_uploads u
-    WHERE u.request_id = ? AND ${COUNTS}`).get(requestId) as Usage;
+/** The request's files and bytes that count, and how many of the files are `visitor`'s. */
+function usage(db: Db, requestId: string, visitor: string): Usage & { visitorFiles: number } {
+  return db.prepare(`SELECT COUNT(*) AS files, COALESCE(SUM(u.length), 0) AS bytes, COALESCE(SUM(u.visitor = ?), 0) AS visitorFiles
+    FROM file_request_uploads u WHERE u.request_id = ? AND ${COUNTS}`).get(visitor, requestId) as Usage & { visitorFiles: number };
 }
+// The request's file limit in force: the owner's, or the ceiling (never above it: the schema and migration 032).
+const fileLimit = (r: RequestRow) => r.max_files ?? MAX_FILES_PER_REQUEST;
 
 export const toFileRequest = (db: Db, r: RequestRow): FileRequest => {
   const received = db.prepare(`SELECT COUNT(*) AS files, COALESCE(SUM(length), 0) AS bytes,
@@ -66,10 +75,10 @@ export const toFileRequest = (db: Db, r: RequestRow): FileRequest => {
     revoked: r.revoked_at !== null, orphaned: r.orphaned_at !== null, files: received.files, bytes: received.bytes, newFiles: received.fresh, pending };
 };
 
-/** What is left of the limits right now; null for no limit. */
-export function remaining(db: Db, r: RequestRow): { filesLeft: number | null; bytesLeft: number | null } {
-  const u = usage(db, r.id);
-  return { filesLeft: r.max_files === null ? null : Math.max(0, r.max_files - u.files),
+/** What is left of the limits for `visitor` right now; null for no byte limit. Files are always bounded (#401). */
+export function remaining(db: Db, r: RequestRow, visitor: string): { filesLeft: number; bytesLeft: number | null } {
+  const u = usage(db, r.id, visitor);
+  return { filesLeft: Math.max(0, Math.min(fileLimit(r) - u.files, MAX_FILES_PER_VISITOR - u.visitorFiles)),
     bytesLeft: r.max_bytes === null ? null : Math.max(0, r.max_bytes - u.bytes) };
 }
 
@@ -137,8 +146,8 @@ export function reserveUpload(db: Db, r: RequestRow, u: { visitor: string; name:
     // Read again under the write lock: a request revoked since the handler checked it takes no new upload (#304).
     const closed = closedCode(db, r.id);
     if (closed) throw new AppError(closed);
-    const used = usage(db, r.id);
-    if (r.max_files !== null && used.files + 1 > r.max_files) throw new AppError('REQUEST_FILE_LIMIT');
+    const used = usage(db, r.id, u.visitor);
+    if (used.files + 1 > fileLimit(r) || used.visitorFiles + 1 > MAX_FILES_PER_VISITOR) throw new AppError('REQUEST_FILE_LIMIT');
     if (r.max_bytes !== null && used.bytes + u.length > r.max_bytes) throw new AppError('REQUEST_SIZE_LIMIT');
     // Each open upload holds the owner's quota, a row and a staged file: bounded even without limits (#304).
     const open = db.prepare(`SELECT COUNT(*) AS request, COALESCE(SUM(u.visitor = ?), 0) AS visitor FROM file_request_uploads u

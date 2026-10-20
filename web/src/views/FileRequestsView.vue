@@ -5,7 +5,8 @@
 // link to the request's folder with it selected (#311).
 import { computed, nextTick, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { CreateFileRequest, FileRequest, ReceivedFile, ReceivedFileList, UpdateFileRequest } from '@files/shared';
+import { MAX_REQUEST_FILES, MAX_REQUEST_FILES_PER_VISITOR, type CreateFileRequest, type FileRequest, type ReceivedFile,
+  type ReceivedFileList, type UpdateFileRequest } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
 import { folderRoute } from '../api/paths.ts';
 import { formatDate, formatSize, intlLocale } from '../format.ts';
@@ -30,6 +31,7 @@ const address = (r: FileRequest) => `${location.origin}/r/${r.token}`;
 const expired = (r: FileRequest) => r.expiresAt !== null && Date.parse(r.expiresAt) <= Date.now();
 const fmtDate = (iso: string) => formatDate(iso, intlLocale(locale.value));
 const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
+const fmtCount = (n: number) => n.toLocaleString(intlLocale(locale.value));
 const sources = computed(() => [{ source: 'home', name: t('nav.home') },
   ...connections.items.filter((c) => c.status === 'ok').map((c) => ({ source: c.source, name: t('nav.connection', { provider: c.providerName, account: c.account }) }))]);
 
@@ -351,6 +353,8 @@ const fileTarget = (r: FileRequest, f: ReceivedFile) =>
             min="1"
             step="1"
             inputmode="numeric"
+            :max="MAX_REQUEST_FILES"
+            :placeholder="t('requests.maxFilesPlaceholder', { max: fmtCount(MAX_REQUEST_FILES) })"
             :aria-describedby="`${formId}-limit-hint`"
           >
         </div>
@@ -373,7 +377,7 @@ const fileTarget = (r: FileRequest, f: ReceivedFile) =>
             :id="`${formId}-limit-hint`"
             class="share-note"
           >
-            {{ t('requests.limitHint') }}
+            {{ t('requests.limitHint', { max: fmtCount(MAX_REQUEST_FILES), perSender: fmtCount(MAX_REQUEST_FILES_PER_VISITOR) }) }}
           </p>
         </div>
         <div class="app-dialog-field">

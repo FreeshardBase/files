@@ -17,7 +17,7 @@ describe('openDb', () => {
     openDb(file).close();
     const again = openDb(file);
     try {
-      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }, { name: '023_rename_jobs.sql' }, { name: '024_content_hashes.sql' }, { name: '025_user_layout.sql' }, { name: '026_name_fold_accents.sql' }, { name: '027_comments_author.sql' }, { name: '028_display_name_not_sub.sql' }, { name: '029_users_login.sql' }, { name: '030_import_jobs.sql' }, { name: '031_transfer_renames.sql' }]);
+      expect(again.prepare('SELECT name FROM schema_migrations').all()).toEqual([{ name: '001_init.sql' }, { name: '002_trash.sql' }, { name: '003_trash_expiry.sql' }, { name: '004_uploads.sql' }, { name: '005_recent.sql' }, { name: '006_thumbnails.sql' }, { name: '007_name_index.sql' }, { name: '008_shares.sql' }, { name: '009_public_links.sql' }, { name: '010_connections.sql' }, { name: '011_connection_library.sql' }, { name: '012_transfers.sql' }, { name: '013_migrations.sql' }, { name: '014_versions.sql' }, { name: '015_favourites.sql' }, { name: '016_webdav.sql' }, { name: '017_user_settings.sql' }, { name: '018_user_sort.sql' }, { name: '019_file_requests.sql' }, { name: '020_tags.sql' }, { name: '021_smart_folders.sql' }, { name: '022_comments.sql' }, { name: '023_rename_jobs.sql' }, { name: '024_content_hashes.sql' }, { name: '025_user_layout.sql' }, { name: '026_name_fold_accents.sql' }, { name: '027_comments_author.sql' }, { name: '028_display_name_not_sub.sql' }, { name: '029_users_login.sql' }, { name: '030_import_jobs.sql' }, { name: '031_transfer_renames.sql' }, { name: '032_request_file_ceiling.sql' }]);
     } finally { again.close(); }
   });
 
@@ -37,6 +37,34 @@ describe('openDb', () => {
     try {
       expect(db.prepare('SELECT id, display_name FROM users ORDER BY id').all())
         .toEqual([{ id: 'u1', display_name: '' }, { id: 'u2', display_name: 'Test User' }]);
+    } finally { db.close(); }
+  });
+
+  it('caps a file request\'s file limit at the ceiling of 1000 and keeps lower ones and none (#401)', () => {
+    const dir = tmp();
+    mkdirSync(join(dir, 'm'));
+    for (const f of readdirSync(DEFAULT_MIGRATIONS).filter((n) => n < '032')) copyFileSync(join(DEFAULT_MIGRATIONS, f), join(dir, 'm', f));
+    const file = join(dir, 'f.db');
+    const old = openDb(file, join(dir, 'm'));
+    old.prepare(`INSERT INTO users (id, iss, sub, display_name, role, created_at, last_login)
+      VALUES ('u1', 'https://idp.example.com', 'testuser', 'Test User', 'member', 'now', 'now')`).run();
+    const request = old.prepare(`INSERT INTO file_requests (id, token, owner_id, source, path, label, max_files, created_at)
+      VALUES (?, ?, 'u1', 'home', '/inbox', '', ?, 'now')`);
+    for (const [id, max] of [['a', 100_000], ['b', 1000], ['c', 7], ['d', null]] as const) request.run(id, `t-${id}`, max);
+    // Visitor files: placed, open, reserved, and one whose upload was dropped before it was placed.
+    old.prepare(`INSERT INTO uploads (id, user_id, source, path, length, received, on_collision, created_at, expires_at)
+      VALUES ('up-open', 'u1', 'home', '/inbox/b.bin', 1, 0, 'keep-both', 'now', 'later')`).run();
+    const visitorFile = old.prepare(`INSERT INTO file_request_uploads (id, request_id, visitor, upload_id, name, length, created_at, placed_at)
+      VALUES (?, 'd', 'v', ?, 'f.bin', 1, 'now', ?)`);
+    for (const [id, upload, placed] of [['placed', 'up-gone-1', 'now'], ['open', 'up-open', null], ['reserved', null, null],
+      ['dropped', 'up-gone-2', null]] as const) visitorFile.run(id, upload, placed);
+    old.close();
+
+    const db = openDb(file);
+    try {
+      expect(db.prepare('SELECT id, max_files FROM file_requests ORDER BY id').all()).toEqual([
+        { id: 'a', max_files: 1000 }, { id: 'b', max_files: 1000 }, { id: 'c', max_files: 7 }, { id: 'd', max_files: null }]);
+      expect(db.prepare('SELECT id FROM file_request_uploads ORDER BY id').pluck().all()).toEqual(['open', 'placed', 'reserved']);
     } finally { db.close(); }
   });
 
