@@ -1396,3 +1396,11 @@ Question: after Ctrl+A (or "New folder", which selects what it creates) nothing 
 Decision: Esc on a row or tile clears a non-empty selection (`onActionKey`; open menus and dialogs stop the key first), and the selection bar has a borderless icon button "Clear selection" (`icon-close`, aria-label) right after the count, on the desktop bar and on the phone's bottom bar alike. The shortcuts dialog lists "Esc: clear the selection". No header checkbox, Ctrl+A stays select-all, and a click on the empty area does not clear.
 
 Why: the issue's expected behaviour asks for exactly these two ways; the clear button sits beside the count it resets, where both a mouse and a finger look for it. A header checkbox and a toggling Ctrl+A would be a second and third way to the same state (YAGNI), and clearing on an empty-area click would fight the empty area's own menu (#340).
+
+## 2026-10-20: Crumbs give way in order while a selection lasts (#404)
+
+Question: the issue suggests `flex-shrink: 0` with `min-width: 8rem` on the current crumb. With a current name longer than the room left, a crumb that cannot shrink would be clipped by the breadcrumbs' own `overflow: hidden` without an ellipsis. Should the current crumb never shrink?
+
+Decision: every crumb link is cut with its own ellipsis; the earlier crumbs shrink a hundred times faster (`flex-shrink: 100`), the current crumb shrinks only with `flex-shrink: 1` and never below 8rem; the separators do not shrink.
+
+Why: the earlier crumbs still give way first, as the issue asks, and the current one still keeps 8rem, but a long title is cut with an ellipsis (DESIGN.md, "Tags and smart folders"; #365) instead of being clipped mid-letter.

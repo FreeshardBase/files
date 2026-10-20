@@ -669,8 +669,12 @@ a:where(:hover) { text-decoration: underline; }
   .toolbar:has(.selection-bar) { flex-wrap: nowrap; }
   .toolbar:has(.selection-bar) .selection-bar { flex: 0 1 auto; min-width: 0; }
   .toolbar:has(.selection-bar) .breadcrumbs { flex: 1 1 auto; min-width: 8rem; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
-  .toolbar:has(.selection-bar) .breadcrumbs > * { min-width: 0; }
-  .toolbar:has(.selection-bar) .breadcrumbs a[aria-current='page'] { overflow: hidden; text-overflow: ellipsis; }
+  /* Every crumb is cut with its own ellipsis, never overflowing into the "/" (#404); the earlier crumbs give way
+     first, the current one keeps 8rem. */
+  .toolbar:has(.selection-bar) .breadcrumbs > * { min-width: 0; flex-shrink: 100; }
+  .toolbar:has(.selection-bar) .breadcrumbs a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolbar:has(.selection-bar) .breadcrumbs .sep { flex: none; }
+  .toolbar:has(.selection-bar) .breadcrumbs a[aria-current='page'] { flex-shrink: 1; min-width: 8rem; }
   /* A pane of two (~550 px) has no room for the bar beside the title: there the bar takes its own full-width rows
      under the title, right-aligned, and the title keeps its full width (#383). */
   .workspace.dual .pane .toolbar:has(.selection-bar) { flex-wrap: wrap; }
