@@ -226,3 +226,44 @@ test('a public link to a Google Drive file with a password and limit 1: unlocked
   expect(fromVisitor).toEqual([]);
   await v.context().close();
 });
+
+test('#418 the owner deletes a shared Dropbox folder: "My shares" lists its link and share as gone, the visitor gets the alert', async ({ page, browser, baseURL }, info) => {
+  const member = await contextFor(browser, info, baseURL!, 'member'); // known to the shard once signed in
+  const dir = `Gone-${tag(info)}`;
+  const { source, headers } = await connected(page, /Dropbox verbinden|Connect Dropbox/, { [`/${dir}/note.txt`]: 'the owner\'s note' });
+  const l = await page.request.post('/api/v1/links', { headers, data: { source, path: `/${dir}` } });
+  expect(l.status(), await l.text()).toBe(201);
+  const { token } = await l.json();
+  const grantee = ((await (await page.request.get('/api/v1/members')).json()).items as { id: string; displayName: string }[])
+    .find((x) => x.displayName === 'Test Member')!.id;
+  const s = await page.request.post('/api/v1/shares', { headers, data: { source, path: `/${dir}`, grantee, access: 'edit' } });
+  expect(s.status(), await s.text()).toBe(201);
+  const shareSource = `share:${(await s.json()).id as string}`;
+
+  // The owner moves the folder to the trash in Files.
+  const del = await page.request.post(`/api/v1/sources/${encodeURIComponent(source)}/delete`, { headers, data: { paths: [`/${dir}`] } });
+  expect(del.status(), await del.text()).toBe(204);
+
+  // The member's upload into the share is refused and creates nothing.
+  const { csrfToken } = await (await member.request.get('/api/v1/me')).json();
+  const up = await member.request.put(`/api/v1/sources/${encodeURIComponent(shareSource)}/content?path=%2Fplanted.txt&onCollision=fail`,
+    { headers: { 'x-csrf-token': csrfToken, origin: new URL(baseURL!).origin, 'content-type': 'application/octet-stream' },
+      data: Buffer.from('planted') });
+  expect(up.status(), await up.text()).toBe(410);
+  await member.context().close();
+
+  const v = await contextFor(browser, info, baseURL!, null);
+  await v.goto(`/s/${token}`);
+  const alert = v.getByRole('alert');
+  await expect(alert).toContainText('This link can’t be opened');
+  await expect(alert).toContainText('This shared item is gone');
+  await expect(v.getByRole('list', { name: `Contents of ${dir}` })).toHaveCount(0);
+  await v.context().close();
+
+  await page.goto('/my-shares');
+  const item = new RegExp(`^(${escape(dir)} öffnen|Open ${escape(dir)})$`);
+  const inList = (list: RegExp) => page.locator('main').getByRole('list', { name: list }).getByRole('listitem')
+    .filter({ has: page.getByRole('link', { name: item }) });
+  await expect(inList(/Öffentliche Links|Public links/)).toContainText(/Nicht mehr verfügbar|No longer available/);
+  await expect(inList(/Für Mitglieder freigegeben|Shared with members/)).toContainText(/Nicht mehr verfügbar|No longer available/);
+});

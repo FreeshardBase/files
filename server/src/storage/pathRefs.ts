@@ -51,9 +51,9 @@ function checked(t: PathTable): PathTable {
 
 // The item itself or anything beneath it. substr instead of LIKE: no wildcard escaping, and `/a` never matches `/ab`.
 const under = (path: string) => `(${path} = @p OR substr(${path}, 1, length(@p) + 1) = @p || '/')`;
-// The owner's live rows of the home at or beneath @p.
-const rowsUnder = (t: PathTable) => `${t.ownerColumn} = @owner AND ${under(t.pathColumn)}`
-  + (t.sourceColumn ? ` AND ${t.sourceColumn} = 'home'` : '') + (t.orphanColumn ? ` AND ${t.orphanColumn} IS NULL` : '')
+// The owner's live rows at or beneath @p: of the home, or of @source where `source` is given (#418).
+const rowsUnder = (t: PathTable, source = false) => `${t.ownerColumn} = @owner AND ${under(t.pathColumn)}`
+  + (t.sourceColumn ? ` AND ${t.sourceColumn} = ${source ? '@source' : `'home'`}` : '') + (t.orphanColumn ? ` AND ${t.orphanColumn} IS NULL` : '')
   + (t.trashColumn ? ` AND ${t.trashColumn} IS NULL` : '');
 
 export function movePathRefs(db: Db, tables: readonly PathTable[], owner: string, from: string, to: string): void {
@@ -131,5 +131,20 @@ export function deletePathRefs(db: Db, tables: readonly PathTable[], owner: stri
     } else {
       db.prepare(`DELETE FROM ${t.table} WHERE ${rowsUnder(t)}`).run({ owner, p: path });
     }
+  }
+}
+
+/**
+ * Items of `source` (not the home) were deleted through the app (#418): rows of tables with a `sourceColumn` and an
+ * `orphanColumn` (shares, public links, file requests) on them or beneath them are orphaned, as `deletePathRefs` does in
+ * the home, so they answer 410 and never come back with a later item at the path. Other tables are the caller's.
+ */
+export function orphanPathRefs(db: Db, tables: readonly PathTable[], owner: string, source: string, paths: readonly string[]): void {
+  if (source === 'home') throw new Error('home rows are orphaned by deletePathRefs inside the delete\'s transaction');
+  const now = new Date().toISOString();
+  for (const t of tables.map(checked)) {
+    if (!t.sourceColumn || !t.orphanColumn) continue;
+    const stmt = db.prepare(`UPDATE ${t.table} SET ${t.orphanColumn} = @now WHERE ${rowsUnder(t, true)}`);
+    for (const p of paths) stmt.run({ owner, source, p, now });
   }
 }

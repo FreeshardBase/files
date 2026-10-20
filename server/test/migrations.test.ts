@@ -212,6 +212,21 @@ describe('migrating a cloud account or folder to the shard', () => {
     expect(readFileSync(join(home(t, a), 'Old', 'a.txt'), 'utf8')).toBe('alpha');
   });
 
+  it('#418 cleanup orphans a public link on a deleted original: 410, not 404', async () => {
+    const { m, source } = mem({ withMd5: true });
+    m.put('/Linked/a.txt', 'alpha').put('/Linked/b.txt', 'bravo');
+    const l = await as(t, a, 'POST', '/api/v1/links', { source, path: '/Linked/a.txt' });
+    expect(l.statusCode, l.body).toBe(201);
+    const token = l.json().token as string;
+    const mig = await settled(t, a, (await migrate(t, a, { from: source, path: '/Linked', name: 'Linked' })).id);
+    expect(mig.failed).toEqual([]);
+    expect((await cleanup(t, a, mig.id)).status).toBe('completed');
+    expect(m.deleted).toContain('/Linked/a.txt');
+    const v = await t.app.inject({ url: `/s/${token}/info`, remoteAddress: '198.51.100.11' });
+    expect(v.statusCode, v.body).toBe(410);
+    expect(v.json()).toEqual({ code: 'SHARE_ORPHANED' });
+  });
+
   it('cleanup keeps a cloud file whose shard copy changed or which changed in the cloud since the migration', async () => {
     const { m, source } = mem();
     m.put('/C/copy-edited.txt', 'original').put('/C/copy-gone.txt', 'original').put('/C/cloud-edited.txt', 'original')
