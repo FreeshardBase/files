@@ -105,6 +105,10 @@ function onKey(e: KeyboardEvent, i: number) {
   e.preventDefault();
   void focusRow(to);
 }
+// Esc in the row's checkbox, where a click on it leaves the focus, clears the selection too (#420); the row takes the focus.
+function onCheckKey(e: KeyboardEvent, i: number) {
+  if (e.key === 'Escape' && onActionKey(e, i)) void focusRow(i);
+}
 function onClick(e: MouseEvent, i: number) {
   active.value = i;
   onSelectClick(e, i);
@@ -268,6 +272,7 @@ const fileHref = (e: Entry) => downloadHref(props.source, [e]);
                   :checked="chosen.has(e.path)"
                   :aria-label="$t('actions.select', { name: e.name })"
                   @click.stop="active = i; toggle(i)"
+                  @keydown="onCheckKey($event, i)"
                 >
               </label>
             </td>

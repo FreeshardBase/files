@@ -90,6 +90,10 @@ function onKey(e: KeyboardEvent, i: number) {
   e.preventDefault();
   void focusTile(to);
 }
+// Esc in the tile's checkbox, which lies outside the tile, clears the selection too (#420); the tile takes the focus.
+function onCheckKey(e: KeyboardEvent, i: number) {
+  if (e.key === 'Escape' && onActionKey(e, i)) void focusTile(i);
+}
 // Space is taken on keydown; the button would still click on keyup.
 function onKeyUp(e: KeyboardEvent) { if (e.key === ' ') e.preventDefault(); }
 function onClick(e: MouseEvent, i: number) {
@@ -193,6 +197,7 @@ defineExpose({
               :checked="chosen.has(e.path)"
               :aria-label="$t('actions.select', { name: e.name })"
               @click.stop="active = i; toggle(i)"
+              @keydown="onCheckKey($event, i)"
             >
           </label>
           <ItemMenu
