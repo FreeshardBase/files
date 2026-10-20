@@ -771,6 +771,8 @@ a:where(:hover) { text-decoration: underline; }
 .members-amount { width: 6em; }
 .members-unit { width: auto; }
 .members-error { display: block; margin-top: var(--space-1); }
+/* The field's label and the "used" suffix stand in for the column headers on stacked rows only (#385). */
+.members-limit-label, .members-used-suffix { display: none; }
 /* Migration (#153): one column of steps; a folder picker is crumbs over a hairline list of folder buttons. */
 .migrate-step { margin: var(--space-5) 0 var(--space-3); font-size: var(--fs-h3); font-weight: 600; }
 .migrate-step:focus { outline: none; }
@@ -1213,6 +1215,10 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   .members-email { max-width: 100%; }
   .members-list td.num.date { margin-left: 0; }
   .members-list td.actions { padding-left: 0; }
+  /* The headers are hidden (#385): "Storage limit" over the field, the unit and the buttons beside it; "used" after the figure. */
+  .members-form { flex-wrap: wrap; }
+  .members-limit-label { display: block; flex-basis: 100%; }
+  .members-used-suffix { display: inline; }
 }
 /* On the phone a row's actions share it at equal width (#245), so "Unlink" or "Delete permanently" never outweighs the
    action beside it. */

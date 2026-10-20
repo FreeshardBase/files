@@ -146,6 +146,8 @@ function submit(m: MemberUsage) {
               </td>
               <td class="num size">
                 {{ size(m.used) }}
+                <!-- The column header is hidden on stacked rows (≤1200 px, #385): the figure then says what it is. -->
+                <span class="members-used-suffix">{{ $t('members.usedSuffix') }}</span>
               </td>
               <td class="num date members-quota">
                 <span
@@ -162,7 +164,13 @@ function submit(m: MemberUsage) {
                   novalidate
                   @submit.prevent="submit(m)"
                 >
+                  <!-- On stacked rows (≤1200 px) the column header is hidden, so the field takes its own label (#385). -->
+                  <label
+                    class="fs-label members-limit-label"
+                    :for="`quota-amount-${m.id}`"
+                  >{{ $t('members.columns.quota') }}</label>
                   <input
+                    :id="`quota-amount-${m.id}`"
                     v-model="formOf(m.id).amount"
                     class="fs-input members-amount"
                     type="text"

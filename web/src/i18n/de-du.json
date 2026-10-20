@@ -239,6 +239,7 @@
     },
     "admin": "Admin",
     "noQuota": "Kein Speicherlimit",
+    "usedSuffix": "belegt",
     "amountLabel": "Speicherlimit für {name}",
     "unitLabel": "Einheit für {name}",
     "units": {
