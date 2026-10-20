@@ -15,7 +15,7 @@ Files is a multi-cloud hub for the people of one shard: the owner (shard admin) 
 
 ## Identity model
 
-- The only way in is the shard's OIDC provider: authorization code with PKCE. `state`, `nonce` and the verifier live server-side in a `login_attempts` row (cookie `__Host-fs_login`) and are single-use. A missing or mismatched value is rejected.
+- The only way in is the shard's OIDC provider: authorization code with PKCE. `state`, `nonce` and the verifier live server-side in a `login_attempts` row (cookie `__Host-fs_login`) and are single-use. A missing or mismatched value is rejected. Each row stores its address key; one address may start 30 logins a minute until it completes one and keeps at most 50 live rows, its oldest pushed out (#419). At most 10,000 rows are live in total (#255).
 - Each person gets a stable internal user id (UUID), mapped from (`iss`, `sub`). Nothing is keyed by `sub`, display name or `X-Ptl-Client-Id` (a device id, not a person).
 - The display name is taken at every login from `name`, then `preferred_username`, then the email's local part (`server/src/users.ts`). With none of them it is stored empty and the web shows the localized "Mitglied" (`web/src/memberName.ts`, used wherever a member is shown). It is never the id or `sub` (#337).
 - The login name is taken at every login too: `preferred_username`, else the email (`users.login`, #321). Only `/api/v1/me` carries it, as `login`, for the phone setup page's user name; no member list shows it.

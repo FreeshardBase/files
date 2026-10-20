@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { challengeFor, createOidc, randomNonce, randomState, randomVerifier } from './oidc.ts';
-import { createLoginAttempt, createSession, deleteSession, takeLoginAttempt, SESSION_TTL_MS, LOGIN_TTL_MS } from './sessions.ts';
+import { createLoginAttempt, createSession, deleteSession, takeLoginAttempt, SESSION_TTL_MS, LOGIN_TTL_MS,
+  LOGIN_STARTS_PER_ADDRESS, LOGIN_STARTS_WINDOW_MS } from './sessions.ts';
+import { addressKey, AttemptLimiter } from '../http/attempts.ts';
 import { loginOf, upsertUserFromClaims } from '../users.ts';
 import { layoutOf, settingsOf, sortOf } from '../settings.ts';
 import { cookieNames } from './cookies.ts';
@@ -31,11 +33,22 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   // __Host- requires Path=/; otherwise narrow the login cookie to the callback.
   const loginCookie = names.prefixed ? cookieBase : { ...cookieBase, path: '/auth/callback' };
+  // Login starts per address (#419): a client that never finishes a sign-in is held to a rate, one that does is not.
+  const starts = new AttemptLimiter(LOGIN_STARTS_PER_ADDRESS, LOGIN_STARTS_WINDOW_MS);
 
   app.get('/auth/login', { config: { public: true } }, async (req, reply) => {
     const q = z.object({ returnTo: z.string().optional().transform((v) => (v !== undefined && v.length > RETURN_TO_MAX ? undefined : v)), login_hint: z.string().max(200).optional() }).parse(req.query);
+    const address = addressKey(req.ip);
+    // Over its rate: back to the SPA like a full table below; the header tells a script when to come back.
+    const wait = starts.blockedFor(address);
+    if (wait > 0) {
+      req.log.warn({ address }, 'login refused: too many login starts from this address');
+      reply.header('retry-after', String(wait));
+      return reply.redirect(LOGIN_FAILED_URL);
+    }
+    starts.begin(address); starts.end(address, true);
     const state = randomState(); const nonce = randomNonce(); const verifier = randomVerifier();
-    const id = createLoginAttempt(db, { state, nonce, verifier, returnTo: safeReturnTo(q.returnTo) });
+    const id = createLoginAttempt(db, { state, nonce, verifier, returnTo: safeReturnTo(q.returnTo), address });
     // The most live attempts exist (#255): back to the SPA, which shows LOGIN_FAILED instead of looping into login.
     if (id === undefined) {
       req.log.warn('login refused: too many live login attempts');
@@ -70,6 +83,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       ...(typeof claims.preferred_username === 'string' ? { preferredUsername: claims.preferred_username } : {}),
       ...(typeof claims.email === 'string' ? { email: claims.email } : {}) });
     if (req.session) deleteSession(db, req.session.idHash); // session fixation hygiene
+    // A finished sign-in proves a member behind the address; an anonymous flood never gets this far.
+    if (attempt.address !== null) starts.forget(attempt.address);
     const s = createSession(db, user.id);
     reply.setCookie(names.sid, s.id, { ...cookieBase, maxAge: SESSION_TTL_MS / 1000 });
     return reply.redirect(attempt.returnTo);

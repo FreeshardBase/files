@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openDb, type Db } from '../src/db.ts';
-import { createLoginAttempt, LOGIN_ATTEMPTS_MAX, LOGIN_TTL_MS, takeLoginAttempt } from '../src/auth/sessions.ts';
+import { createLoginAttempt, LOGIN_ATTEMPTS_MAX, LOGIN_ATTEMPTS_PER_ADDRESS, LOGIN_TTL_MS, takeLoginAttempt } from '../src/auth/sessions.ts';
 
-const attempt = { state: 's', nonce: 'n', verifier: 'v', returnTo: '/' };
+const attempt = { state: 's', nonce: 'n', verifier: 'v', returnTo: '/', address: '198.51.100.7' };
 const count = (db: Db) => db.prepare('SELECT count(*) FROM login_attempts').pluck().get() as number;
 
 describe('login attempts', () => {
@@ -10,8 +10,8 @@ describe('login attempts', () => {
 
   it('can be taken exactly once', () => {
     const db = openDb(':memory:');
-    const id = createLoginAttempt(db, { state: 's', nonce: 'n', verifier: 'v', returnTo: '/' })!;
-    expect(takeLoginAttempt(db, id)).toMatchObject({ state: 's' });
+    const id = createLoginAttempt(db, attempt)!;
+    expect(takeLoginAttempt(db, id)).toMatchObject({ state: 's', address: '198.51.100.7' });
     expect(takeLoginAttempt(db, id)).toBeUndefined();
     db.close();
   });
@@ -49,6 +49,28 @@ describe('login attempts', () => {
     vi.setSystemTime(Date.now() + LOGIN_TTL_MS);
     createLoginAttempt(db, attempt);
     expect(count(db)).toBe(1);
+    db.close();
+  });
+
+  // #419: one address at its ceiling replaces its own oldest attempt, also with the table full, and nobody else's.
+  it("pushes out an address's own oldest attempt at its ceiling, never another address's", () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-16T10:00:00.000Z') });
+    const db = openDb(':memory:');
+    const other = createLoginAttempt(db, { ...attempt, address: '192.0.2.1' })!;
+    const own: string[] = [];
+    for (let i = 0; i < LOGIN_ATTEMPTS_PER_ADDRESS; i++) { own.push(createLoginAttempt(db, attempt)!); vi.setSystemTime(Date.now() + 1); }
+    const insert = db.prepare(`INSERT INTO login_attempts (id_hash, state, nonce, verifier, return_to, expires_at, address)
+      VALUES (?,?,?,?,?,?,?)`);
+    const expires = new Date(Date.now() + LOGIN_TTL_MS).toISOString();
+    const fill = LOGIN_ATTEMPTS_MAX - count(db);
+    db.transaction(() => { for (let i = 0; i < fill; i++) insert.run(`h${i}`, 's', 'n', 'v', '/', expires, `10.0.${i >> 8}.${i & 255}`); })();
+    const newest = createLoginAttempt(db, attempt)!;
+    expect(newest).toBeDefined();
+    expect(count(db)).toBe(LOGIN_ATTEMPTS_MAX);
+    expect(takeLoginAttempt(db, own[0]!)).toBeUndefined();
+    expect(takeLoginAttempt(db, own[1]!)).toMatchObject({ state: 's' });
+    expect(takeLoginAttempt(db, newest)).toMatchObject({ state: 's' });
+    expect(takeLoginAttempt(db, other)).toMatchObject({ state: 's', address: '192.0.2.1' });
     db.close();
   });
 });
