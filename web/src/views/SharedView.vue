@@ -77,13 +77,6 @@ async function remove(item: IncomingShare) {
         {{ $t('shared.title') }}
       </h1>
     </div>
-    <p
-      class="status"
-      role="status"
-      aria-live="polite"
-    >
-      {{ status }}
-    </p>
     <RowSkeleton v-if="!shared.loaded" />
     <p
       v-else-if="shared.error"
@@ -194,6 +187,14 @@ async function remove(item: IncomingShare) {
         </tr>
       </tbody>
     </table>
+    <!-- Under the list, as in Trash: an empty status line above it would push the table down (#408). -->
+    <p
+      class="status"
+      role="status"
+      aria-live="polite"
+    >
+      {{ status }}
+    </p>
     <PreviewDialog
       v-if="preview"
       :files="[preview.entry]"

@@ -53,13 +53,6 @@ async function remove(f: Favourite) {
       </h1>
     </div>
     <p
-      class="status"
-      role="status"
-      aria-live="polite"
-    >
-      {{ status }}
-    </p>
-    <p
       v-if="failure"
       role="alert"
     >
@@ -154,5 +147,13 @@ async function remove(f: Favourite) {
         </tr>
       </tbody>
     </table>
+    <!-- Under the list, as in Trash: an empty status line above it would push the table down (#408). -->
+    <p
+      class="status"
+      role="status"
+      aria-live="polite"
+    >
+      {{ status }}
+    </p>
   </section>
 </template>
