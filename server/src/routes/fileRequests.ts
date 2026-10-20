@@ -11,6 +11,7 @@ import { addressKey, AttemptLimiter, checkPassword, CREATIONS_PER_WINDOW, CREATI
 import { normalizeUserPath } from '../storage/resolveInRoot.ts';
 import { homeOf, ownerSource, parseSource, resolveSource } from '../storage/resolveSource.ts';
 import { UPLOAD_ID, type UploadPlacement } from '../storage/local.ts';
+import type { StorageBackend } from '../storage/backend.ts';
 import { hashPassword, isExpired, parseExpiry, passwordStamp, verifyPassword } from '../storage/publicLinks.ts';
 import { attachUpload, cleanUploader, closedCode, createRequest, discardOpenUploads, dropReservation, isVisitorsOpenUpload, markPlaced, markSeen, ownRequest,
   receivedFiles, remaining, requestByToken, requestsOf, reserveUpload, revokeRequest, sanitizeUploadName, toFileRequest,
@@ -185,6 +186,9 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
     const name = sanitizeUploadName(m.name);
     const target = await ownerSource(app.deps, row);
     if (row.source !== 'home') {
+      // The folder must still be there: a provider creates missing folders on upload, so a folder deleted or renamed
+      // at the provider would be created anew in the owner's account (#418).
+      await requireFolder(target, row.path);
       const q = await target.quota?.();
       if (q?.total !== undefined && length > q.total - q.used) throw new AppError('QUOTA_EXCEEDED');
     }
@@ -240,7 +244,10 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
       const path = childPath(live.path, nameOf(id));
       if (live.source === 'home') return { path, placed };
       const backend = await ownerSource(app.deps, live);
-      return { placed, write: (body, length) => backend.write(path, body, { onCollision: 'keep-both', maxBytes: config.maxUploadBytes, size: length }) };
+      return { placed, write: async (body, length) => {
+        await requireFolder(backend, live.path);
+        return backend.write(path, body, { onCollision: 'keep-both', maxBytes: config.maxUploadBytes, size: length });
+      } };
     };
     const s = await homeOf(app.deps, row.owner_id).appendUpload(id, h['upload-offset'], bodyStream(req), declaredLength(req), placement)
       .catch((e: unknown) => {
@@ -295,3 +302,7 @@ export async function registerFileRequestRoutes(app: FastifyInstance, perIp: Att
 }
 
 const childPath = (dir: string, name: string) => `${dir === '/' ? '' : dir}/${name}`;
+// The request's cloud folder is still a folder (#418); a missing one is NOT_FOUND from the backend's stat.
+async function requireFolder(backend: StorageBackend, path: string): Promise<void> {
+  if ((await backend.stat(path)).type !== 'directory') throw new AppError('NOT_FOUND');
+}

@@ -1,6 +1,7 @@
 import type { Db } from '../db.ts';
-import { deleteComments, keysOf, moveComments } from './comments.ts';
+import { deleteComments, keysOf, moveComments, type ItemKey } from './comments.ts';
 import { deleteFavourites, moveFavourites } from './favourites.ts';
+import { orphanPathRefs, PATH_TABLES } from './pathRefs.ts';
 import { deleteTags, moveTags } from './tags.ts';
 
 /**
@@ -27,8 +28,18 @@ export function followMove(db: Db, userId: string, source: string, from: string,
 export function followDelete(db: Db, userId: string, source: string, paths: readonly string[]): void {
   const keyOf = keysOf(db, userId, source);
   deleteComments(db, paths.map(keyOf));
+  orphanDeleted(db, paths.map(keyOf));
   if (source !== 'home') {
     deleteFavourites(db, userId, source, paths);
     deleteTags(db, userId, source, paths);
   }
+}
+
+/**
+ * The owner's items `keys` were deleted through the app: shares, public links and file requests on a cloud item or
+ * beneath it are orphaned (#418), also when a grantee deleted it inside a cloud share. The home's are orphaned by
+ * `LocalBackend` in the delete's own transaction. Used by `followDelete` and by the transfer jobs that delete originals.
+ */
+export function orphanDeleted(db: Db, keys: readonly ItemKey[]): void {
+  for (const k of keys) if (k.source !== 'home') orphanPathRefs(db, PATH_TABLES, k.owner, k.source, [k.path]);
 }

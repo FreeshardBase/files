@@ -98,7 +98,8 @@ export class ShareBackend implements StorageBackend {
     const { revisions, readRevision, restoreRevision } = inner;
     if (revisions) this.revisions = (p) => revisions.call(inner, this.at(p));
     if (readRevision) this.readRevision = async (p, id) => { const r = await readRevision.call(inner, this.at(p), id); return { ...r, entry: this.back(r.entry) }; };
-    if (restoreRevision) this.restoreRevision = async (p, id) => this.back(await restoreRevision.call(inner, this.at(p), id));
+    // A restore is a write: Dropbox restores a deleted file at its path, parent folders included (#418).
+    if (restoreRevision) this.restoreRevision = async (p, id) => { const at = this.at(p); await this.present(); return this.back(await restoreRevision.call(inner, at, id)); };
   }
 
   private at(p: string): string {
@@ -130,16 +131,30 @@ export class ShareBackend implements StorageBackend {
   // in the owner's folder outside the share, and a cloud source would replace a shared folder with a file.
   async write(p: string, body: Readable, opts: WriteOptions) {
     if (normalizeUserPath(p) === '/' && (this.type === 'directory' || opts.onCollision === 'keep-both')) throw new AppError('FORBIDDEN');
+    await this.present();
     return this.back(await this.inner.write(this.at(p), body, opts));
   }
-  async mkdir(p: string) { return this.back(await this.inner.mkdir(this.beneath(p))); }
+  async mkdir(p: string) { const to = this.beneath(p); await this.present(); return this.back(await this.inner.mkdir(to)); }
   async move(from: string, to: string, onCollision: CollisionPolicy) {
-    return this.back(await this.inner.move(this.beneath(from), this.beneath(to), onCollision));
+    const [a, b] = [this.beneath(from), this.beneath(to)];
+    await this.present();
+    return this.back(await this.inner.move(a, b, onCollision));
   }
   async copy(from: string, to: string, onCollision: CollisionPolicy) {
-    return this.back(await this.inner.copy(this.beneath(from), this.beneath(to), onCollision));
+    const [a, b] = [this.beneath(from), this.beneath(to)];
+    await this.present();
+    return this.back(await this.inner.copy(a, b, onCollision));
   }
-  async delete(paths: readonly string[]) { await this.inner.delete(paths.map((p) => this.beneath(p))); }
+  async delete(paths: readonly string[]) {
+    const all = paths.map((p) => this.beneath(p));
+    await this.present();
+    await this.inner.delete(all);
+  }
+  // Before any write (and a version restore): the shared item must still be there as what was shared (#418). A cloud provider creates missing
+  // parent folders on upload, so a write beneath an item deleted or renamed at the provider would create it anew.
+  private async present(): Promise<void> {
+    if ((await this.inner.stat(this.root)).type !== this.type) throw new AppError('NOT_FOUND');
+  }
   async thumbnail(p: string, size: ThumbSize): Promise<Readable | null> {
     return this.inner.thumbnail ? this.inner.thumbnail(this.at(p), size) : null;
   }

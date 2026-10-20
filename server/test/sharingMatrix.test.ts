@@ -117,6 +117,26 @@ async function link(kind: Kind, path: string, extra: Record<string, unknown> = {
   expect(r.statusCode, r.body).toBe(201);
   return r.json().token as string;
 }
+async function fileRequest(kind: Kind, path: string): Promise<string> {
+  const r = await as(owner, 'POST', '/api/v1/requests', { source: conn[kind], path });
+  expect(r.statusCode, r.body).toBe(201);
+  return r.json().token as string;
+}
+// A file request's visitor (#217): the cookie minted by `info`, then a tus creation from the request's page.
+const rIp = '198.51.100.9';
+const requestInfo = (token: string, cookie = '') => t.app.inject({ url: `/r/${token}/info`, remoteAddress: rIp, headers: cookie ? { cookie } : {} });
+async function requestVisitor(token: string): Promise<string> {
+  const r = await requestInfo(token);
+  expect(r.statusCode, r.body).toBe(200);
+  return String(r.headers['set-cookie']).split(';')[0]!;
+}
+const requestCreate = (token: string, cookie: string, name: string, length: number) => t.app.inject({
+  method: 'POST', url: `/r/${token}/uploads`, remoteAddress: rIp,
+  headers: { cookie, origin: ORIGIN, 'tus-resumable': '1.0.0', 'upload-length': String(length),
+    'upload-metadata': `name ${Buffer.from(name).toString('base64')}` } });
+const requestPatch = (location: string, cookie: string, body: string) => t.app.inject({
+  method: 'PATCH', url: location, remoteAddress: rIp, payload: Buffer.from(body),
+  headers: { cookie, origin: ORIGIN, 'tus-resumable': '1.0.0', 'upload-offset': '0', 'content-type': 'application/offset+octet-stream' } });
 const visit = (token: string, rest: string, o: { cookie?: string; headers?: Record<string, string> } = {}) =>
   t.app.inject({ url: `/s/${token}/${rest}`, remoteAddress: '198.51.100.7',
     headers: { ...(o.cookie ? { cookie: o.cookie } : {}), ...o.headers } });
@@ -375,6 +395,116 @@ describe.each(['drive', 'dropbox'] as const)('edge cases on %s', (kind) => {
       expect(r.json()).toEqual({ code: 'NOT_FOUND' });
     }
     expect(stored(kind, `${dir}-renamed/note.txt`)).toBe('hello from the owner');
+  });
+
+  it('#418 an item gone at the provider: no write through an edit share or a file request creates its path anew (404)', async () => {
+    const dir = await seedFolder(kind);
+    const s = await share(kind, dir, 'edit');
+    const reqToken = await fileRequest(kind, dir);
+    const cookie = await requestVisitor(reqToken);
+    // An upload opened while the folder was there is placed only after it has gone.
+    const opened = await requestCreate(reqToken, cookie, 'late.txt', 4);
+    expect(opened.statusCode, opened.body).toBe(201);
+    if (kind === 'drive') fake.drive.byPath(dir)!.name = `${dir.slice(1)}-renamed`;
+    else (fake.dropbox as unknown as { relocate(i: unknown, to: string, keep: boolean): void })
+      .relocate({ ...fake.dropbox.byPath(dir)! }, `${dir}-renamed`, false);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 31_000);
+    for (const r of [await put(grantee, s, '/x.txt', 'planted'), await op(grantee, s, 'mkdir', { path: '/new' }),
+      await requestCreate(reqToken, cookie, 'visitor.txt', 3), await requestPatch(String(opened.headers.location), cookie, 'late')]) {
+      expect(r.statusCode, r.body).toBe(404);
+      expect(r.json()).toEqual({ code: 'NOT_FOUND' });
+    }
+    expect(storedFolder(kind, dir)).toBe(false);
+    expect(stored(kind, `${dir}-renamed/x.txt`)).toBeUndefined();
+    expect(stored(kind, `${dir}-renamed/late.txt`)).toBeUndefined();
+  });
+
+  it('#418 deleting the shared folder in Files orphans its shares, links and file requests: 410, and nothing revives it', async () => {
+    const dir = await seedFolder(kind);
+    const s = await share(kind, dir, 'edit');
+    const token = await link(kind, dir);
+    const reqToken = await fileRequest(kind, dir);
+    const cookie = await requestVisitor(reqToken);
+    // The same path in the home is another item: its link stays.
+    await ok(op(owner, 'home', 'mkdir', { path: dir }));
+    const homeToken = await link('home', dir);
+    expect((await get(grantee, s, 'list', '/')).statusCode).toBe(200);
+    await ok(op(owner, conn[kind], 'delete', { paths: [dir] }));
+    expect((await visit(homeToken, 'list')).statusCode).toBe(200);
+    expect(storedFolder(kind, dir)).toBe(false);
+    for (const r of [await get(grantee, s, 'list', '/'), await get(grantee, s, 'content', '/note.txt'),
+      await put(grantee, s, '/planted.txt', 'planted'), await visit(token, 'info'), await visit(token, 'list'),
+      await visit(token, `content?${q('/planted.txt')}`), await requestInfo(reqToken, cookie),
+      await requestCreate(reqToken, cookie, 'visitor.txt', 3)]) {
+      expect(r.statusCode, r.body).toBe(410);
+      expect(r.json()).toEqual({ code: 'SHARE_ORPHANED' });
+    }
+    expect(storedFolder(kind, dir)).toBe(false);
+    // An item at the path later does not bring them back.
+    await ok(op(owner, conn[kind], 'mkdir', { path: dir }));
+    expect((await visit(token, 'list')).statusCode).toBe(410);
+    expect((await get(grantee, s, 'list', '/')).statusCode).toBe(410);
+    const outgoing = (await as(owner, 'GET', '/api/v1/shares/outgoing')).json().items as { id: string; orphaned: boolean }[];
+    expect(outgoing.find((x) => `share:${x.id}` === s)?.orphaned).toBe(true);
+    const links = (await as(owner, 'GET', '/api/v1/links/mine')).json().items as { token: string; orphaned: boolean }[];
+    expect(links.find((x) => x.token === token)?.orphaned).toBe(true);
+    const requests = (await as(owner, 'GET', '/api/v1/requests')).json().items as { token: string; orphaned: boolean }[];
+    expect(requests.find((x) => x.token === reqToken)?.orphaned).toBe(true);
+  });
+
+  it('#418 a grantee deleting a subfolder inside a cloud edit share orphans the owner\'s link on it', async () => {
+    const dir = await seedFolder(kind);
+    const s = await share(kind, dir, 'edit');
+    const token = await link(kind, `${dir}/sub`);
+    expect((await visit(token, 'list')).statusCode).toBe(200);
+    await ok(op(grantee, s, 'delete', { paths: ['/sub'] }));
+    expect(storedFolder(kind, `${dir}/sub`)).toBe(false);
+    const v = await visit(token, 'list');
+    expect(v.statusCode, v.body).toBe(410);
+    expect(v.json()).toEqual({ code: 'SHARE_ORPHANED' });
+    expect((await get(grantee, s, 'list', '/')).statusCode).toBe(200); // the share itself stays
+  });
+
+  it('#418 a move job out of the cloud orphans a link beneath the moved folder', async () => {
+    const dir = await seedFolder(kind);
+    const token = await link(kind, `${dir}/sub`);
+    const r = await as(owner, 'POST', '/api/v1/transfers', { mode: 'move', from: conn[kind], to: 'home', dir: '/',
+      items: [{ path: dir, onCollision: 'keep-both' }] });
+    expect(r.statusCode, r.body).toBe(201);
+    const id = r.json().id as string;
+    const end = Date.now() + 10_000;
+    let status = 'running';
+    while (status === 'running' && Date.now() < end) {
+      await new Promise((res) => setTimeout(res, 20));
+      status = (await as(owner, 'GET', `/api/v1/transfers/${id}`)).json().status as string;
+    }
+    expect(status).toBe('completed');
+    expect(storedFolder(kind, dir)).toBe(false);
+    const v = await visit(token, 'list');
+    expect(v.statusCode, v.body).toBe(410);
+    expect(v.json()).toEqual({ code: 'SHARE_ORPHANED' });
+  });
+
+  it('#418 the duplicate finder moving a cloud copy to the trash orphans its link', async () => {
+    const dir = await seedFolder(kind);
+    await ok(put(owner, conn[kind], `${dir}/sub/twin.txt`, 'hello from the owner'));
+    const token = await link(kind, `${dir}/sub/twin.txt`);
+    const started = await as(owner, 'POST', '/api/v1/duplicates/scan', { sources: [conn[kind]] });
+    expect(started.statusCode, started.body).toBe(202);
+    const end = Date.now() + 30_000; // the scan walks the whole connection, every earlier test's files included
+    let scan = (await as(owner, 'GET', '/api/v1/duplicates')).json();
+    while (scan.status === 'running' && Date.now() < end) {
+      await new Promise((res) => setTimeout(res, 20));
+      scan = (await as(owner, 'GET', '/api/v1/duplicates')).json();
+    }
+    expect(scan.status).toBe('completed');
+    const r = await as(owner, 'POST', '/api/v1/duplicates/trash', { items: [{ source: conn[kind], path: `${dir}/sub/twin.txt` }] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().results).toEqual([expect.objectContaining({ trashed: true })]);
+    const v = await visit(token, 'info');
+    expect(v.statusCode, v.body).toBe(410);
+    expect(v.json()).toEqual({ code: 'SHARE_ORPHANED' });
   });
 
   it('an item the owner renames through their connection in the app: the share and the link answer 404 as well', async () => {

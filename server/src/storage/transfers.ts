@@ -11,7 +11,7 @@ import { assertNameAllowed, type StorageBackend } from './backend.ts';
 import { normalizeUserPath } from './resolveInRoot.ts';
 import { parseSource, sourceFor, type ResolvedSource } from './resolveSource.ts';
 import { deleteComments, keysOf } from './comments.ts';
-import { followMove } from './followRefs.ts';
+import { followMove, orphanDeleted } from './followRefs.ts';
 import { entryStream, openArchive, planArchive, type OpenedArchive } from './archive.ts';
 
 /** Items copied at once, over all jobs of all members: enough to overlap round trips, few enough for provider limits. */
@@ -503,7 +503,9 @@ export class TransferEngine {
       const { from, to } = await this.sources(job);
       if (job.kind === 'cleanup') {
         await this.removeOriginal(item, from.backend, to.backend);
-        deleteComments(db, [keysOf(db, job.user_id, job.from_source)(item.from_path)]);
+        const key = keysOf(db, job.user_id, job.from_source)(item.from_path);
+        deleteComments(db, [key]);
+        orphanDeleted(db, [key]);
         this.setItem(jobId, seq, { status: 'done', error: null });
         return;
       }
@@ -781,12 +783,13 @@ export class TransferEngine {
     const user = getUser(db, job.user_id);
     if (!user) return;
     const from = (await sourceFor(this.deps, user, job.from_source)).backend;
-    // A cloud original's comment threads go with it, as with a delete through the sources route (#213).
+    // A cloud original's comment threads go with it, and its shares, links and file requests are orphaned, as with a
+    // delete through the sources route (#213, #418).
     const keyOf = keysOf(db, user.id, job.from_source);
     for (const i of roots) {
-      try { await from.delete([i.from_path]); deleteComments(db, [keyOf(i.from_path)]); }
+      try { await from.delete([i.from_path]); deleteComments(db, [keyOf(i.from_path)]); orphanDeleted(db, [keyOf(i.from_path)]); }
       catch (e) {
-        if (isNotFound(e)) continue; // handled: already gone (a finish interrupted by a restart deleted it)
+        if (isNotFound(e)) { orphanDeleted(db, [keyOf(i.from_path)]); continue; } // handled: already gone (a finish interrupted by a restart deleted it); its rows follow now
         if (!(e instanceof AppError)) this.log.error({ err: e, job: job.id }, 'deleting a moved source failed');
         this.setItem(job.id, i.seq, { status: 'failed', error: e instanceof AppError ? e.code : 'INTERNAL' });
       }
