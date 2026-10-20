@@ -9,8 +9,9 @@
 // with every member (a shard has few), and a name typed in full that only one member matches picks that member.
 import { computed, onMounted, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Access, CreateShareRequest, Entry, Member, MemberList, Share, ShareList } from '@files/shared';
+import type { Access, CreateShareRequest, Entry, Member, MemberList, PublicLink, Share, ShareList } from '@files/shared';
 import { api, ApiFailure } from '../api/client.ts';
+import { isActiveLink } from '../activeLink.ts';
 import { memberName } from '../memberName.ts';
 import AppDialog from './AppDialog.vue';
 import LinkManager from './LinkManager.vue';
@@ -42,6 +43,12 @@ const noMatch = computed(() => !chosen.value && text.value.trim() !== '' && matc
 const fail = (e: unknown) => {
   if (!(e instanceof ApiFailure)) throw e;
   error.value = t(`errors.${e.code}`);
+};
+// "Only you." only without members and without a public link that still opens the item (#407), as in the drawer.
+const hasActiveLink = ref(false);
+const onLinks = (links: PublicLink[]) => {
+  const now = Date.now();
+  hasActiveLink.value = links.some((l) => isActiveLink(l, now));
 };
 async function loadShares() {
   shares.value = (await api.get<ShareList>('/api/v1/shares', { source: props.source, path: props.entry.path })).items;
@@ -258,11 +265,12 @@ async function revoke(s: Share) {
       v-else
       class="share-note"
     >
-      {{ t('share.onlyYou') }}
+      {{ hasActiveLink ? t('share.linksOnly') : t('share.onlyYou') }}
     </p>
     <LinkManager
       :source="source"
       :entry="entry"
+      @loaded="onLinks"
     />
     <p
       class="visually-hidden"

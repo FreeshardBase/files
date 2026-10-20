@@ -264,3 +264,41 @@ test('#235: a share revoked while the member has it open says so and leads back 
   await expect(member.getByText(dir, { exact: true })).toHaveCount(0);
   await member.context().close();
 });
+
+test('#407: the share dialog says "Only you." only without members and without an active public link', async ({ page }, info) => {
+  const dir = `share-links-${tag(info)}`;
+  await setup(page, dir, { 'a.txt': 'a' });
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const path = `/zz-shares-${dir}/${dir}`;
+  const onlyYou = /Nur du\.|Nur Sie\.|Only you\./;
+  const linksOnly = /Keine Mitglieder\. Wer einen der öffentlichen Links unten hat, kann es öffnen\.|No members\. Anyone with a public link below can open it\./;
+
+  // A link whose downloads are used up opens nothing, so it does not count.
+  const used = await page.request.post('/api/v1/links', { headers,
+    data: { source: 'home', path, label: 'Used up', expiresAt: null, maxDownloads: 0, password: null } });
+  expect(used.status()).toBeLessThan(300);
+  let d = await openShare(page, dir);
+  await expect(d).toContainText('Used up');
+  await expect(d).toContainText(onlyYou);
+  await expect(d).not.toContainText(linksOnly);
+  // The member picker has the focus and its list open, so Esc would close only the list.
+  await d.getByRole('button', { name: /^(Schließen|Close)$/ }).click();
+  await expect(d).toHaveCount(0);
+
+  const created = await page.request.post('/api/v1/links', { headers,
+    data: { source: 'home', path, label: 'For the printer', expiresAt: null, maxDownloads: null, password: null } });
+  expect(created.status()).toBeLessThan(300);
+  d = await openShare(page, dir);
+  await expect(d).toContainText('For the printer');
+  await expect(d).toContainText(linksOnly);
+  await expect(d).not.toContainText(onlyYou);
+
+  // Revoking the link in the dialog brings "Only you." back.
+  const revoke = d.getByRole('button', { name: /(For the printer widerrufen|Revoke For the printer)/ });
+  await revoke.click();
+  await page.getByRole('dialog', { name: /For the printer/ }).getByRole('button', { name: /^(Widerrufen|Revoke)$/ }).click();
+  await expect(revoke).toHaveCount(0);
+  await expect(d).toContainText(onlyYou);
+  await expect(d).not.toContainText(linksOnly);
+});

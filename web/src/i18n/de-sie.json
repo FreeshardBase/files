@@ -631,6 +631,7 @@
     "submit": "Freigeben",
     "whoHasAccess": "Wer hat Zugriff",
     "onlyYou": "Nur Sie.",
+    "linksOnly": "Keine Mitglieder. Wer einen der öffentlichen Links unten hat, kann es öffnen.",
     "remove": "Zugriff entfernen",
     "removeLabel": "Zugriff für {name} entfernen",
     "shared": "Für {name} freigegeben: {access}",
