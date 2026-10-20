@@ -346,7 +346,7 @@ describe('the disk reserve refuses writes (#320)', () => {
   it('shows the admin the volume, the reserve and a warning from 90 % used; members get FORBIDDEN', async () => {
     const r = await as(t, admin, 'GET', '/api/v1/admin/disk');
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json()).toEqual({ total: 100 * MiB, free: 12 * MiB, reserve: 10 * MiB, setting: '10MiB', warning: false });
+    expect(r.json()).toEqual({ total: 100 * MiB, free: 12 * MiB, reserve: 10 * MiB, setting: '10MiB', defaultMin: 5 * GiB, warning: false });
     disk.free = 10 * MiB; // 90 % used
     expect((await as(t, admin, 'GET', '/api/v1/admin/disk')).json()).toMatchObject({ warning: true });
     expect((await as(t, member, 'GET', '/api/v1/admin/disk')).statusCode).toBe(403);

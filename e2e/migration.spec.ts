@@ -26,7 +26,20 @@ async function connected(page: Page) {
   return new URL(page.url()).pathname.slice(1);
 }
 
-test('migrate a cloud folder with the wizard, read the summary, and delete only the verified originals', async ({ page }, info) => {
+/**
+ * #387: the review and the job page write the destination as a location ("My storage › <folder> archive"), never a
+ * slash path, set the figure `testId` in the mono face, and put the labels on their values' baseline.
+ */
+async function expectFacts(page: Page, folder: string, testId: string) {
+  const to = page.locator('.details-facts dt', { hasText: /^(Nach|To)$/ }).locator('xpath=following-sibling::dd[1]');
+  await expect(to).toHaveText(new RegExp(`^(Mein Speicher|My storage) › ${folder} archive$`));
+  await expect(to).not.toContainText('/');
+  const figure = page.getByTestId(testId);
+  expect(await figure.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('IBM Plex Mono');
+  expect(await figure.evaluate((el) => getComputedStyle(el.parentElement!).alignItems)).toBe('baseline');
+}
+
+test('migrate a cloud folder with the wizard, read the summary, and delete only the verified originals (#387)', async ({ page }, info) => {
   const source = await connected(page);
   const folder = `Move-${info.project.name}`;
 
@@ -52,6 +65,7 @@ test('migrate a cloud folder with the wizard, read the summary, and delete only 
 
   // 3. The review counts what will move.
   await expect(page.getByTestId('scan-files')).toHaveText('3');
+  await expectFacts(page, folder, 'scan-files');
   await page.getByRole('button', { name: /Umzug starten|Start migration/ }).click();
 
   // The job's page: progress, then the summary with the one failure.
@@ -60,6 +74,7 @@ test('migrate a cloud folder with the wizard, read the summary, and delete only 
   await expect(page.getByRole('progressbar', { name: new RegExp(`(Umzugs von|migration of) ${folder} archive`) })).toHaveAttribute('aria-valuenow', '100');
   const summary = page.getByRole('region', { name: /^(Zusammenfassung|Summary)$/ });
   await expect(summary.getByTestId('verified-files')).toHaveText('2');
+  await expectFacts(page, folder, 'verified-files');
   await expect(summary.getByRole('list', { name: /Nicht umgezogene|not moved/ })).toContainText(`/${folder}/broken.txt`);
   // The transfer panel links the job to this page.
   await expect(page.getByRole('region', { name: /^(Übertragungen|Transfers)$/ }).getByRole('link', { name: /Zusammenfassung von|Summary of/ }))

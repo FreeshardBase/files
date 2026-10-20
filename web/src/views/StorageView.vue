@@ -157,7 +157,7 @@ const cloudText = (q: { used: number; total?: number }) => (q.total === undefine
               {{ disk.status.setting }}
             </template>
             <template #min>
-              <span class="value-mono">{{ $t('storage.disk.reserveMin') }}</span>
+              <span class="value-mono">{{ size(disk.status.defaultMin) }}</span>
             </template>
             <template #share>
               <span class="value-mono">{{ $t('storage.disk.reserveShare') }}</span>

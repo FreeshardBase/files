@@ -62,7 +62,8 @@ export class DiskReserve {
   async status(): Promise<DiskStatus> {
     const { total, free } = await this.opts.space(this.opts.dir);
     const reserve = reserveBytes(this.opts.setting, total);
-    return { total, free, reserve, setting: this.opts.setting?.text ?? null, warning: total - free >= WARN_USED * total || free <= reserve };
+    return { total, free, reserve, setting: this.opts.setting?.text ?? null, defaultMin: DEFAULT_RESERVE.bytes,
+      warning: total - free >= WARN_USED * total || free <= reserve };
   }
 
   /** Runs `fn` under the disk lock; whatever it checks against `left()` and then takes cannot be taken by another. */

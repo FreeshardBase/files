@@ -341,7 +341,8 @@ a:where(:hover) { text-decoration: underline; }
 }
 .app-dialog-drawer .app-dialog-title { overflow-wrap: anywhere; white-space: pre-wrap; }
 .app-dialog-drawer .app-dialog-actions { margin-top: auto; padding-top: var(--space-4); }
-.details-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+/* A small muted label sits on its value's baseline (#387). */
+.details-facts { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
 .details-facts dt { color: var(--ink-muted); font-size: var(--fs-small); }
 .details-facts dd { margin: 0; overflow-wrap: anywhere; }
 /* Public links (#147): the share dialog's link list and form, and the visitor's share page; see DESIGN.md */
@@ -1307,6 +1308,8 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
 .workspace.dual .pane.focused { border-color: var(--line); box-shadow: inset 0 0 0 1px var(--line); }
 .workspace.dual .pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .workspace.dual .page { max-width: none; }
+/* The upload and transfer sheets above two panes span them too, so both end at the right pane's edge (#389). */
+.app-main:has(.workspace.dual) .upload-panel { max-width: none; }
 .folder.items-over { outline: 1.5px dashed var(--line); outline-offset: calc(-1 * var(--space-1)); border-radius: var(--radius-tile); }
 .settings-hint { margin: 0 0 var(--space-2) calc(18px + var(--space-2)); color: var(--ink-muted); font-size: var(--fs-small); }
 /* Tabs (#219): a strip over each pane's folder, the open tab joined to the content under the hairline. */

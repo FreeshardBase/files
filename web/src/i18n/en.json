@@ -219,7 +219,6 @@
       "bar": "Space used on the shard’s disk",
       "reserveDefault": "Kept free for the shard: {reserve} (the default, {min} or {share} of the disk, whichever is more). Uploads and copies that would use it are refused.",
       "reserveSet": "Kept free for the shard: {reserve} (set with FILES_DISK_RESERVE={setting}). Uploads and copies that would use it are refused.",
-      "reserveMin": "5 GiB",
       "reserveShare": "5%",
       "warningTitle": "The shard’s disk is almost full",
       "warningText": "Once only the reserve is left, nobody can store files any more. Empty the trash, delete old versions or ask members to make room."

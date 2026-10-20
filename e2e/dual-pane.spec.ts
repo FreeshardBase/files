@@ -168,3 +168,32 @@ test('an action in the right pane leaves the left selection alone; F5 copies, Ta
   await expect(left(page).locator('tbody tr:focus')).toHaveCount(1);
   await expect(page).toHaveURL(new RegExp(`/home${a}$`));
 });
+
+// #389: with two panes the transfer panel above them spans the workspace, so its right edge lines up with the right
+// pane's; with one pane it keeps the 960 px column.
+test('#389: with two panes the transfer panel ends where the right pane ends', async ({ page }, info) => {
+  wideOnly(info);
+  await signedIn(page);
+  const dir = '/panel389'; // short: a wrapped name takes the click between its lines (only desktop-chrome runs this)
+  await folderWith(page, dir, []);
+  await putLayout(page, { dualPane: true, tabs: false });
+
+  // Dropbox on the left, the home folder on the right; a drag across the sources copies, a transfer job.
+  await page.getByRole('button', { name: /Dropbox verbinden|Connect Dropbox/ }).click();
+  await page.getByRole('button', { name: 'Allow' }).click();
+  await expect(page).toHaveURL(/\/conn:[0-9a-f]{32}$/);
+  await row(left(page), 'Reports').getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(row(left(page), 'Q3 Übersicht.txt')).toBeVisible();
+  await row(right(page), dir.slice(1)).getByRole('button', { name: dir.slice(1), exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/home${dir}$`));
+  await expect(right(page).locator('.empty-state')).toBeVisible();
+  await row(left(page), 'Q3 Übersicht.txt').locator('td.size').dragTo(right(page).locator('.folder-content'));
+  await expect(row(right(page), 'Q3 Übersicht.txt')).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const panel = page.getByTestId('transfer-panel');
+  await expect(panel).toBeVisible();
+  const panelBox = (await panel.boundingBox())!;
+  const paneBox = (await right(page).boundingBox())!;
+  expect(Math.abs(panelBox.x + panelBox.width - (paneBox.x + paneBox.width))).toBeLessThan(1);
+});

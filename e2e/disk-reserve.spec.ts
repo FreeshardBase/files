@@ -21,7 +21,7 @@ test('the storage page shows the admin the shard’s disk and the default reserv
   await expect(diskHeading(page)).toBeVisible();
   await expect(diskBar(page)).toBeVisible();
   await expect(page.locator('.storage-disk .storage-figures')).toContainText(/(belegt|used) · .+ (frei|free)/);
-  await expect(page.locator('.storage-reserve')).toContainText(/(Für den Shard freigehalten|Kept free for the shard): .+\((die Voreinstellung|the default), 5 GiB/);
+  await expect(page.locator('.storage-reserve')).toContainText(/(Für den Shard freigehalten|Kept free for the shard): .+\((die Voreinstellung|the default), 5[,.]4 GB/);
 
   const member = await signedIn(browser, info, baseURL!, 'member');
   await member.goto('/storage');
@@ -82,7 +82,7 @@ for (const c of [
       await expect(reserve).toContainText(c.locale === 'en' ? 'Kept free for the shard' : 'Für den Shard freigehalten');
       expect(await reserve.evaluate((el) => getComputedStyle(el).fontFamily)).not.toContain('IBM Plex Mono');
       const figures = reserve.locator('.value-mono');
-      await expect(figures).toHaveText([/^[\d.,]+\s?[kMGT]B$/, /^5\sGiB$/, /^5\s?%$/]);
+      await expect(figures).toHaveText([/^[\d.,]+\s?[kMGT]B$/, /^5[,.]4\sGB$/, /^5\s?%$/]);
       for (const f of await figures.all()) {
         expect(await f.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('IBM Plex Mono');
       }
