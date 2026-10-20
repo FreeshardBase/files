@@ -278,3 +278,39 @@ test('a received file in the Files dialog opens the request\'s folder with it se
   await expect(row('Anderes.txt')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+// #390: a row of the Files dialog is a stacked row: the name on the first line, the facts (pill, size, from, date) on a
+// second line indented to the name's text. Before, the facts wrapped wherever the line was full, so a long name put its
+// date under the file icon while a short one kept it on the first line.
+test('#390 the Files dialog puts every row\'s date under the name, at the same x', async ({ page, browser, baseURL }, info) => {
+  const dir = `request-rows-${tag(info)}`;
+  await setup(page, dir);
+  const title = `Rechnungen ${tag(info)}`;
+  const address = await createRequest(page, dir, title, async (d) => {
+    await d.getByLabel(/Nach dem Namen fragen|Ask senders for their name/).check();
+  });
+  const names = ['Rechnung für das Jahr 2026 mit allen Belegen.pdf', 'Beleg.txt'];
+  const v = await visitor(browser, info, baseURL!);
+  await v.goto(address);
+  await v.getByLabel('Your name (optional)').fill('Test User');
+  await v.getByTestId('request-picker').setInputFiles(names.map((name) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(name) })));
+  const yours = v.getByRole('list', { name: 'Your files' });
+  for (const name of names) await expect(yours.getByRole('listitem').filter({ hasText: name })).toContainText('Sent');
+  await v.context().close();
+
+  await page.goto('/requests');
+  const item = page.getByRole('list', { name: /Dateianfragen|File requests/ }).getByRole('listitem').filter({ hasText: title });
+  await item.getByRole('button', { name: new RegExp(`(Dateien anzeigen, die über ${escape(title)}|Show the files received through ${escape(title)})`) }).click();
+  const files = page.getByRole('dialog', { name: new RegExp(escape(title)) });
+  await expect(files.getByRole('listitem')).toHaveCount(2);
+  const dates: number[] = [];
+  for (const name of names) {
+    const row = files.getByRole('listitem').filter({ hasText: name });
+    const link = (await row.getByRole('link', { name, exact: true }).boundingBox())!;
+    const date = (await row.getByText(/\d{4}, \d/).boundingBox())!;
+    expect(date.x).toBeGreaterThanOrEqual(link.x);
+    expect(date.y).toBeGreaterThanOrEqual(link.y + link.height - 1);
+    dates.push(date.x);
+  }
+  expect(dates[1]).toBe(dates[0]);
+});

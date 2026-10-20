@@ -370,6 +370,14 @@ a:where(:hover) { text-decoration: underline; }
 .mine-rows .share-name { flex-basis: 100%; }
 /* File requests (#217): the member's list with its badge of new files, and the visitor's drop zone; see DESIGN.md */
 .request-list .share-level { flex-basis: 100%; }
+/* The Files dialog's rows are stacked rows (#390): the facts take the second line, indented to the name's text; the
+   figures come first, the size in a fixed slot wide enough for "999 bytes", so every row's date stands at the same x. */
+.received-facts {
+  flex-basis: 100%; min-width: 0; margin-left: calc(20px + var(--space-3));
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3);
+}
+/* Nine Plex Mono glyphs of 0.6em plus the letter spacing; `ch` resolves narrower here (0.5em). */
+.received-size { min-width: calc(9 * (0.6em + var(--ls-mono))); }
 .request-badge, .nav-badge {
   flex: none; padding: 0 var(--space-2); border: var(--border-w) solid var(--accent); border-radius: 999px;
   font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--accent);

@@ -1367,3 +1367,11 @@ Question: where does the storage page get the default reserve's "5 GiB" once it 
 Decision: `GET /api/v1/admin/disk` returns `defaultMin`, `DEFAULT_RESERVE.bytes` in bytes, and the page formats it with `formatSize` ("5.4 GB"); the locale key `storage.disk.reserveMin` is gone. The "5 %" stays a locale string, since a percentage has no unit question. `align-items: baseline` is set on `.details-facts` itself, so the details drawer's facts get it too.
 
 Why: the figure is defined once on the server, where the reserve is computed; a copy in `@files/shared` or the locales could drift from it. A muted label above its value's baseline is wrong in every fact list, not only on the migration pages, and one rule is less than two (YAGNI).
+
+## 2026-10-20: The Files dialog's facts line puts the figures first (#390)
+
+Question: the issue asks for the facts (pill, size, from, date) on a second line indented to the name, and for every row's date at the same x. In that order the date moves with the size's width, the pill and the sender's name. Keep the order, or move the date?
+
+Decision: the facts line reads size, date, "New", "from …". The size sits in a slot nine Plex Mono glyphs wide (`.received-size`, "999 bytes"), so the date starts at the same x in every row; the pill and the sender's name follow, since their widths vary.
+
+Why: only figures in fixed slots can line up; a grid with a reserved pill and sender column would be a table inside a dialog for two words (YAGNI). Figures first is also how the other lists read: size and date before the words.
