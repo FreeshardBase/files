@@ -1343,3 +1343,11 @@ Question: `GET /api/v1/links` returns every unrevoked link of the item, includin
 Decision: only links that still open the item: not orphaned, not past `expiresAt`, and `downloads < maxDownloads` when there is a limit. Each is one row in the access list: its label ("Public link" when it has none) and the pill "Anyone with the link". Password, expiry and downloads stay in the share dialog. "Only you." shows only with no member share and no active link.
 
 Why: the drawer answers who can open the item now; an expired or used-up link opens nothing, so listing it would be the opposite error. The pill reuses the access row's shape; the full facts line is one click away in "Share …" (YAGNI).
+
+## 2026-10-20: In a pane of two the selection bar takes its own rows under the title (#383)
+
+Question: the issue expects the German bar to need "about 2 rows" (at most 3) in a ~550 px pane at 1440 px. The count and the ten German buttons are about 1580 px wide with their gaps, and "In den anderen Bereich kopieren", "In den anderen Bereich verschieben" and "In den Papierkorb" alone exceed one pane row, so in their fixed order they fill four rows. Shrink the buttons, or allow four rows?
+
+Decision: in `.workspace.dual .pane` the toolbar wraps while a selection lasts and the bar takes `flex-basis: 100%`, right-aligned under the title, which keeps its full width. The bar keeps the guide's 36 px buttons with 16 px padding and may fill four rows; the test asserts at most four rows (six before), the bar under the crumb, the crumb not cut and the list moving by at most the bar's own height.
+
+Why: smaller buttons in panes only would be a second button size the guide does not have, and even 8 px padding leaves three rows only with the count moved out of the bar. Four full-width rows are the bar's own height, not a stack beside a cut title (YAGNI).

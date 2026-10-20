@@ -126,3 +126,54 @@ test('#365 the German selection bar stays inside the page column at 1280 px, tra
     await putLocale(null);
   }
 });
+
+// #383: in a pane of the two-pane layout the German bar does not squeeze into the room beside the title (six rows,
+// the crumb cut): it wraps under the title onto rows of its own, and the title keeps its full width.
+test('#383 in a pane of two the German selection bar wraps under the title, not beside it', async ({ page }, info) => {
+  test.skip(isMobile(info), 'desktop layout');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const put = async (url: string, data: object) => {
+    const r = await page.request.put(url, { headers, data });
+    expect(r.status(), await r.text()).toBe(200);
+  };
+  const dir = `selbar383-${tag(info)}`;
+  for (const path of [`/${dir}`, `/${dir}/a`, `/${dir}/b`]) {
+    expect([201, 409]).toContain((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path } })).status());
+  }
+  await put('/api/v1/settings', { locale: 'de-du', theme: 'system' });
+  await put('/api/v1/settings/layout', { dualPane: true, tabs: false });
+  try {
+    await page.goto(`/home/${encodeURIComponent(dir)}`);
+    const pane = page.getByRole('region', { name: 'Linker Bereich' });
+    const paneRow = (name: string) => pane.locator('tbody tr', { has: page.locator('.name').getByText(name, { exact: true }) });
+    const header = pane.locator('thead');
+    await expect(header).toBeVisible();
+    const headerBefore = (await box(header)).y;
+    await paneRow('a').getByRole('checkbox').check();
+    await paneRow('b').getByRole('checkbox').check();
+    const selection = pane.getByRole('group', { name: 'Aktionen für die Auswahl' });
+    await expect(selection.locator('.button').last()).toHaveText('In den Papierkorb');
+
+    // The count and the ten German buttons (~1580 px with their gaps) fill rows of the pane's full ~540 px: four at
+    // most (DECISIONS.md 2026-10-20), not six squeezed beside the title.
+    const tops = await selection.locator('.button').evaluateAll((els) =>
+      [...new Set(els.map((e) => Math.round(e.getBoundingClientRect().top)))]);
+    expect(tops.length).toBeLessThanOrEqual(4);
+    // The bar is under the title, not beside it, and the current crumb is not cut.
+    const current = pane.getByRole('navigation', { name: 'Pfad' }).locator('a[aria-current="page"]');
+    await expect(current).toHaveText(dir);
+    const crumb = await box(current);
+    expect(Math.min(...tops)).toBeGreaterThanOrEqual(crumb.y + crumb.height);
+    // The list moves by at most the bar's own height.
+    expect((await box(header)).y - headerBefore).toBeLessThanOrEqual((await box(selection)).height + 0.5);
+    const { scrollWidth, clientWidth } = await current.evaluate((e) => ({ scrollWidth: e.scrollWidth, clientWidth: e.clientWidth }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  } finally {
+    await put('/api/v1/settings/layout', { dualPane: false, tabs: false });
+    await put('/api/v1/settings', { locale: null, theme: 'system' });
+  }
+});

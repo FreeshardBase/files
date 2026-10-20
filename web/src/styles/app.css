@@ -670,6 +670,10 @@ a:where(:hover) { text-decoration: underline; }
   .toolbar:has(.selection-bar) .breadcrumbs { flex: 1 1 auto; min-width: 8rem; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
   .toolbar:has(.selection-bar) .breadcrumbs > * { min-width: 0; }
   .toolbar:has(.selection-bar) .breadcrumbs a[aria-current='page'] { overflow: hidden; text-overflow: ellipsis; }
+  /* A pane of two (~550 px) has no room for the bar beside the title: there the bar takes its own full-width rows
+     under the title, right-aligned, and the title keeps its full width (#383). */
+  .workspace.dual .pane .toolbar:has(.selection-bar) { flex-wrap: wrap; }
+  .workspace.dual .pane .toolbar:has(.selection-bar) .selection-bar { flex: 1 1 100%; }
 }
 @media (max-width: 600px) {
   .selection-bar {
