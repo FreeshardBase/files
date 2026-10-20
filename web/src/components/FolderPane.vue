@@ -118,7 +118,25 @@ watch(selectionBar, (el, old) => {
   if (el) barObserver.observe(el);
   else selectionBarHeight.value = 0;
 });
-onUnmounted(() => barObserver.disconnect());
+// The sheet is measured only after the row was focused (a search result, #406, or the first selection): once it has
+// grown, the focused row or tile is scrolled whole into sight above it again.
+watch(selectionBarHeight, (h, old) => {
+  const a = document.activeElement;
+  if (h > old && a instanceof HTMLElement && section.value?.contains(a) && a.matches('.file-list tbody tr, .gallery-tile')) {
+    a.scrollIntoView({ block: 'nearest' });
+  }
+}, { flush: 'post' });
+// The toolbar's height (#406): on the desktop it is sticky while there is a selection, and a row or tile scrolled into
+// sight stops below it (`scroll-margin-top`).
+const toolbar = ref<HTMLElement>();
+const toolbarHeight = ref(0);
+const toolbarObserver = new ResizeObserver(([e]) => { toolbarHeight.value = e ? e.borderBoxSize[0]!.blockSize : 0; });
+watch(toolbar, (el, old) => {
+  if (old) toolbarObserver.unobserve(old);
+  if (el) toolbarObserver.observe(el);
+  else toolbarHeight.value = 0;
+});
+onUnmounted(() => { barObserver.disconnect(); toolbarObserver.disconnect(); });
 
 // A share (#146) is named after the shared item, from its own `stat`; the folders above it in the owner's home stay hidden.
 const shareName = ref<string | null>(null);
@@ -727,7 +745,7 @@ defineExpose({
     ref="section"
     class="page folder"
     :class="{ 'drop-active': dropActive, 'items-over': itemsOver }"
-    :style="{ '--selection-bar-height': `${selectionBarHeight}px` }"
+    :style="{ '--selection-bar-height': `${selectionBarHeight}px`, '--toolbar-height': `${toolbarHeight}px` }"
     @dragenter="onFileDragOver"
     @dragover="onFileDragOver"
     @dragleave="onFileDragLeave"
@@ -741,6 +759,7 @@ defineExpose({
     </p>
     <div
       v-if="!folder.error"
+      ref="toolbar"
       class="toolbar"
     >
       <Breadcrumbs

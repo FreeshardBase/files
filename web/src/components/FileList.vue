@@ -84,12 +84,15 @@ const { chosen, toggle, targets, itemsFor, headingFor, selectForMenu, isFavourit
   paste: () => emit('paste'),
 }, { showMenu: (i) => { void menus.get(i)?.show(); }, menuButton: (i) => menus.get(i)?.trigger });
 
-// The row becomes the tab stop, which is always rendered; focusing it scrolls it into view.
+// The row becomes the tab stop, which is always rendered. `focus()` scrolls only a row outside the window, so the row is
+// scrolled whole into sight too, clear of the sticky toolbar or the phone's selection sheet (#406, `scroll-margin`).
 async function focusRow(i: number) {
   active.value = Math.max(0, Math.min(props.entries.length - 1, i));
   const at = active.value;
   if (!rowEl(at)) await nextTick();
-  if (active.value === at) rowEl(at)?.focus();
+  if (active.value !== at) return;
+  rowEl(at)?.focus();
+  rowEl(at)?.scrollIntoView({ block: 'nearest' });
 }
 defineExpose({
   focus: () => { void focusRow(active.value); }, // after an action took the focused row away

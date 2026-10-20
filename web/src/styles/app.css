@@ -663,6 +663,8 @@ a:where(:hover) { text-decoration: underline; }
 @media (min-width: 601px) {
   .toolbar:has(.selection-bar) { position: sticky; top: 0; z-index: 3; background: var(--bg); }
   .toolbar:has(.selection-bar) .toolbar-actions { display: none; }
+  /* A row or tile scrolled into sight (#406) stops below the sticky toolbar (its height measured in FolderPane). */
+  .folder:has(.selection-bar) :is(.file-list tbody tr, .gallery-tile) { scroll-margin-top: var(--toolbar-height, 0px); }
   /* The bar stays beside the title (#212 added "Add tag"): the crumbs give way and the last one is cut with an ellipsis
      while the selection lasts, but keep 8rem for it; a bar wider than the rest (German, two panes) wraps onto a second
      row inside the page column instead of scrolling the page sideways (#365). */
@@ -687,6 +689,8 @@ a:where(:hover) { text-decoration: underline; }
     background: var(--surface); border-top: var(--border-w) solid var(--border);
   }
   .folder { padding-bottom: var(--selection-bar-height, 0px); }
+  /* A row or tile scrolled into sight (#406) stops above the sheet. */
+  :is(.file-list tbody tr, .gallery-tile) { scroll-margin-bottom: var(--selection-bar-height, 0px); }
 }
 
 .upload-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }

@@ -79,7 +79,9 @@ async function focusTile(i: number) {
   active.value = Math.max(0, Math.min(props.entries.length - 1, i));
   const at = active.value;
   if (!tileEl(at)) await nextTick();
-  if (active.value === at) tileEl(at)?.focus();
+  if (active.value !== at) return;
+  tileEl(at)?.focus(); // scrolls only a tile outside the window; it is scrolled whole into sight too (#406, as in FileList)
+  tileEl(at)?.scrollIntoView({ block: 'nearest' });
 }
 function onKey(e: KeyboardEvent, i: number) {
   const to = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + perRow.value, ArrowUp: i - perRow.value,
