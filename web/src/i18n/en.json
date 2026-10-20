@@ -631,6 +631,7 @@
     "submit": "Share",
     "whoHasAccess": "Who has access",
     "onlyYou": "Only you.",
+    "linksOnly": "No members. Anyone with a public link below can open it.",
     "remove": "Remove access",
     "removeLabel": "Remove access for {name}",
     "shared": "Shared with {name}: {access}",

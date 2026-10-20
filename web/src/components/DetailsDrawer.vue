@@ -14,6 +14,7 @@ import { api, ApiFailure } from '../api/client.ts';
 import { formatDate, formatEntrySize, intlLocale } from '../format.ts';
 import { memberName } from '../memberName.ts';
 import { fileKind } from '../fileKind.ts';
+import { isActiveLink } from '../activeLink.ts';
 import AppDialog from './AppDialog.vue';
 import VersionHistory from './VersionHistory.vue';
 import TagEditor from './TagEditor.vue';
@@ -72,12 +73,8 @@ onMounted(async () => {
   }
 });
 
-// The item's public links that still open it (#382): not expired, downloads left. An orphaned link cannot belong to an
-// item that is shown.
+// The item's public links that still open it (#382).
 const links = ref<PublicLink[] | null>(null);
-const active = (l: PublicLink, now: number) => !l.orphaned
-  && (l.expiresAt === null || Date.parse(l.expiresAt) > now)
-  && (l.maxDownloads === null || l.downloads < l.maxDownloads);
 const linkName = (l: PublicLink) => l.label || t('link.unnamed');
 
 onMounted(async () => {
@@ -86,7 +83,7 @@ onMounted(async () => {
   try {
     const [s, l] = await Promise.all([api.get<ShareList>('/api/v1/shares', query), api.get<PublicLinkList>('/api/v1/links', query)]);
     const now = Date.now();
-    links.value = l.items.filter((x) => active(x, now));
+    links.value = l.items.filter((x) => isActiveLink(x, now));
     shares.value = s.items;
   } catch (e) {
     if (!(e instanceof ApiFailure)) throw e;

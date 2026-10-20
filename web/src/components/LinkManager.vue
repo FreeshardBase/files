@@ -10,6 +10,8 @@ import { formatDate, intlLocale } from '../format.ts';
 import ConfirmDialog from './ConfirmDialog.vue';
 
 const props = defineProps<{ source: string; entry: Entry }>();
+// Every load hands the list to the share dialog, which says who has access from it (#407).
+const emit = defineEmits<{ loaded: [links: PublicLink[]] }>();
 const { t, locale } = useI18n();
 const links = ref<PublicLink[]>([]);
 const editing = ref<PublicLink | 'new' | null>(null);
@@ -22,6 +24,7 @@ const firstField = ref<HTMLInputElement>(); const newButton = ref<HTMLButtonElem
 const fail = (e: unknown) => { if (!(e instanceof ApiFailure)) throw e; error.value = t(`errors.${e.code}`); };
 const load = async () => {
   links.value = (await api.get<PublicLinkList>('/api/v1/links', { source: props.source, path: props.entry.path })).items;
+  emit('loaded', links.value);
 };
 onMounted(async () => { try { await load(); } catch (e) { fail(e); } });
 
