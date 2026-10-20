@@ -185,3 +185,53 @@ test('the details drawer labels the tag field visibly, without a placeholder (#3
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
 });
+
+// #386: on phone width the drawer's "Tag hinzufügen" wraps under the field with the guide's 8 px gap, and each chip's
+// remove X keeps its 12 px glyph but takes taps within a 44 px hit area (DESIGN.md: touch targets ≥ 44 × 44 px).
+test('#386 on phone width the add-tag button keeps 8 px to the field and the tag remove X has a 44 px hit area', async ({ page }, info) => {
+  test.skip(!info.project.use.isMobile, 'phone width only');
+  await page.goto('/home');
+  await expect(nav(page)).toBeAttached();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json() as { csrfToken: string };
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const settings = (locale: 'de-du' | null) => page.request.put('/api/v1/settings', { headers, data: { locale, theme: 'system' } });
+  expect((await settings('de-du')).status()).toBe(200);
+  try {
+    const dir = `tag-touch-${tag(info)}`;
+    expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+    expect((await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/plan.txt`)}&onCollision=fail`,
+      { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: 'the plan' })).status()).toBe(201);
+    await page.goto(`/home/${dir}`);
+    await row(page, 'plan.txt').getByRole('button', { name: 'Aktionen für plan.txt' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Details' }).click();
+    const drawer = page.getByRole('dialog', { name: /plan\.txt/ });
+    const field = drawer.locator('.tag-add input');
+    await field.fill('touch');
+    await field.press('Enter');
+    const remove = drawer.locator('.tag-remove');
+    await expect(remove).toHaveCount(1);
+    await expect(remove).toBeVisible();
+
+    const inputBox = (await field.boundingBox())!;
+    const buttonBox = (await drawer.locator('.tag-add button').boundingBox())!;
+    expect(buttonBox.y).toBeGreaterThan(inputBox.y);
+    expect(inputBox.y + inputBox.height + 8).toBeLessThanOrEqual(buttonBox.y + 0.5);
+
+    const hits = await remove.evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const at = (x: number, y: number) => b.contains(document.elementFromPoint(x, y));
+      const glyph = b.querySelector('.icon')!.getBoundingClientRect();
+      return { right: at(cx + 15, cy), left: at(cx - 15, cy), up: at(cx, cy - 15), down: at(cx, cy + 15),
+        glyph: [glyph.width, glyph.height] };
+    });
+    expect(hits).toEqual({ right: true, left: true, up: true, down: true, glyph: [12, 12] });
+    // A tap 15 px right of the X's centre removes the tag.
+    const box = (await remove.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2 + 15, box.y + box.height / 2);
+    await expect(remove).toHaveCount(0);
+  } finally {
+    expect((await settings(null)).status()).toBe(200);
+  }
+});

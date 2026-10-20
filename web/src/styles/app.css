@@ -1106,9 +1106,17 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   border: 0; border-radius: 50%; background: none; color: var(--ink-muted); cursor: pointer; }
 .tag-remove:hover { color: var(--danger); }
 .tag-remove .icon { width: 12px; height: 12px; }
-/* The field's visible label sits on its own line above the input and the button (#372, DESIGN.md Fields). */
-.tag-add { display: flex; flex-wrap: wrap; column-gap: var(--space-2); }
-.tag-add .fs-label { display: block; flex-basis: 100%; margin-bottom: 5px; }
+/* On phone width the X keeps its 12 px glyph; a pseudo-element widens the hit area to 44 px without growing the chip
+   (#386, DESIGN.md: touch targets at least 44 × 44 px). */
+@media (max-width: 600px) {
+  .tag-remove { position: relative; }
+  .tag-remove::after { content: ''; position: absolute; inset: -11px; }
+}
+/* The field's visible label sits on its own line above the input and the button (#372, DESIGN.md Fields). When the
+   button wraps under the field it keeps the guide's 8 px gap (#386); the label's margin cancels the row gap, so the
+   label stays 5 px above the field. */
+.tag-add { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tag-add .fs-label { display: block; flex-basis: 100%; margin-bottom: calc(5px - var(--space-2)); }
 .tag-add .fs-input { flex: 1 1 auto; min-width: 0; }
 /* The button keeps its label on one line (#313: German "Tag hinzufügen" broke in two); the input takes the rest. */
 .tag-add .button { flex: none; white-space: nowrap; }
