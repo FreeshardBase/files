@@ -437,7 +437,7 @@
     "cancel": "Abbrechen",
     "newFolderLabel": "Name",
     "invalid": "Ein Name darf nicht leer sein, kein „/“, keine Steuerzeichen und kein „�“ enthalten und nicht „.“ oder „..“ lauten.",
-    "created": "Ordner {name} erstellt"
+    "created": "Ordner „{name}“ erstellt"
   },
   "upload": {
     "button": "Hochladen",

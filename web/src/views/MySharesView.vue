@@ -104,13 +104,6 @@ async function removeShare(s: OutgoingShare) {
       </h1>
     </div>
     <p
-      class="status"
-      role="status"
-      aria-live="polite"
-    >
-      {{ status }}
-    </p>
-    <p
       v-if="error"
       class="fs-field__error"
       role="alert"
@@ -258,6 +251,14 @@ async function removeShare(s: OutgoingShare) {
         </li>
       </ul>
     </template>
+    <!-- Under the lists, as in Trash: an empty status line above them would push them down (#408). -->
+    <p
+      class="status"
+      role="status"
+      aria-live="polite"
+    >
+      {{ status }}
+    </p>
     <ShareDialog
       v-if="editing"
       :source="editing.source"

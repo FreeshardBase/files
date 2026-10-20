@@ -437,7 +437,7 @@
     "cancel": "Cancel",
     "newFolderLabel": "Name",
     "invalid": "A name can’t be empty, contain “/”, control characters or “�”, or be “.” or “..”.",
-    "created": "Created folder {name}"
+    "created": "Created folder “{name}”"
   },
   "upload": {
     "button": "Upload",

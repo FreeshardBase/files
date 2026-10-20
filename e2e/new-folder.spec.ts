@@ -112,6 +112,26 @@ test('Shift+N opens the dialog, also in an empty folder, and is listed in the sh
   await expect(help.getByRole('row', { name: /(Umschalt|Shift) \+ N.*(Neuer Ordner|New folder)/ })).toBeVisible();
 });
 
+test('#409: the toast quotes the new folder\'s name, „…“ in German and “…” in English', async ({ page }, info) => {
+  const settings = async (locale: 'de-du' | 'en' | null) => {
+    const r = await page.request.put('/api/v1/settings', { headers: await headersOf(page), data: { locale, theme: 'system' } });
+    expect(r.status(), await r.text()).toBe(200);
+  };
+  const dir = `new-folder-quote-${tag(info)}`;
+  await setup(page, dir, ['de', 'en']);
+  try {
+    for (const [locale, toast] of [['de-du', 'Ordner „Neue Belege“ erstellt'], ['en', 'Created folder “Neue Belege”']] as const) {
+      await settings(locale);
+      await page.goto(`/home/${encodeURIComponent(dir)}/${locale.slice(0, 2)}`);
+      await expect(page.getByText(/Dieser Ordner ist leer|This folder is empty/)).toBeVisible();
+      await create(page, 'Neue Belege');
+      await expect(page.getByRole('status').filter({ hasText: 'Neue Belege' })).toHaveText(toast);
+    }
+  } finally {
+    await settings(null);
+  }
+});
+
 async function signedIn(browser: Browser, info: TestInfo, baseURL: string, login: string): Promise<Page> {
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = info.project.use;
   const ctx = await browser.newContext({ baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
