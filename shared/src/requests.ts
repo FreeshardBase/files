@@ -4,16 +4,21 @@ import { LinkToken } from './entries.ts';
 // File requests (#217): upload-only public links. Anyone with `/r/<token>` may upload into one folder of the owner's
 // home or cloud account, and sees only their own uploads of this browser session, never the folder.
 
+/** The most files one request ever takes, whatever its owner set (#401). */
+export const MAX_REQUEST_FILES = 1000;
+/** The most files one visitor session places through one request (#401). */
+export const MAX_REQUEST_FILES_PER_VISITOR = 100;
+
 /**
  * Fields of a file request the owner sets. `expiresAt` is checked by the server like a public link's (`unknown` here).
- * `maxFiles` and `maxBytes` null mean no limit; `password` null means none (on update: remove it); `askName` shows the
- * visitor an optional name field.
+ * `maxBytes` null means no limit; `maxFiles` null means the server's ceiling `MAX_REQUEST_FILES`, which is also its
+ * maximum (#401); `password` null means none (on update: remove it); `askName` shows the visitor an optional name field.
  */
 const RequestFields = {
   label: z.string().trim().max(100),
   expiresAt: z.unknown(),
   password: z.string().min(1).max(256).nullable(),
-  maxFiles: z.number().int().min(1).max(100_000).nullable(),
+  maxFiles: z.number().int().min(1).max(MAX_REQUEST_FILES).nullable(),
   maxBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
   askName: z.boolean(),
 };
@@ -83,7 +88,8 @@ export type VisitorUpload = z.infer<typeof VisitorUploadSchema>;
 export const FileRequestInfoSchema = z.object({
   label: z.string(), locked: z.boolean(),
   askName: z.boolean().optional(), expiresAt: z.iso.datetime().nullable().optional(),
-  /** What is left before the limits; null means no limit. */
+  /** What is left before the limits; null means no limit. `filesLeft` is this visitor's: the request's file limit (or
+   * `MAX_REQUEST_FILES`) and the per-visitor cap together (#401). */
   filesLeft: z.number().int().nonnegative().nullable().optional(),
   bytesLeft: z.number().int().nonnegative().nullable().optional(),
   uploads: z.array(VisitorUploadSchema).optional(),

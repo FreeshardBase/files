@@ -73,6 +73,8 @@ async function run() {
     }
   } finally { running = false; }
 }
+// An upload's TOO_MANY_ATTEMPTS is the creation rate (#401), not wrong passwords.
+const reason = (e: Local['error']) => e === 'TOO_MANY_ATTEMPTS' ? t('request.page.tooManyUploads') : t(`errors.${e}`);
 function retry(item: Local) { item.state = 'waiting'; item.sent = 0; item.error = undefined; void run(); }
 function onPicked(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -269,7 +271,7 @@ const empty = computed(() => sentUploads.value.length === 0 && local.value.lengt
                 <span
                   class="share-level fs-field__error"
                   role="alert"
-                >{{ t('request.page.failed', { reason: t(`errors.${l.error}`) }) }}</span>
+                >{{ t('request.page.failed', { reason: reason(l.error) }) }}</span>
                 <button
                   type="button"
                   class="button"

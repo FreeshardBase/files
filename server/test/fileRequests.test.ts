@@ -7,6 +7,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Entry, FileRequest, FileRequestInfo, ReceivedFileList } from '@files/shared';
 import type { ConnectedBackend, StorageBackend, WriteOptions } from '../src/storage/backend.ts';
 import { homeRoot } from '../src/paths.ts';
+import { MAX_FILES_PER_REQUEST, MAX_FILES_PER_VISITOR } from '../src/storage/fileRequests.ts';
+import { VISITOR_UPLOAD_TTL_MS } from '../src/storage/local.ts';
 import { expireUploads } from '../src/storage/uploads.ts';
 import { startTestApp, login, type TestApp } from './support/harness.ts';
 
@@ -77,7 +79,10 @@ type Visitor = { cookie: string; ip: string };
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 const meta = (m: Record<string, string>) => Object.entries(m).map(([k, v]) => `${k} ${b64(v)}`).join(',');
 const cookieOf = (setCookie: string | string[] | undefined) => ([] as string[]).concat(setCookie ?? []).map((c) => c.split(';')[0]!).join('; ');
-async function visitor(token: string, ip = '198.51.100.7'): Promise<Visitor> {
+// Each visitor from its own address unless a test says otherwise, so the per-address creation limit (#401) never couples tests.
+let addresses = 0;
+const nextIp = () => `2001:db8:${(++addresses).toString(16)}::1`;
+async function visitor(token: string, ip = nextIp()): Promise<Visitor> {
   const r = await t.app.inject({ url: `/r/${token}/info`, remoteAddress: ip });
   expect(r.statusCode, r.body).toBe(200);
   return { cookie: cookieOf(r.headers['set-cookie']), ip };
@@ -147,7 +152,7 @@ describe('the visitor', () => {
     const r = await request(dir, { label: 'Holiday photos', askName: true });
     const v = await visitor(r.token);
     const first = await info(r.token, v);
-    expect(first).toEqual({ label: 'Holiday photos', locked: false, askName: true, expiresAt: null, filesLeft: null, bytesLeft: null, uploads: [] });
+    expect(first).toEqual({ label: 'Holiday photos', locked: false, askName: true, expiresAt: null, filesLeft: MAX_FILES_PER_VISITOR, bytesLeft: null, uploads: [] });
     expect(JSON.stringify(first)).not.toContain('secret');
     expect(JSON.stringify(first)).not.toContain(dir);
     expect((await upload(r.token, v, 'one.jpg', 'first', { uploader: 'Test User' })).statusCode).toBe(204);
@@ -396,6 +401,10 @@ describe('a cloud folder as the target', () => {
     expect((await create(r.token, v, 'too-big.bin', 1001)).json()).toEqual({ code: 'QUOTA_EXCEEDED' });
     // Nothing is left staged in the owner's home.
     expect(t.db.prepare('SELECT COUNT(*) FROM uploads WHERE user_id = ? AND source = ?').pluck().get(ownerId, 'conn:cloud')).toBe(0);
+    // The staged upload goes, the received file stays and counts against the caps (#401).
+    const seen = await info(r.token, v);
+    expect([seen.filesLeft, seen.uploads?.map((u) => [u.name, u.done])]).toEqual([MAX_FILES_PER_VISITOR - 1, [['up.txt', true]]]);
+    expect((await files(r.id)).map((f) => f.name)).toEqual(['up.txt']);
   });
 });
 
@@ -559,5 +568,146 @@ describe('a visitor\'s unfinished uploads (#304)', () => {
     expect(uploadRows(ids)).toEqual([ids[3]]);
     expect(staged(ids)).toEqual([ids[3]]);
     expect(await pendingOf(live.id)).toBe(1);
+  });
+});
+
+describe('files placed through a request are bounded even without a file limit (#401)', () => {
+  // Zero-byte files: no quota or disk reserve stops them, so only the file caps and the creation rate do.
+  const empty = async (token: string, v: Visitor, name: string) => {
+    const c = await create(token, v, name, 0);
+    return c.statusCode === 201 ? patch(String(c.headers.location), v, '') : c;
+  };
+  // Moves the clock past the creation rate's window, so loops of more than 60 creations measure the caps only.
+  const later = () => vi.setSystemTime(Date.now() + 61_000);
+  const placeAll = async (token: string, v: Visitor, prefix: string, count: number) => {
+    const codes: number[] = [];
+    for (let i = 0; i < count; i++) {
+      if (i % 50 === 0) later();
+      codes.push((await empty(token, v, `${prefix}-${i}.txt`)).statusCode);
+    }
+    return codes;
+  };
+
+  it('one visitor places at most MAX_FILES_PER_VISITOR files; other visitors go on until MAX_FILES_PER_REQUEST', async () => {
+    expect([MAX_FILES_PER_VISITOR, MAX_FILES_PER_REQUEST]).toEqual([100, 1000]);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const dir = await folder();
+      const r = await request(dir);
+      expect(r.maxFiles).toBeNull();
+      const v = await visitor(r.token);
+      expect((await info(r.token, v)).filesLeft).toBe(MAX_FILES_PER_VISITOR);
+      expect(await placeAll(r.token, v, 'v0', MAX_FILES_PER_VISITOR)).toEqual(Array(MAX_FILES_PER_VISITOR).fill(204));
+      const over = await create(r.token, v, 'over.txt', 0);
+      expect([over.statusCode, over.json()]).toEqual([409, { code: 'REQUEST_FILE_LIMIT' }]);
+      expect(namesIn(dir)).toHaveLength(MAX_FILES_PER_VISITOR);
+      expect((await info(r.token, v)).filesLeft).toBe(0);
+
+      // More visitors fill the request up to its ceiling; then nobody places another file.
+      for (let k = 1; k < MAX_FILES_PER_REQUEST / MAX_FILES_PER_VISITOR; k++) {
+        expect(await placeAll(r.token, await visitor(r.token), `v${k}`, MAX_FILES_PER_VISITOR)).toEqual(Array(MAX_FILES_PER_VISITOR).fill(204));
+      }
+      const last = await visitor(r.token);
+      expect((await info(r.token, last)).filesLeft).toBe(0);
+      const full = await create(r.token, last, 'full.txt', 0);
+      expect([full.statusCode, full.json()]).toEqual([409, { code: 'REQUEST_FILE_LIMIT' }]);
+      expect(namesIn(dir)).toHaveLength(MAX_FILES_PER_REQUEST);
+      expect(t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ?').pluck().get(r.id)).toBe(MAX_FILES_PER_REQUEST);
+    } finally { vi.useRealTimers(); }
+  }, 120_000);
+
+  it('a visitor\'s open uploads count against their cap with the placed ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const r = await request(await folder());
+      const v = await visitor(r.token);
+      const placed = MAX_FILES_PER_VISITOR - 5;
+      expect(await placeAll(r.token, v, 'p', placed)).toEqual(Array(placed).fill(204));
+      for (let i = 0; i < 5; i++) expect((await create(r.token, v, `open-${i}.bin`, 1)).statusCode).toBe(201);
+      expect((await info(r.token, v)).filesLeft).toBe(0);
+      expect((await create(r.token, v, 'over.bin', 1)).json()).toEqual({ code: 'REQUEST_FILE_LIMIT' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refused creations count against the rate too', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const r = await request(await folder(), { maxFiles: 1 });
+      const v = await visitor(r.token);
+      expect((await empty(r.token, v, 'only.txt')).statusCode).toBe(204);
+      for (let i = 0; i < 59; i++) expect((await create(r.token, v, `no-${i}.txt`, 0)).json()).toEqual({ code: 'REQUEST_FILE_LIMIT' });
+      expect((await create(r.token, v, 'no-more.txt', 0)).statusCode).toBe(429);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('an upload the visitor overruns leaves no row behind, so dropped uploads cannot grow the table without bound', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const r = await request(await folder());
+      const v = await visitor(r.token);
+      const rows = () => t.db.prepare('SELECT COUNT(*) FROM file_request_uploads WHERE request_id = ?').pluck().get(r.id);
+      const idOf = (location: unknown) => String(location).split('/').pop()!;
+      for (let i = 0; i < 3; i++) {
+        const c = await create(r.token, v, `${'n'.repeat(240)}-${i}.bin`, 1, { uploader: 'u'.repeat(100) });
+        expect(c.statusCode, c.body).toBe(201);
+        const over = await patch(String(c.headers.location), v, 'xx');
+        expect([over.statusCode, over.json()]).toEqual([400, { code: 'SIZE_MISMATCH' }]);
+        expect(rows()).toBe(0);
+      }
+      // An open upload the expiry job drops goes the same way.
+      const c = await create(r.token, v, 'stale.bin', 1);
+      expect(c.statusCode, c.body).toBe(201);
+      expect(rows()).toBe(1);
+      const expired = await expireUploads(t.app.deps, pino({ level: 'silent' }), new Date(Date.now() + VISITOR_UPLOAD_TTL_MS + 1));
+      expect(expired.removed).toContain(idOf(c.headers.location));
+      expect(rows()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('the owner\'s file limit may not exceed the ceiling; a lower one still applies', async () => {
+    expect((await createRequest({ source: 'home', path: await folder(), maxFiles: MAX_FILES_PER_REQUEST + 1 })).statusCode).toBe(400);
+    const atCeiling = await request(await folder(), { maxFiles: MAX_FILES_PER_REQUEST });
+    expect(atCeiling.maxFiles).toBe(MAX_FILES_PER_REQUEST);
+    expect((await t.app.inject({ method: 'PATCH', url: `/api/v1/requests/${atCeiling.id}`, headers: mutating(owner),
+      payload: { maxFiles: 100_000 } })).statusCode).toBe(400);
+    const r = await request(await folder(), { maxFiles: 3 });
+    expect((await info(r.token, await visitor(r.token))).filesLeft).toBe(3);
+  });
+
+  it('a visitor creates at most 60 uploads a minute, from any address; the 61st is 429 with retry-after', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const r = await request(await folder());
+      const v = await visitor(r.token);
+      // A new address for each: the limit follows the visitor's session, not only its address.
+      for (let i = 0; i < 60; i++) expect((await empty(r.token, { ...v, ip: nextIp() }, `r${i}.txt`)).statusCode).toBe(204);
+      const refused = await create(r.token, { ...v, ip: nextIp() }, 'r60.txt', 0);
+      expect([refused.statusCode, refused.json()]).toEqual([429, { code: 'TOO_MANY_ATTEMPTS' }]);
+      expect(Number(refused.headers['retry-after'])).toBe(60);
+      // Only this visitor waits: another sender of the same request goes on.
+      expect((await empty(r.token, await visitor(r.token), 'someone-else.txt')).statusCode).toBe(204);
+      later();
+      expect((await empty(r.token, v, 'r61.txt')).statusCode).toBe(204);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each([
+    ['an IPv4 address', () => '198.51.100.20'],
+    ['an IPv6 /64, any address in it', (i: number) => `2001:db8:ffff:1:${i.toString(16)}::1`],
+    ['an IPv4-mapped address as its IPv4', (i: number) => (i % 2 === 0 ? '::ffff:198.51.100.21' : '198.51.100.21')],
+  ])('%s creates at most 60 uploads a minute, whatever the visitor sessions and requests', async (_, ipFor) => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const a = await request(await folder()); const b = await request(await folder());
+      // A new session for each, on two requests: neither dropping the cookie nor another request resets the count.
+      for (let i = 0; i < 60; i++) {
+        const r = i % 2 === 0 ? a : b;
+        expect((await empty(r.token, await visitor(r.token, ipFor(i)), `a${i}.txt`)).statusCode).toBe(204);
+      }
+      const refused = await create(a.token, await visitor(a.token, ipFor(60)), 'a60.txt', 0);
+      expect([refused.statusCode, refused.json()]).toEqual([429, { code: 'TOO_MANY_ATTEMPTS' }]);
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+      expect((await empty(a.token, await visitor(a.token), 'other.txt')).statusCode).toBe(204);
+    } finally { vi.useRealTimers(); }
   });
 });

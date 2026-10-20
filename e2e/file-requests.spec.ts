@@ -160,6 +160,87 @@ test('a request with a file limit refuses the next file; a revoked request says 
   await v.context().close();
 });
 
+/**
+ * #401: creates `/<dir>` and a request without limits on it through the API, and returns its address. `cleanUp`
+ * deletes the folder and purges it from the trash again: the home root windows from 200 entries (#225), and other
+ * specs expect their own folders to render in it.
+ */
+async function apiHeaders(page: Page) {
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  return { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+}
+async function limitlessRequest(page: Page, dir: string, label: string): Promise<string> {
+  const headers = await apiHeaders(page);
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  const r = await page.request.post('/api/v1/requests', { headers, data: { source: 'home', path: `/${dir}`, label } });
+  expect(r.status()).toBe(201);
+  return `${headers.origin}/r/${(await r.json()).token}`;
+}
+async function cleanUp(page: Page, dir: string) {
+  const headers = await apiHeaders(page);
+  const del = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [`/${dir}`] }, headers });
+  expect(del.status(), await del.text()).toBeLessThan(300);
+  const trash = await (await page.request.get('/api/v1/trash')).json() as { items: { id: string; originalPath: string }[] };
+  const ids = trash.items.filter((i) => i.originalPath === `/${dir}`).map((i) => i.id);
+  const purge = await page.request.post('/api/v1/trash/delete', { data: { ids }, headers });
+  expect(purge.status(), await purge.text()).toBe(204);
+}
+
+test('#401: a request without a file limit shows the ceiling to the owner and the files left to the visitor', async ({ page, browser, baseURL }, info) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  await openRequests(page);
+  await page.getByRole('button', { name: /Neue Dateianfrage|New file request/ }).click();
+  const d = page.getByRole('dialog', { name: /Neue Dateianfrage|New file request/ });
+  await expect(d).toBeVisible();
+  const files = d.getByLabel(/Höchstens so viele Dateien|Maximum number of files/);
+  await expect(files).toHaveValue('');
+  await expect(files).toHaveAttribute('placeholder', /^(Bis zu 1\.000|Up to 1,000)$/);
+  await expect(d).toContainText(/(höchstens 1\.000 Dateien an, höchstens 100 von jeder Person|at most 1,000 files, at most 100 from each sender)/);
+  await page.keyboard.press('Escape');
+  await expect(d).toHaveCount(0);
+  const dir = `request-ceiling-${tag(info)}`;
+  const address = await limitlessRequest(page, dir, `No limit ${tag(info)}`);
+
+  const v = await visitor(browser, info, baseURL!);
+  await v.goto(address);
+  await expect(v.getByTestId('files-left')).toHaveText('100');
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'empty.txt', mimeType: 'text/plain', buffer: Buffer.alloc(0) }]);
+  await expect(v.getByRole('list', { name: 'Your files' }).getByRole('listitem').filter({ hasText: 'empty.txt' })).toContainText('Sent');
+  await expect(v.getByTestId('files-left')).toHaveText('99');
+  await v.context().close();
+  await cleanUp(page, dir);
+});
+
+test('#401: a visitor\'s page waits out the creation rate limit; refused again and again, it says why', async ({ page, browser, baseURL }, info) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const dir = `request-rate-${tag(info)}`;
+  const address = await limitlessRequest(page, dir, `Rate ${tag(info)}`);
+  const v = await visitor(browser, info, baseURL!);
+  // The server's answer to a creation over the rate, as `rateLimit` sends it; `refuse` says how many creations get it.
+  let refuse = 1; const refusedAt: number[] = [];
+  await v.route(/\/r\/[^/]+\/uploads$/, async (route) => {
+    if (route.request().method() !== 'POST' || refuse === 0) return route.fallback();
+    refuse--; refusedAt.push(Date.now());
+    return route.fulfill({ status: 429, headers: { 'retry-after': '2', 'content-type': 'application/json' }, body: JSON.stringify({ code: 'TOO_MANY_ATTEMPTS' }) });
+  });
+  await v.goto(address);
+  const yours = v.getByRole('list', { name: 'Your files' });
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'waited.txt', mimeType: 'text/plain', buffer: Buffer.from('w') }]);
+  await expect(yours.getByRole('listitem').filter({ hasText: 'waited.txt' })).toContainText('Sent', { timeout: 15_000 });
+  expect(refusedAt).toHaveLength(1);
+
+  refuse = 3;
+  await v.getByTestId('request-picker').setInputFiles([{ name: 'refused.txt', mimeType: 'text/plain', buffer: Buffer.from('r') }]);
+  await expect(v.getByRole('alert')).toHaveText('Not sent: Too many files in a short time. Wait a minute and try again.', { timeout: 15_000 });
+  expect(refusedAt).toHaveLength(4);
+  // Each wait is the server's `retry-after` of 2 s.
+  expect(refusedAt[3]! - refusedAt[1]!).toBeGreaterThanOrEqual(3900);
+  await v.context().close();
+  await cleanUp(page, dir);
+});
+
 // #304: an unfinished upload of a visitor: the tus creation of HELD bytes and half of them, through the visitor's own
 // session. It holds HELD bytes of the owner's quota (half staged, half reserved).
 const HELD = 400_000;

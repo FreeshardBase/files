@@ -19,8 +19,25 @@ async function call(url: string, init: RequestInit = {}): Promise<Response> {
   let res: Response;
   try { res = await fetch(url, { ...init, credentials: 'same-origin' }); }
   catch { throw new ApiFailure('NETWORK'); } // handled: any fetch rejection is a network failure
-  if (!res.ok) throw new ApiFailure(codeOf(init.method === 'HEAD' ? '' : await res.text(), res.status));
+  if (!res.ok) {
+    const code = codeOf(init.method === 'HEAD' ? '' : await res.text(), res.status);
+    const wait = Number(res.headers.get('retry-after'));
+    throw new ApiFailure(code, res.status === 429 && Number.isSafeInteger(wait) && wait > 0 ? { retryAfter: wait } : undefined);
+  }
   return res;
+}
+
+// Creation is rate limited per visitor and address (#401): a drop of many files waits out the server's `retry-after`
+// (at most a minute, a refused creation is not counted) instead of failing, a couple of times.
+const MAX_RATE_WAITS = 2;
+async function create(url: string, init: RequestInit): Promise<Response> {
+  for (let waits = 0; ; waits++) {
+    try { return await call(url, init); } catch (e) { // handled: a rate refusal waits and tries again, anything else rethrows
+      const wait = e instanceof ApiFailure && e.code === 'TOO_MANY_ATTEMPTS' ? e.params?.retryAfter : undefined;
+      if (typeof wait !== 'number' || waits >= MAX_RATE_WAITS) throw e;
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+    }
+  }
 }
 
 export const requestInfo = async (token: string): Promise<FileRequestInfo> => await (await call(`${base(token)}/info`)).json() as FileRequestInfo;
@@ -58,7 +75,7 @@ function patch(url: string, offset: number, chunk: Blob, onProgress: (loaded: nu
  */
 export async function sendFile(token: string, file: File, uploader: string, onProgress: (sent: number) => void): Promise<void> {
   const meta = [`name ${b64(file.name)}`, ...(uploader.trim() ? [`uploader ${b64(uploader.trim())}`] : [])].join(',');
-  const created = await call(`${base(token)}/uploads`, { method: 'POST',
+  const created = await create(`${base(token)}/uploads`, { method: 'POST',
     headers: { ...TUS, 'upload-length': String(file.size), 'upload-metadata': meta } });
   const url = created.headers.get('location');
   if (!url) throw new ApiFailure('INTERNAL');
