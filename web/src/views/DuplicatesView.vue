@@ -302,20 +302,33 @@ const place = (c: DuplicateCopy) => folderLabel(c.source, parentOf(c.path));
         class="duplicate-group"
         :aria-label="$t('duplicates.groupTitle', { count: g.copies.length, size: size(g.size) })"
       >
-        <h2>{{ $t('duplicates.groupTitle', { count: g.copies.length, size: size(g.size) }) }}</h2>
+        <i18n-t
+          keypath="duplicates.groupTitle"
+          tag="h2"
+          scope="global"
+        >
+          <template #count>
+            {{ g.copies.length }}
+          </template>
+          <template #size>
+            <span class="value-mono">{{ size(g.size) }}</span>
+          </template>
+        </i18n-t>
         <div
           v-for="c in g.copies"
           :key="`${c.source}:${c.path}`"
           class="duplicate-copy"
         >
-          <input
-            type="checkbox"
-            :checked="isPicked(c)"
-            :disabled="locked(g, c)"
-            :title="locked(g, c) ? $t('duplicates.oneStays') : undefined"
-            :aria-label="$t('duplicates.pick', { name: c.name, location: place(c) })"
-            @change="toggle(c)"
-          >
+          <label class="check-target">
+            <input
+              type="checkbox"
+              :checked="isPicked(c)"
+              :disabled="locked(g, c)"
+              :title="locked(g, c) ? $t('duplicates.oneStays') : undefined"
+              :aria-label="$t('duplicates.pick', { name: c.name, location: place(c) })"
+              @change="toggle(c)"
+            >
+          </label>
           <span
             class="duplicate-thumb"
             aria-hidden="true"
@@ -334,10 +347,17 @@ const place = (c: DuplicateCopy) => folderLabel(c.source, parentOf(c.path));
           <span class="duplicate-info">
             <span class="name">{{ c.name }}</span>
             <span class="origin">{{ place(c) }}</span>
-            <span
+            <i18n-t
               v-if="c.modified"
+              keypath="duplicates.modified"
+              tag="span"
               class="origin"
-            >{{ $t('duplicates.modified', { date: date(c.modified) }) }}</span>
+              scope="global"
+            >
+              <template #date>
+                <span class="value-mono">{{ date(c.modified) }}</span>
+              </template>
+            </i18n-t>
           </span>
         </div>
       </section>
