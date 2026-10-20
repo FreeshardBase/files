@@ -228,11 +228,11 @@ describe('logging (#256)', () => {
 });
 
 describe('password (#104)', () => {
-  it('locks the link: only name and type before the password, no bytes, no listing', async () => {
+  it('locks the link: nothing about the item before the password, no bytes, no listing', async () => {
     const dir = await folder({ 'a.txt': 'alpha' });
     const l = await link(dir, { password: 'correct horse' });
     expect(l.hasPassword).toBe(true);
-    expect((await visit(l.token, 'info')).json()).toEqual({ name: dir.slice(1), type: 'directory', locked: true });
+    expect((await visit(l.token, 'info')).json()).toEqual({ locked: true });
     expect((await visit(l.token, 'list')).json()).toEqual({ code: 'PASSWORD_REQUIRED' });
     expect((await visit(l.token, 'content?path=%2Fa.txt')).json()).toEqual({ code: 'PASSWORD_REQUIRED' });
     // The hash is argon2id, never the password.
@@ -246,6 +246,21 @@ describe('password (#104)', () => {
     expect((await visit(l.token, 'info', { cookie })).json()).toMatchObject({ locked: false, type: 'directory' });
     expect((await visit(l.token, 'list', { cookie })).json().entries.map((e: Entry) => e.path)).toEqual(['/a.txt']);
     expect((await visit(l.token, 'content?path=%2Fa.txt', { cookie })).body).toBe('alpha');
+  });
+
+  it('a locked link names neither the item nor its type, not even to a forged cookie; unlocked it does (#402)', async () => {
+    const dir = await folder({ 'Kuendigung_2026.pdf': 'private' });
+    const l = await link(`${dir}/Kuendigung_2026.pdf`, { password: 'correct horse' });
+    const locked = await visit(l.token, 'info');
+    expect(locked.statusCode).toBe(200);
+    const body = locked.json();
+    expect(body).not.toHaveProperty('name');
+    expect(body).not.toHaveProperty('type');
+    expect(locked.body).not.toContain('Kuendigung');
+    expect((await visit(l.token, 'info', { cookie: 'fs_link=forged' })).json()).toEqual({ locked: true });
+
+    const cookie = unlockCookie(await unlock(l.token, 'correct horse'));
+    expect((await visit(l.token, 'info', { cookie })).json()).toMatchObject({ name: 'Kuendigung_2026.pdf', type: 'file', locked: false });
   });
 
   it('the 6th wrong password within the window answers 429 for that token, even a correct one; after the window it works', async () => {
@@ -476,10 +491,12 @@ describe('share page and content safety (#107)', () => {
     expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");
     expect(page.headers['x-content-type-options']).toBe('nosniff');
 
-    const info = await visit(l.token, 'info');
-    expect(info.headers['content-type']).toMatch(/^application\/json/);
-    expect(info.json()).toEqual({ name: evil, type: 'file', locked: true });
+    // Locked, the name does not travel at all (#402); unlocked, only as JSON data.
+    expect((await visit(l.token, 'info')).json()).toEqual({ locked: true });
     const cookie = unlockCookie(await unlock(l.token, 'pw'));
+    const info = await visit(l.token, 'info', { cookie });
+    expect(info.headers['content-type']).toMatch(/^application\/json/);
+    expect(info.json()).toMatchObject({ name: evil, type: 'file', locked: false });
     const dl = await visit(l.token, 'content', { cookie });
     expect(dl.headers['content-disposition']).toMatch(/^attachment; filename="<img src=x onerror=alert\(1\)>.txt"/);
     expect(dl.headers['content-security-policy']).toBe("sandbox; default-src 'none'");

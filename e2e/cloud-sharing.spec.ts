@@ -208,13 +208,14 @@ test('a public link to a Google Drive file with a password and limit 1: unlocked
   const v = await contextFor(browser, info, baseURL!, null);
   const fromVisitor = providerRequests(v);
   await v.goto(address);
-  await expect(v.getByTestId('link-name')).toHaveText(file);
+  await expect(v.getByTestId('link-name')).toHaveText('Protected link');
   await expect(v.getByRole('link', { name: 'Download' })).toHaveCount(0);
   await v.getByLabel('Password').fill('wrong');
   await v.getByRole('button', { name: 'Open' }).click();
   await expect(v.getByRole('alert')).toHaveText('The password is not correct.');
   await v.getByLabel('Password').fill('open sesame');
   await v.getByRole('button', { name: 'Open' }).click();
+  await expect(v.getByTestId('link-name')).toHaveText(file);
   const [download] = await Promise.all([v.waitForEvent('download'), v.getByRole('link', { name: 'Download' }).click()]);
   expect(readFileSync(await download.path()).toString()).toBe('signed contract');
   // The page counts down and offers no more (#232); a download sent anyway is refused by the server.
