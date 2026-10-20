@@ -1228,7 +1228,7 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   .button { justify-content: center; }
   .icon-button { min-width: 44px; min-height: 44px; }
   .breadcrumbs a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
-  .file-list .check-target { width: 44px; height: 44px; margin: -13px; }
+  .file-list .check-target, .duplicate-copy .check-target { width: 44px; height: 44px; margin: -13px; }
   .gallery-check { width: 44px; height: 44px; top: var(--space-1); left: var(--space-1); }
   .gallery-menu { top: var(--space-1); right: var(--space-1); }
   /* The name's 44 px reaches 10 px into the row's padding. It is padding around the text, not a minimum height (#237),
@@ -1248,7 +1248,7 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
   .members-form { flex-wrap: wrap; }
   .share-radio, .settings-radio { min-height: 44px; }
 }
-.file-list .check-target { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.file-list .check-target, .duplicate-copy .check-target { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 
 /* ---- Batch rename (#215): the rules in a grid over the preview table, which scrolls inside the wide dialog ---- */
 .batch-rename { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
@@ -1263,13 +1263,19 @@ a.tag-chip:hover, .tag-chip a:hover { color: var(--line); }
 
 /* ---- Duplicates (#216): one group per card, its copies as rows with a checkbox, a thumbnail and where they are ---- */
 .duplicates-sources { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); border: 0; padding: 0; margin: 0 0 var(--space-3); }
+.duplicates-sources legend { padding: 0; }
 .duplicates-note { color: var(--ink-muted); font-size: var(--fs-small); margin: 0 0 var(--space-4); }
 .duplicates-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-4); }
 .duplicates-progress { margin-bottom: var(--space-4); }
-.duplicate-group { border: var(--border-w) solid var(--line); border-radius: var(--radius-tile); padding: var(--space-3); margin-bottom: var(--space-3); }
+/* A group is a list sheet (#384): surface tone and the warm hairline; the teal `--line` stays for focus and selection. */
+.duplicate-group {
+  background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-tile);
+  padding: var(--space-3); margin-bottom: var(--space-3);
+}
 .duplicate-group h2 { font-size: var(--fs-body); font-weight: 600; margin: 0 0 var(--space-2); }
 .duplicate-copy { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; }
-.duplicate-copy + .duplicate-copy { border-top: var(--border-w) solid var(--line); }
+.duplicate-copy + .duplicate-copy { border-top: var(--border-w) solid var(--border); }
+.duplicate-copy .check-target { flex: none; }
 .duplicate-thumb { width: 48px; height: 48px; flex: none; display: flex; align-items: center; justify-content: center;
   background: var(--bg); border-radius: var(--radius-control); overflow: hidden; }
 .duplicate-thumb img { max-width: 100%; max-height: 100%; object-fit: cover; }
