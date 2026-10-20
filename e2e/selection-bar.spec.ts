@@ -177,3 +177,50 @@ test('#383 in a pane of two the German selection bar wraps under the title, not 
     await put('/api/v1/settings', { locale: null, theme: 'system' });
   }
 });
+
+// #403: one step clears a selection: Esc on a row, or the bar's "Clear selection" button; then Upload is back.
+test('#403 Esc and the bar\'s clear button clear the selection and bring Upload back', async ({ page }, info) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const dir = `selclear403-${tag(info)}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  for (const name of ['a.txt', 'b.txt', 'c.txt']) {
+    const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/${name}`)}&onCollision=fail`,
+      { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from(name) });
+    expect(r.status()).toBe(201);
+  }
+  await page.goto(`/home/${encodeURIComponent(dir)}`);
+  await expect(page.locator('tbody tr')).toHaveCount(3);
+  const upload = page.getByRole('button', { name: /^(Hochladen|Upload)$/ });
+  await expect(upload).toBeVisible();
+
+  await row(page, 'b.txt').focus();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(bar(page).locator('.selection-count')).toHaveText(/^3 (ausgewählt|selected)$/);
+  if (!isMobile(info)) await expect(upload).toBeHidden(); // on the desktop the bar takes the toolbar's place
+  await page.keyboard.press('Escape');
+  await expect(bar(page)).toHaveCount(0);
+  await expect(upload).toBeVisible();
+  await expect(row(page, 'b.txt')).toBeFocused();
+
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(bar(page).locator('.selection-count')).toHaveText(/^3 (ausgewählt|selected)$/);
+  const clear = bar(page).getByRole('button', { name: /^(Auswahl aufheben|Clear selection)$/ });
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(bar(page)).toHaveCount(0);
+  await expect(upload).toBeVisible();
+  for (const name of ['a.txt', 'b.txt', 'c.txt']) await expect(row(page, name).getByRole('checkbox')).not.toBeChecked();
+
+  // The shortcuts dialog names the key.
+  await row(page, 'b.txt').focus();
+  await page.keyboard.press('?');
+  const dialog = page.getByRole('dialog', { name: /^(Tastenkürzel|Keyboard shortcuts)$/ });
+  await expect(dialog.getByRole('row', { name: /^Esc (Auswahl aufheben|Clear the selection)$/ })).toBeVisible();
+
+  // Removed again so the home root stays within the list's window for other specs (it windows from 200 entries, #225).
+  const del = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [`/${dir}`] }, headers });
+  expect(del.status(), await del.text()).toBe(204);
+});

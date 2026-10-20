@@ -280,7 +280,10 @@ test('in the trash and in a read-only share, no menu offers rename, move or uplo
   await row(member, 'notes.txt').locator('input[type=checkbox]').check();
   const bar = member.getByRole('group', { name: 'Actions for the selection' });
   await expect(bar.getByRole('link', { name: 'Download' })).toBeVisible();
-  await expect(bar.getByRole('button')).toHaveText(['Copy to…']); // copying out only reads (#339)
+  // Copying out only reads (#339); clearing the selection (#403) changes nothing in the share.
+  await expect(bar.getByRole('button')).toHaveCount(2);
+  await expect(bar.getByRole('button').first()).toHaveAccessibleName('Clear selection');
+  await expect(bar.getByRole('button').last()).toHaveText('Copy to…');
   await member.context().close();
 });
 
