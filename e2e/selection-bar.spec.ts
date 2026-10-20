@@ -225,6 +225,57 @@ test('#403 Esc and the bar\'s clear button clear the selection and bring Upload 
   expect(del.status(), await del.text()).toBe(204);
 });
 
+// #420: Esc clears a selection made with a row's or a tile's checkbox too, where the click leaves the focus; the focus
+// then goes to that row or tile.
+test('#420 Esc clears a selection made with the row or tile checkbox', async ({ page }, info) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  const dir = `selcheck420-${tag(info)}`;
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  for (const name of ['a.txt', 'b.txt', 'c.txt']) {
+    const r = await page.request.put(`/api/v1/sources/home/content?path=${encodeURIComponent(`/${dir}/${name}`)}&onCollision=fail`,
+      { headers: { ...headers, 'content-type': 'application/octet-stream' }, data: Buffer.from(name) });
+    expect(r.status()).toBe(201);
+  }
+  await page.goto(`/home/${encodeURIComponent(dir)}`);
+  await expect(page.locator('tbody tr')).toHaveCount(3);
+
+  // The list: the click leaves the focus on the checkbox.
+  const listBox = row(page, 'b.txt').getByRole('checkbox');
+  await listBox.click();
+  await expect(page.locator('tbody tr[aria-selected="true"]')).toHaveCount(1);
+  await expect(bar(page)).toBeVisible();
+  await expect(listBox).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('tbody tr[aria-selected="true"]')).toHaveCount(0);
+  await expect(bar(page)).toHaveCount(0);
+  await expect(row(page, 'b.txt')).toBeFocused();
+
+  // The gallery: the checkbox sits beside the tile's button, not inside it.
+  const view = page.getByRole('group', { name: /Ansicht|View/ });
+  await view.getByRole('button', { name: /Galerie|Gallery/ }).click();
+  const gallery = page.getByRole('list', { name: /Galerie|Gallery/ });
+  await expect(gallery.getByRole('listitem')).toHaveCount(3);
+  const tile = gallery.getByRole('button', { name: 'c.txt', exact: true });
+  if (!isMobile(info)) await tile.hover(); // on the desktop the checkbox shows on hover
+  const tileBox = gallery.getByRole('checkbox', { name: /c\.txt/ });
+  await tileBox.click();
+  await expect(gallery.locator('li.selected')).toHaveCount(1);
+  await expect(bar(page)).toBeVisible();
+  await expect(tileBox).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(gallery.locator('li.selected')).toHaveCount(0);
+  await expect(bar(page)).toHaveCount(0);
+  await expect(tile).toBeFocused();
+  await view.getByRole('button', { name: /^(Liste|List)$/ }).click();
+  await expect(page.locator('tbody tr')).toHaveCount(3);
+
+  const del = await page.request.post('/api/v1/sources/home/delete', { data: { paths: [`/${dir}`] }, headers });
+  expect(del.status(), await del.text()).toBe(204);
+});
+
 // #404: while a selection lasts the crumbs give way without overlapping: an earlier crumb that has to shrink is cut
 // with its own ellipsis instead of running its letters through the "/", and the current one keeps at least 8rem.
 test('#404 with a selection the German crumbs are cut with ellipses and never overlap', async ({ page }, info) => {
