@@ -1351,3 +1351,11 @@ Question: the issue expects the German bar to need "about 2 rows" (at most 3) in
 Decision: in `.workspace.dual .pane` the toolbar wraps while a selection lasts and the bar takes `flex-basis: 100%`, right-aligned under the title, which keeps its full width. The bar keeps the guide's 36 px buttons with 16 px padding and may fill four rows; the test asserts at most four rows (six before), the bar under the crumb, the crumb not cut and the list moving by at most the bar's own height.
 
 Why: smaller buttons in panes only would be a second button size the guide does not have, and even 8 px padding leaves three rows only with the count moved out of the bar. Four full-width rows are the bar's own height, not a stack beside a cut title (YAGNI).
+
+## 2026-10-20: Stacked member rows label the storage-limit field and the used figure themselves (#385)
+
+Question: up to 1200 px the members list hides its column headers, so the amount field, the unit and "Set" stand without a label, and the used figure loses "Used". Label always and drop the header, or only on stacked rows?
+
+Decision: only on stacked rows. The amount field gets `<label class="fs-label members-limit-label" for="quota-amount-<id>">` "Storage limit" on its own line above the field, the unit and the buttons; the used cell gets the suffix "used" ("6.3 kB used"). Above 1200 px both are `display: none` and the table keeps its headers. The field keeps its `aria-label` "Storage limit for <name>", which contains the visible label. The quota figure stays without a word: "No storage limit" names itself, and a set limit stands right above the labelled field.
+
+Why: the wide table already labels every column; a second label in each row there would repeat it. The suffix and the label are the smallest change that gives every field its `.fs-label` (DESIGN.md "Fields") where the header is gone (YAGNI).
