@@ -15,11 +15,19 @@ async function finished(page: Page, text: RegExp) {
 }
 // Both projects share one server and data dir; a fresh tag per test run keeps every first upload collision-free.
 const tag = (info: TestInfo) => `${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
-/** Opens the home folder and waits until login and the redirect to /home are done. */
-async function home(page: Page) {
+/**
+ * Creates `/collision-<key>-<tag>` and opens it. Each test works in its own folder: the shared home folder grows past
+ * 200 entries over the suite, and a windowed list does not render a row far below the fold for `download` to click.
+ */
+async function home(page: Page, key: string, info: TestInfo) {
+  const dir = `collision-${key}-${tag(info)}`;
   await page.goto('/');
   await expect(page).toHaveURL(/\/home$/);
-  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toBeVisible();
+  const { csrfToken } = await (await page.request.get('/api/v1/me')).json();
+  const headers = { 'x-csrf-token': csrfToken, origin: new URL(page.url()).origin };
+  expect((await page.request.post('/api/v1/sources/home/mkdir', { headers, data: { path: `/${dir}` } })).status()).toBe(201);
+  await page.goto(`/home/${encodeURIComponent(dir)}`);
+  await expect(page.getByRole('navigation', { name: /Pfad|Path/ })).toContainText(dir);
 }
 const dialog = (page: Page) => page.getByRole('dialog', { name: /schon vergeben|bereits vergeben|already taken/ });
 
@@ -46,7 +54,7 @@ const inDialog = (page: Page) => page.evaluate(() => !!document.activeElement?.c
 
 test('the collision dialog traps focus, locks the page scroll, and Esc closes it back onto the upload button', async ({ page }, info) => {
   const name = `a11y-${tag(info)}.txt`;
-  await home(page);
+  await home(page, 'a11y', info);
   // Make the page taller than the viewport so a scroll would show.
   await page.evaluate(() => { const s = document.createElement('div'); s.style.height = '4000px'; document.body.append(s); });
   await collide(page, name);
@@ -77,7 +85,7 @@ test('the collision dialog traps focus, locks the page scroll, and Esc closes it
 
 test('replace overwrites the existing file', async ({ page }, info) => {
   const name = `replace-${tag(info)}.txt`;
-  await home(page);
+  await home(page, 'replace', info);
   await collide(page, name);
   await choose(page, /^(Ersetzen|Replace)$/);
   await expect(status(page)).toContainText(/1 von 1|1 of 1/);
@@ -87,7 +95,7 @@ test('replace overwrites the existing file', async ({ page }, info) => {
 
 test('keep both adds "name (1).ext" next to the old file', async ({ page }, info) => {
   const stem = `keep-${tag(info)}`;
-  await home(page);
+  await home(page, 'keep', info);
   await collide(page, `${stem}.txt`);
   await choose(page, /^(Beide behalten|Keep both)$/);
   await expect(status(page)).toContainText(/1 von 1|1 of 1/);
@@ -97,7 +105,7 @@ test('keep both adds "name (1).ext" next to the old file', async ({ page }, info
 
 test('skip leaves the old content', async ({ page }, info) => {
   const name = `skip-${tag(info)}.txt`;
-  await home(page);
+  await home(page, 'skip', info);
   await collide(page, name);
   await choose(page, /^(Überspringen|Skip)$/);
   await expect(status(page)).toContainText(/0 von 1, 1 übersprungen|0 of 1 uploaded, 1 skipped/);
@@ -107,7 +115,7 @@ test('skip leaves the old content', async ({ page }, info) => {
 
 test('three conflicting files with "apply to all" ask once', async ({ page }, info) => {
   const names = [1, 2, 3].map((i) => `all-${i}-${tag(info)}.txt`);
-  await home(page);
+  await home(page, 'all', info);
   await upload(page, ...names.map((n) => file(n, 'old')));
   await finished(page, /3 von 3|3 of 3/);
   await page.evaluate(() => {

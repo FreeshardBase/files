@@ -486,16 +486,18 @@ const fileTarget = (r: FileRequest, f: ReceivedFile) =>
             v-else
             class="share-name"
           >{{ f.name }}</span>
-          <span
-            v-if="f.new"
-            class="request-badge"
-          >{{ t('requests.isNew') }}</span>
-          <span class="share-level value-mono">{{ fmtSize(f.size) }}</span>
-          <span
-            v-if="f.uploader"
-            class="share-level"
-          >{{ t('requests.from', { name: f.uploader }) }}</span>
-          <span class="share-level value-mono">{{ fmtDate(f.receivedAt) }}</span>
+          <span class="received-facts">
+            <span class="share-level value-mono received-size">{{ fmtSize(f.size) }}</span>
+            <span class="share-level value-mono">{{ fmtDate(f.receivedAt) }}</span>
+            <span
+              v-if="f.new"
+              class="request-badge"
+            >{{ t('requests.isNew') }}</span>
+            <span
+              v-if="f.uploader"
+              class="share-level"
+            >{{ t('requests.from', { name: f.uploader }) }}</span>
+          </span>
         </li>
       </ul>
       <div class="app-dialog-actions">
