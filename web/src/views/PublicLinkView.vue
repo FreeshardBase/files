@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The share page of a public link (#147), for visitors without an account. Everything about the item comes from
 // `/s/<token>/info` as data and is shown as text (no v-html), under the app's strict CSP. A locked link asks for its
-// password first. A download is a plain link to the content route; a refused one comes back here with `?error=<code>`.
+// password first, under a generic heading: the server tells it neither the item's name nor its type (#402).
+// A download is a plain link to the content route; a refused one comes back here with `?error=<code>`.
 // The count of downloads left follows every download and preview (#232); the note about the limit shows only with one.
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -106,13 +107,13 @@ const fmtSize = (n: number) => formatSize(n, intlLocale(locale.value));
       </p>
       <section v-else>
         <p class="link-kind">
-          {{ info.type === 'directory' ? t('link.page.folder') : t('link.page.file') }}
+          {{ info.locked ? t('link.page.link') : info.type === 'directory' ? t('link.page.folder') : t('link.page.file') }}
         </p>
         <h1
           class="view-title link-name"
           data-testid="link-name"
         >
-          {{ info.name }}
+          {{ info.locked ? t('link.page.lockedTitle') : info.name }}
         </h1>
         <form
           v-if="info.locked"

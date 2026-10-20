@@ -299,7 +299,7 @@ describe.each(KINDS)('public link on %s', (kind) => {
   it('file with password and limit 1: locked until unlocked, then exactly one download', async () => {
     const path = await seedFile(kind, 'secret bytes');
     const token = await link(kind, path, { password: 'correct horse', maxDownloads: 1 });
-    expect((await visit(token, 'info')).json()).toMatchObject({ locked: true });
+    expect((await visit(token, 'info')).json()).toEqual({ locked: true }); // no name or type on any source (#402)
     const locked = await visit(token, 'content');
     expect(locked.json()).toEqual({ code: 'PASSWORD_REQUIRED' });
     expect(locked.body).not.toContain('secret bytes');

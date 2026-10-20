@@ -53,7 +53,7 @@ async function expectBrandMark(v: Page) {
   await expect(v.locator('.app-header .app-title')).toHaveText('Files');
 }
 
-test('a link with password and limit 1: the visitor unlocks, downloads once, and a second download is refused', async ({ page, browser, baseURL }, info) => {
+test('a link with password and limit 1: the visitor sees no name before unlocking (#402), downloads once, and a second download is refused',async ({ page, browser, baseURL }, info) => {
   const dir = `link-limit-${tag(info)}`;
   await setup(page, dir, { 'report.txt': 'quarterly numbers' });
   const d = await openShareDialog(page, 'report.txt');
@@ -77,7 +77,12 @@ test('a link with password and limit 1: the visitor unlocks, downloads once, and
   const dialogs: string[] = [];
   v.on('dialog', (x) => { dialogs.push(x.message()); void x.dismiss(); });
   await v.goto(address);
-  await expect(v.getByTestId('link-name')).toHaveText('report.txt');
+  // Before the password the page names neither the file nor its kind (#402).
+  const heading = v.getByRole('heading', { level: 1 });
+  await expect(v.getByLabel('Password')).toBeVisible();
+  await expect(heading).toHaveText('Protected link');
+  await expect(v.locator('body')).not.toContainText('report.txt');
+  await expect(v.locator('main')).not.toContainText(/Shared (file|folder)/);
   await expectBrandMark(v);
   await expect(v.getByText('This link is protected by a password.')).toBeVisible();
   await expect(v.getByRole('link', { name: 'Download' })).toHaveCount(0);
@@ -89,6 +94,8 @@ test('a link with password and limit 1: the visitor unlocks, downloads once, and
   await v.getByRole('button', { name: 'Open' }).click();
   await expect(v.getByRole('link', { name: 'Download' })).toBeVisible();
   await expect(v.getByText('Downloads left')).toBeVisible();
+  await expect(heading).toHaveText('report.txt');
+  await expect(v.getByText('Shared file')).toBeVisible();
 
   const [download] = await Promise.all([v.waitForEvent('download'), v.getByRole('link', { name: 'Download' }).click()]);
   expect(download.suggestedFilename()).toBe('report.txt');
@@ -150,7 +157,7 @@ test('a link to a home folder: the visitor browses into a subfolder, previews an
   await v.context().close();
 });
 
-test('a file named like markup is shown as text on the share page and the password prompt; no script runs', async ({ page, browser, baseURL }, info) => {
+test('a file named like markup is shown as text on the share page, and not at all on the password prompt; no script runs', async ({ page, browser, baseURL }, info) => {
   const evil = '<img src=x onerror=alert(1)>.txt';
   const dir = `link-xss-${tag(info)}`;
   const headers = await setup(page, dir, { [evil]: 'harmless' });
@@ -165,9 +172,9 @@ test('a file named like markup is shown as text on the share page and the passwo
   const res = await v.goto(`/s/${token}`);
   expect(res!.headers()['content-security-policy']).toContain("script-src 'self'");
   expect(res!.headers()['content-security-policy']).not.toMatch(/script-src[^;]*unsafe-inline/);
-  // The password prompt shows the name as text.
-  await expect(v.getByTestId('link-name')).toHaveText(evil);
+  // The password prompt shows no name at all (#402).
   await expect(v.getByLabel('Password')).toBeVisible();
+  await expect(v.getByTestId('link-name')).toHaveText('Protected link');
   await expect(v.locator('main img')).toHaveCount(0);
   await v.getByLabel('Password').fill('pw');
   await v.getByRole('button', { name: 'Open' }).click();

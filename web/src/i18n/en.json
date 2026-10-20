@@ -716,6 +716,8 @@
     "page": {
       "file": "Shared file",
       "folder": "Shared folder",
+      "link": "Shared link",
+      "lockedTitle": "Protected link",
       "passwordPrompt": "This link is protected by a password.",
       "password": "Password",
       "unlock": "Open",

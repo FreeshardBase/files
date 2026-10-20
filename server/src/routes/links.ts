@@ -100,7 +100,8 @@ export async function registerLinkRoutes(app: FastifyInstance, perIp: AttemptLim
 
   async function info(req: FastifyRequest, row: LinkRow): Promise<PublicLinkInfo> {
     const b = await backendOf(row);
-    if (!unlocked(req, row)) return { name: row.path.slice(row.path.lastIndexOf('/') + 1), type: row.type, locked: true };
+    // Locked, not even the name or the type: the password guards what the item is called too (#402).
+    if (!unlocked(req, row)) return { locked: true };
     const e = await b.stat('/');
     return { name: e.name, type: e.type, locked: false, size: e.size, ...(e.mime ? { mime: e.mime } : {}), expiresAt: row.expires_at,
       downloadsLeft: row.max_downloads === null ? null : Math.max(0, row.max_downloads - row.downloads) };

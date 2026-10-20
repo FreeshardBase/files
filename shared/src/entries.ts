@@ -267,11 +267,11 @@ export const MyLinkListSchema = z.object({ items: z.array(MyLinkSchema) });
 export type MyLinkList = z.infer<typeof MyLinkListSchema>;
 
 /**
- * `GET /s/<token>/info`: what a visitor may know. A locked link (password not entered yet) reveals only the item's name
- * and type; the rest comes once it is unlocked.
+ * `GET /s/<token>/info`: what a visitor may know. A locked link (password not entered yet) is only `{ locked: true }`,
+ * not even the item's name or type (#402); everything else comes once it is unlocked.
  */
 export const PublicLinkInfoSchema = z.object({
-  name: z.string().min(1), type: z.enum(['file', 'directory']), locked: z.boolean(),
+  name: z.string().min(1).optional(), type: z.enum(['file', 'directory']).optional(), locked: z.boolean(),
   size: z.number().int().nonnegative().optional(), mime: z.string().optional(),
   expiresAt: z.iso.datetime().nullable().optional(),
   /** Downloads left before the limit; null means no limit. */
